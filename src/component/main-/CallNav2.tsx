@@ -5,22 +5,23 @@ export const CallNav2 = () => {
   return (
     <div className="fixed right-0 z-50 hidden h-16 -translate-x-1/2 bg-white border border-gray-200 rounded-full Tab:block bottom-1 -translate-y-4/12 Tab:h-44 Tab:w-16 Tab:top-28 dark:bg-gray-700 dark:border-gray-600">
       <div className="grid h-full max-w-lg grid-cols-3 mx-auto Tab:grid-cols-1">
-        <button
-          data-tooltip-target="tooltip-home"
-          type="button"
-          className="inline-flex flex-col items-center justify-center px-5 rounded-l-full dark:hover:bg-gray-800 group"
-        >
-          <svg
-            className="mb-1 text-gray-500 w-7 h-7 dark:text-gray-400 group-hover:text-mainBrown3 dark:group-hover:text-blue-500"
-            aria-hidden="true"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="currentColor"
-            viewBox="0 0 20 20"
+          <a
+          href="/"
+            data-tooltip-target="tooltip-home"
+            type="button"
+            className="inline-flex flex-col items-center justify-center px-5 rounded-l-full dark:hover:bg-gray-800 group"
           >
-            <path d="m19.707 9.293-2-2-7-7a1 1 0 0 0-1.414 0l-7 7-2 2a1 1 0 0 0 1.414 1.414L2 10.414V18a2 2 0 0 0 2 2h3a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h3a2 2 0 0 0 2-2v-7.586l.293.293a1 1 0 0 0 1.414-1.414Z" />
-          </svg>
-          <span className="sr-only">Home</span>
-        </button>
+            <svg
+              className="mb-1 text-gray-500 w-7 h-7 dark:text-gray-400 group-hover:text-mainBrown3 dark:group-hover:text-blue-500"
+              aria-hidden="true"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path d="m19.707 9.293-2-2-7-7a1 1 0 0 0-1.414 0l-7 7-2 2a1 1 0 0 0 1.414 1.414L2 10.414V18a2 2 0 0 0 2 2h3a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h3a2 2 0 0 0 2-2v-7.586l.293.293a1 1 0 0 0 1.414-1.414Z" />
+            </svg>
+            <span className="sr-only">Home</span>
+          </a>
         <div
           id="tooltip-home"
           role="tooltip"
