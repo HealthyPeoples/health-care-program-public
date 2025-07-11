@@ -2,14 +2,14 @@ import { MainContainer } from '../../containers'
 import { HeaderImg } from '../common'
 import Image from 'next/image'
 
-export const DayCare = () => {
+export const ShortTermCare = () => {
   return (
     <>
-      <HeaderImg>주간보호</HeaderImg>
+      <HeaderImg>단기보호</HeaderImg>
       <MainContainer>
         <div className="container px-4 py-8 mx-auto space-y-8">
           <div className="container px-4 py-8 mx-auto">
-            <h1 className="mb-4 text-4xl font-bold">주간보호</h1>
+            <h1 className="mb-4 text-4xl font-bold">단기보호</h1>
             <hr className="w-20 mb-8 border-blue-500" />
 
           </div>
