@@ -28,7 +28,7 @@ import { ReactNodeProps } from '../../types'
 export const HeaderImg = ({ children }: ReactNodeProps) => {
   return (
     <div className="relative w-full h-full overflow-hidden">
-      <Image src="/img/companyInfo/sb_visual.jpg" alt="Description" layout="responsive" width={1000} height={200} />
+      <Image src="/img/companyInfo/sb_visual.png" alt="Description" layout="responsive" width={1000} height={200} />
       <div className="absolute top-0 left-0 flex items-center justify-center w-full h-full">
         <p className="text-lg font-bold text-white Tab:text-3xl">{children}</p>
       </div>
