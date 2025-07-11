@@ -1,6 +1,7 @@
 import { MainContainer } from '../../containers'
 import { HeaderImg } from '../common'
 import Image from 'next/image'
+import NursingHomeMenu from '../nursing-home/organisms/NursingHomeMenu';
 
 export const NursingHome = () => {
   return (
@@ -8,14 +9,13 @@ export const NursingHome = () => {
       <HeaderImg>요양원</HeaderImg>
       <MainContainer>
         <div className="container px-4 py-8 mx-auto space-y-8">
-          <div className="container px-4 py-8 mx-auto">
-            <h1 className="mb-4 text-4xl font-bold">요양원페이지</h1>
-            <hr className="w-20 mb-8 border-blue-500" />
+          <h1 className="mb-4 text-4xl font-bold">요양원페이지</h1>
+          <hr className="w-20 mb-8 border-blue-500" />
 
-          </div>
-
+          {/* 요양원 메뉴 컴포넌트 */}
+          <NursingHomeMenu />
         </div>
       </MainContainer>
     </>
-  )
-}
+  );
+};
