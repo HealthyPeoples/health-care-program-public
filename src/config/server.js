@@ -2,6 +2,13 @@ const sql = require('mssql');
 const { config } = require('./config');
 
 console.log('DB 연결 시도 중...');
+
+// 보안 옵션 명시적으로 추가
+config.dbconfig.options = {
+  encrypt: false,                // ✅ SSL 비활성화
+  trustServerCertificate: true   // ✅ 자체 서명 인증서 허용
+};
+
 const connPool = new sql.ConnectionPool(config.dbconfig)
   .connect()
   .then((pool) => {
