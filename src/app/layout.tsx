@@ -27,7 +27,7 @@ export default function RootLayout({ children }: ReactNodeProps) {
         <body className={inter.className}>
           {/* <Header /> */}
           <div className="flex flex-col items-center">
-            <CallNav2 />
+            {/* <CallNav2 /> */}
             {children}
             <Footer />
           </div>
