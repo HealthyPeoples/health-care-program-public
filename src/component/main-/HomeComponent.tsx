@@ -1,5 +1,4 @@
 import React from 'react';
-import { HeaderImg } from '../common';
 
 export const HomeComponent = () => {
   return (

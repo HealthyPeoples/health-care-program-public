@@ -4,7 +4,7 @@ import TabHost from './TabHost';
 const HEADER_HEIGHT = 56; // 14 * 4(px)
 const SIDEBAR_WIDTH = 256; // 64 * 4(px)
 
-export const NursingHome = ({ children }: { children?: React.ReactNode }) => {
+export const NursingHome = () => {
   return (
     <div className="w-full min-h-screen bg-gray-50">
       {/* 상단 헤더 고정 */}

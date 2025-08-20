@@ -21,6 +21,7 @@ module.exports = {
       rules: {
         '@typescript-eslint/no-unused-vars': 'off', // JS 파일에서는 비활성화
         'no-undef': 'off', // Node.js 전역 변수 허용
+        '@typescript-eslint/no-var-requires': 'off', // CommonJS require 허용
       },
     },
   ],

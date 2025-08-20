@@ -3,34 +3,16 @@
 import { useState } from 'react';
 import { NursingHomeHeader } from '../../nursing-home/organisms/NursingHomeHeader'
 
-export const MemberInfo = () => {
-  const [selectedName, setSelectedName] = useState('길덕남');
-  const [activeTab, setActiveTab] = useState('개인정보');
-
+export const MemberInfor = () => {
   const members = [
-    { name: '길덕남', gender: '여', birth: '1933-09-15', status: '입소', level: '3등급', code: 'L1903102859-102', endDate: '2026-03-28' },
-    { name: '김간난', gender: '여', birth: '1954-07-07', status: '입소', level: '3등급', code: 'L0010320081', endDate: '2027-03-31' },
-    { name: '김광분', gender: '여', birth: '1954-04-15', status: '입소', level: '1등급', code: 'L2004040575', endDate: '2026-10-16' },
-    { name: '김성숙', gender: '여', birth: '1925-11-20', status: '입소', level: '4등급', code: 'L1903184431', endDate: '2026-11-09' },
-    { name: '길덕남', gender: '여', birth: '1933-09-15', status: '입소', level: '3등급', code: 'L1903102859-102', endDate: '2026-03-28' },
-    { name: '김간난', gender: '여', birth: '1954-07-07', status: '입소', level: '3등급', code: 'L0010320081', endDate: '2027-03-31' },
-    { name: '김광분', gender: '여', birth: '1954-04-15', status: '입소', level: '1등급', code: 'L2004040575', endDate: '2026-10-16' },
-    { name: '김성숙', gender: '여', birth: '1925-11-20', status: '입소', level: '4등급', code: 'L1903184431', endDate: '2026-11-09' },
-    { name: '길덕남', gender: '여', birth: '1933-09-15', status: '입소', level: '3등급', code: 'L1903102859-102', endDate: '2026-03-28' },
-    { name: '김간난', gender: '여', birth: '1954-07-07', status: '입소', level: '3등급', code: 'L0010320081', endDate: '2027-03-31' },
-    { name: '김광분', gender: '여', birth: '1954-04-15', status: '입소', level: '1등급', code: 'L2004040575', endDate: '2026-10-16' },
-    { name: '김성숙', gender: '여', birth: '1925-11-20', status: '입소', level: '4등급', code: 'L1903184431', endDate: '2026-11-09' },
-    { name: '길덕남', gender: '여', birth: '1933-09-15', status: '입소', level: '3등급', code: 'L1903102859-102', endDate: '2026-03-28' },
-    { name: '김간난', gender: '여', birth: '1954-07-07', status: '입소', level: '3등급', code: 'L0010320081', endDate: '2027-03-31' },
-    { name: '김광분', gender: '여', birth: '1954-04-15', status: '입소', level: '1등급', code: 'L2004040575', endDate: '2026-10-16' },
-    { name: '김성숙', gender: '여', birth: '1925-11-20', status: '입소', level: '4등급', code: 'L1903184431', endDate: '2026-11-09' },
-    { name: '길덕남', gender: '여', birth: '1933-09-15', status: '입소', level: '3등급', code: 'L1903102859-102', endDate: '2026-03-28' },
-    { name: '김간난', gender: '여', birth: '1954-07-07', status: '입소', level: '3등급', code: 'L0010320081', endDate: '2027-03-31' },
-    { name: '김광분', gender: '여', birth: '1954-04-15', status: '입소', level: '1등급', code: 'L2004040575', endDate: '2026-10-16' },
+    { name: '길덕남', gender: '남', birth: '1925-11-20', status: '입소', level: '4등급', code: 'L1903184431', endDate: '2026-11-09' },
     { name: '김성숙', gender: '여', birth: '1925-11-20', status: '입소', level: '4등급', code: 'L1903184431', endDate: '2026-11-09' },
   ];
 
-  const selected = members.find(m => m.name === selectedName);
+  const [selectedName, setSelectedName] = useState('길덕남');
+  const [activeTab, setActiveTab] = useState('개인정보');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredMembers, setFilteredMembers] = useState(members);
 
   return (
     <div className="p-4 space-y-6 text-sm text-black dark:text-white">

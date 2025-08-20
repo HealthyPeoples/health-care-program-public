@@ -12,7 +12,7 @@ export default function NursingHomeMenu() {
   const filtered = useMemo(() => {
     if (!query.trim()) return sections3;
     const q = query.trim().toLowerCase();
-    const result: typeof sections3 = {} as any;
+    const result: typeof sections3 = {};
     Object.entries(sections3).forEach(([sectionTitle, groupsObj]) => {
       const groupFiltered: Record<string, { name: string; link: string }[]> = {};
       Object.entries(groupsObj).forEach(([groupTitle, items]) => {
