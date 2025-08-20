@@ -40,7 +40,7 @@ export default function NursingHomeMenu() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="메뉴 검색 (예: 사용자코드, 서비스)"
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+          className="w-full px-3 py-2 text-sm text-black border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
         />
       </div>
 

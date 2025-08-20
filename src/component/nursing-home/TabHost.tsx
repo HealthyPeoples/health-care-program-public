@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import MemberInfoView from '@/component/nursing-home/pages/member-info/MemberInfoView';
+import DiseaseHistoryView from '@/component/nursing-home/pages/disease-history/DiseaseHistoryView';
 import MemberContractInfo from '@/component/nursing-home/pages/member-contract-info/MemberContractInfo';
 import GuardianInfo from '@/component/nursing-home/pages/guardian-info/GuardianInfo';
 import DailyBeneficiaryPerformance from '@/component/nursing-home/pages/daily-beneficiary-performance/DailyBeneficiaryPerformance';
@@ -56,6 +57,9 @@ function renderInternal(href: string) {
       return <MemberInfoView />;
     case '/nursingHome/fact-verification-record-detail-detail':
       return <MemberInfoView />;
+
+    case '/nursingHome/disease-history':
+      return <DiseaseHistoryView />;
 
     case '/nursingHome/employee-basic-info':
       return <EmployeeBasicInfo />;
