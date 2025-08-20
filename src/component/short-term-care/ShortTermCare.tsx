@@ -1,5 +1,4 @@
 import React from 'react';
-import Link from 'next/link';
 import { MainContainer } from '../../containers'
 import { HeaderImg } from '../common'
 

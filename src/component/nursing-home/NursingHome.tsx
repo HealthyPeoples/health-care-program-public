@@ -1,10 +1,15 @@
 import NursingHomeMenu from './organisms/NursingHomeMenu';
 import TabHost from './TabHost';
+import { ReactNode } from 'react';
 
 const HEADER_HEIGHT = 56; // 14 * 4(px)
 const SIDEBAR_WIDTH = 256; // 64 * 4(px)
 
-export const NursingHome = () => {
+interface NursingHomeProps {
+  children?: ReactNode;
+}
+
+export const NursingHome = ({ children }: NursingHomeProps) => {
   return (
     <div className="w-full min-h-screen bg-gray-50">
       {/* 상단 헤더 고정 */}
@@ -34,7 +39,7 @@ export const NursingHome = () => {
       >
         <NursingHomeMenu />
       </aside>
-      {/* 본문 컨텐츠: 탭 호스트 */}
+      {/* 본문 컨텐츠: TabHost를 항상 표시 */}
       <main
         className="min-h-screen p-0"
         style={{ marginLeft: SIDEBAR_WIDTH, marginTop: HEADER_HEIGHT }}

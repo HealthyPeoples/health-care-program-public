@@ -11,8 +11,6 @@ export const MemberInfor = () => {
 
   const [selectedName, setSelectedName] = useState('길덕남');
   const [activeTab, setActiveTab] = useState('개인정보');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredMembers, setFilteredMembers] = useState(members);
 
   return (
     <div className="p-4 space-y-6 text-sm text-black dark:text-white">

@@ -2,14 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
-import { useRecoilValue } from 'recoil'
-import { toggleState } from '../../atom/RecoilState'
 import { useRecoilState } from 'recoil'
+import { toggleState } from '../../atom/RecoilState'
 
 export const Header = () => {
   const [isMenuOpenToggled, setIsMenuOpenToggled] = useRecoilState(toggleState)
-  // const isToggled = useRecoilValue(toggleState)
 
   const [isScrollDown, setIsScrollDown] = useState(true)
 
@@ -31,8 +28,6 @@ export const Header = () => {
       window.removeEventListener('scroll', handleScroll)
     }
   }, [])
-
-  let menuOpen = true
 
   const [isMenuHidden, setIsMenuHidden] = useState(false)
   const [isInfoMenuHidden, setIsInfoMenuHidden] = useState(false)
