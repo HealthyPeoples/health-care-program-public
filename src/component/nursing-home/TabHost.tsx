@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import MemberInfoView from '@/component/nursing-home/pages/member-info/MemberInfoView';
 import MemberContractInfo from '@/component/nursing-home/pages/member-contract-info/MemberContractInfo';
 import GuardianInfo from '@/component/nursing-home/pages/guardian-info/GuardianInfo';
+import DailyBeneficiaryPerformance from '@/component/nursing-home/pages/daily-beneficiary-performance/DailyBeneficiaryPerformance';
+import EmployeeBasicInfo from '@/component/nursing-home/pages/employee-basic-info/EmployeeBasicInfo';
+import ProgramPlanRegistration from '@/component/nursing-home/pages/program-plan-registration/ProgramPlanRegistration';
 
 interface TabItem {
   id: string; // href 기반 고유키
@@ -20,6 +23,44 @@ function renderInternal(href: string) {
       return <MemberContractInfo />;
     case '/nursingHome/guardian-info':
       return <GuardianInfo />;
+
+    case '/nursingHome/daily-beneficiary-performance':
+      return <DailyBeneficiaryPerformance />;
+    case '/nursingHome/daily-longterm-care':
+      return <DailyBeneficiaryPerformance />;
+    case '/nursingHome/snack-bulk-registration':
+      return <DailyBeneficiaryPerformance />;
+    case '/nursingHome/outing-processing':
+      return <DailyBeneficiaryPerformance />;
+
+    case '/nursingHome/medication-time':
+      return <MemberInfoView />;
+    case '/nursingHome/longterm-physical-activity':
+      return <MemberInfoView />;
+    case '/nursingHome/longterm-nursing-instruction':
+      return <MemberInfoView />;
+    case '/nursingHome/longterm-functional-cognitive':
+      return <MemberInfoView />;
+    case '/nursingHome/longterm-beneficiary-status':
+      return <MemberInfoView />;
+    case '/nursingHome/longterm-record-format':
+      return <MemberInfoView />;
+
+    case '/nursingHome/counseling-record':
+      return <MemberInfoView />;
+    case '/nursingHome/fact-verification':
+      return <MemberInfoView />;
+    case '/nursingHome/connection-record':
+      return <MemberInfoView />;
+    case '/nursingHome/status-change-observation':
+      return <MemberInfoView />;
+    case '/nursingHome/fact-verification-record-detail-detail':
+      return <MemberInfoView />;
+
+    case '/nursingHome/employee-basic-info':
+      return <EmployeeBasicInfo />;
+    case '/nursingHome/program-plan-registration':
+      return <ProgramPlanRegistration />;
     default:
       return null;
   }

@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 
-export default function GuardianInfo() {
+export default function DailyBeneficiaryPerformance() {
 	return (
 		<div className="min-h-screen bg-white text-black">
 			<div className="mx-auto max-w-[1200px] p-4">
@@ -44,14 +44,13 @@ export default function GuardianInfo() {
 						</div>
 					</aside>
 
-					{/* 우측: 보호자정보 상세 영역 */}
+					{/* 우측: 급여실적 상세 영역 */}
 					<section className="flex-1 space-y-4">
-						{/* 보호자정보 카드 */}
+						{/* 급여실적 카드 */}
 						<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
 							<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
-								<h2 className="text-xl font-semibold text-blue-900">보호자정보</h2>
+								<h2 className="text-xl font-semibold text-blue-900">일 수급자급여실적 등록</h2>
 								<div className="flex items-center gap-2">
-									<button className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900">주소검색</button>
 									<button className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900">저장</button>
 								</div>
 							</div>
@@ -66,53 +65,38 @@ export default function GuardianInfo() {
 											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" />
 										</div>
 										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">보호자명</label>
-											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" />
+											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록일자</label>
+											<input type="date" className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" />
 										</div>
 
 										{/* 2행 */}
 										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">관계</label>
+											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스종류</label>
 											<select className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white">
-												<option>배우자</option>
-												<option>자녀</option>
-												<option>부모</option>
-												<option>형제자매</option>
-												<option>기타</option>
+												<option>일반요양</option>
+												<option>특별요양</option>
+												<option>단기보호</option>
 											</select>
 										</div>
 										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">주민번호</label>
-											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" placeholder="ex) 900101-1******" />
+											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스시간</label>
+											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" placeholder="ex) 8시간" />
 										</div>
 
 										{/* 3행 */}
 										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">연락처</label>
-											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" placeholder="ex) 010-0000-0000" />
+											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">급여금액</label>
+											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" />
 										</div>
 										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">비상연락처</label>
-											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" placeholder="ex) 010-0000-0000" />
+											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">본인부담</label>
+											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" />
 										</div>
 
 										{/* 4행 */}
 										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">주소</label>
+											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">담당자</label>
 											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" />
-										</div>
-										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">직업</label>
-											<input className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white" />
-										</div>
-
-										{/* 5행 */}
-										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
-											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">동거여부</label>
-											<select className="flex-1 border border-blue-300 rounded px-2 py-1 bg-white">
-												<option>동거</option>
-												<option>별거</option>
-											</select>
 										</div>
 										<div className="col-span-12 md:col-span-6 flex items-center gap-2">
 											<label className="w-24 px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">비고</label>
@@ -123,32 +107,32 @@ export default function GuardianInfo() {
 							</div>
 						</div>
 
-						{/* 하단 2컬럼 카드: 대리인 정보 / 연락처 이력 */}
+						{/* 하단 2컬럼 카드: 서비스 상세 / 급여 이력 */}
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-							{/* 대리인 정보 */}
+							{/* 서비스 상세 */}
 							<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
 								<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
-									<h3 className="text-lg font-semibold text-blue-900">대리인 정보</h3>
-									<button className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900">대리인 관리</button>
+									<h3 className="text-lg font-semibold text-blue-900">서비스 상세</h3>
+									<button className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900">상세보기</button>
 								</div>
 								<div className="p-4 space-y-2 text-sm">
-									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">대리인명</span><span className="flex-1 border-b border-blue-200" /></div>
-									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">관계</span><span className="flex-1 border-b border-blue-200" /></div>
-									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">연락처</span><span className="flex-1 border-b border-blue-200" /></div>
-									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">위임일자</span><span className="flex-1 border-b border-blue-200" /></div>
+									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">기본서비스</span><span className="flex-1 border-b border-blue-200" /></div>
+									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">추가서비스</span><span className="flex-1 border-b border-blue-200" /></div>
+									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">특별서비스</span><span className="flex-1 border-b border-blue-200" /></div>
+									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">총서비스</span><span className="flex-1 border-b border-blue-200" /></div>
 								</div>
 							</div>
 
-							{/* 연락처 이력 */}
+							{/* 급여 이력 */}
 							<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
 								<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
-									<h3 className="text-lg font-semibold text-blue-900">연락처 이력</h3>
+									<h3 className="text-lg font-semibold text-blue-900">급여 이력</h3>
 									<button className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900">이력 관리</button>
 								</div>
 								<div className="p-4 space-y-2 text-sm">
-									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">변경일자</span><span className="flex-1 border-b border-blue-200" /></div>
-									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">변경내용</span><span className="flex-1 border-b border-blue-200" /></div>
-									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">변경사유</span><span className="flex-1 border-b border-blue-200" /></div>
+									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">등록일자</span><span className="flex-1 border-b border-blue-200" /></div>
+									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">서비스종류</span><span className="flex-1 border-b border-blue-200" /></div>
+									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">급여금액</span><span className="flex-1 border-b border-blue-200" /></div>
 									<div className="flex items-center gap-2"><span className="w-24 text-blue-900/80">등록자</span><span className="flex-1 border-b border-blue-200" /></div>
 								</div>
 							</div>
