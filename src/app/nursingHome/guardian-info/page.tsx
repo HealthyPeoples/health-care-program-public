@@ -1,5 +1,5 @@
-import MemberInfoView from '../../../component/nursing-home/pages/MemberInfoView'
+import GuardianInfo from '../../../component/nursing-home/pages/guardian-info/GuardianInfo';
 
 export default function GuardianInfoPage() {
-  return <MemberInfoView />
+  return <GuardianInfo />;
 }

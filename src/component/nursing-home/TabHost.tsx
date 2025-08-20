@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import MemberInfoView from './pages/MemberInfoView';
+import { useRouter } from 'next/navigation';
+import MemberInfoView from '@/component/nursing-home/pages/member-info/MemberInfoView';
+import MemberContractInfo from '@/component/nursing-home/pages/member-contract-info/MemberContractInfo';
+import GuardianInfo from '@/component/nursing-home/pages/guardian-info/GuardianInfo';
 
 interface TabItem {
   id: string; // href 기반 고유키
@@ -13,6 +16,10 @@ function renderInternal(href: string) {
   switch (href) {
     case '/nursingHome/member-info':
       return <MemberInfoView />;
+    case '/nursingHome/member-contract-info':
+      return <MemberContractInfo />;
+    case '/nursingHome/guardian-info':
+      return <GuardianInfo />;
     default:
       return null;
   }
@@ -21,6 +28,7 @@ function renderInternal(href: string) {
 export default function TabHost() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -32,19 +40,36 @@ export default function TabHost() {
         return next;
       });
       setActiveId(id);
+      // 새 탭이 열릴 때 URL 업데이트
+      router.push(detail.href);
     };
     window.addEventListener('NH_OPEN_TAB', handler as EventListener);
     return () => window.removeEventListener('NH_OPEN_TAB', handler as EventListener);
-  }, []);
+  }, [router]);
 
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) || null, [tabs, activeId]);
+
+  const handleTabClick = (tab: TabItem) => {
+    setActiveId(tab.id);
+    // 탭 클릭 시 해당 페이지의 URL로 이동
+    router.push(tab.href);
+  };
 
   const closeTab = (id: string) => {
     setTabs((prev) => prev.filter((t) => t.id !== id));
     setActiveId((curr) => {
       if (curr === id) {
         const remain = tabs.filter((t) => t.id !== id);
-        return remain.length ? remain[remain.length - 1].id : null;
+        if (remain.length > 0) {
+          const newActiveTab = remain[remain.length - 1];
+          // 탭이 닫힐 때 남은 탭의 URL로 이동
+          router.push(newActiveTab.href);
+          return newActiveTab.id;
+        } else {
+          // 모든 탭이 닫힐 때 기본 페이지로 이동
+          router.push('/nursingHome');
+          return null;
+        }
       }
       return curr;
     });
@@ -62,9 +87,9 @@ export default function TabHost() {
           <button
             key={tab.id}
             className={`group flex items-center gap-2 px-3 py-2 text-sm border-r border-gray-200 ${
-              tab.id === activeId ? 'bg-blue-100 text-blue-900 font-semibold' : 'hover:bg-gray-50'
+              tab.id === activeId ? 'bg-blue-100 text-blue-900 font-semibold' : 'bg-white text-blue-900 hover:bg-gray-50'
             }`}
-            onClick={() => setActiveId(tab.id)}
+            onClick={() => handleTabClick(tab)}
           >
             <span>{tab.title}</span>
             <span
