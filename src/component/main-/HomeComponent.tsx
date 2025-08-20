@@ -1,4 +1,5 @@
-import { MainContainer, MainInnerContainer } from '../../containers'
+import React from 'react';
+import { HeaderImg } from '../common';
 
 export const HomeComponent = () => {
   return (
