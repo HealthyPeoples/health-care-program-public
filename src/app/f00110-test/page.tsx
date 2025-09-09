@@ -67,7 +67,7 @@ export default function F00110TestPage() {
 
   return (
     <div className="container p-6 mx-auto">
-      <h1 className="mb-6 text-3xl font-bold">F00110 테이블 데이터 조회..</h1>
+      <h1 className="mb-6 text-3xl font-bold">F00110 테이블 데이터 조회</h1>
       
       <div className="mb-6">
         <button
