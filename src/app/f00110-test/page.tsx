@@ -66,21 +66,21 @@ export default function F00110TestPage() {
   }, []);
 
   return (
-    <div className="container mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">F00110 테이블 데이터 조회</h1>
+    <div className="container p-6 mx-auto">
+      <h1 className="mb-6 text-3xl font-bold">F00110 테이블 데이터 조회..</h1>
       
       <div className="mb-6">
         <button
           onClick={fetchData}
           disabled={loading}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-4 disabled:opacity-50"
+          className="px-4 py-2 mr-4 font-bold text-white bg-blue-500 rounded hover:bg-blue-700 disabled:opacity-50"
         >
           {loading ? '로딩 중...' : '전체 데이터 조회'}
         </button>
       </div>
 
       <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">커스텀 쿼리 실행</h2>
+        <h2 className="mb-2 text-xl font-semibold">커스텀 쿼리 실행</h2>
         <div className="flex gap-2 mb-2">
           <input
             type="text"
@@ -92,7 +92,7 @@ export default function F00110TestPage() {
           <button
             onClick={executeCustomQuery}
             disabled={loading}
-            className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
+            className="px-4 py-2 font-bold text-white bg-green-500 rounded hover:bg-green-700 disabled:opacity-50"
           >
             실행
           </button>
@@ -100,14 +100,14 @@ export default function F00110TestPage() {
       </div>
 
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+        <div className="px-4 py-3 mb-4 text-red-700 bg-red-100 border border-red-400 rounded">
           <strong>오류:</strong> {error}
         </div>
       )}
 
       {data.length > 0 && (
         <div>
-          <h2 className="text-xl font-semibold mb-2">
+          <h2 className="mb-2 text-xl font-semibold">
             조회 결과 ({data.length}개 행)
           </h2>
           <div className="overflow-x-auto">
@@ -115,7 +115,7 @@ export default function F00110TestPage() {
               <thead className="bg-gray-50">
                 <tr>
                   {Object.keys(data[0]).map((key) => (
-                    <th key={key} className="px-4 py-2 border-b text-left">
+                    <th key={key} className="px-4 py-2 text-left border-b">
                       {key}
                     </th>
                   ))}
@@ -138,7 +138,7 @@ export default function F00110TestPage() {
       )}
 
       {data.length === 0 && !loading && !error && (
-        <div className="text-gray-500 text-center py-8">
+        <div className="py-8 text-center text-gray-500">
           데이터가 없습니다.
         </div>
       )}
