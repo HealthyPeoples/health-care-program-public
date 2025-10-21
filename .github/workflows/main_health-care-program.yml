@@ -10,61 +10,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
-        with:
-          node-version: '22.x'
-          cache: 'npm'
-
-      - name: npm install
-        run: npm ci
-
-      - name: npm run build
-        run: npm run build
-        env:
-          NODE_ENV: production
-
-      - name: Verify .next folder exists
-        run: |
-          if [ ! -d ".next" ]; then
-            echo "ERROR: .next folder was not created during build"
-            ls -la
-            exit 1
-          fi
-          echo ".next folder created successfully"
-          ls -la .next/
-
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: |
-            .
-            !node_modules
-            !.git
-            !.github
-            !*.log
-
   deploy:
     runs-on: ubuntu-latest
-    needs: build
     permissions:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
 
     steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
+      - uses: actions/checkout@v4
       
       - name: Login to Azure
         uses: azure/login@v2
