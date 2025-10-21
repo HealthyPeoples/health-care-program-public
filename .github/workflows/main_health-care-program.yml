@@ -22,18 +22,36 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: '22.x'
+          cache: 'npm'
 
-      - name: npm install, build, and test
+      - name: npm install
+        run: npm ci --only=production
+
+      - name: npm run build
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Verify .next folder exists
         run: |
-          npm install
-          npm run build --if-present
-          npm run test --if-present
+          if [ ! -d ".next" ]; then
+            echo "ERROR: .next folder was not created during build"
+            ls -la
+            exit 1
+          fi
+          echo ".next folder created successfully"
+          ls -la .next/
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: .
+          path: |
+            .
+            !node_modules
+            !.git
+            !.github
+            !*.log
 
   deploy:
     runs-on: ubuntu-latest
@@ -62,4 +80,3 @@ jobs:
           app-name: 'health-care-program'
           slot-name: 'Production'
           package: .
-          
