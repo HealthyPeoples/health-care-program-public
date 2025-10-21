@@ -27,31 +27,17 @@ jobs:
       - name: npm install
         run: npm ci
 
-      - name: npm run build
-        run: npm run build
-        env:
-          NODE_ENV: production
-
-      - name: Verify .next folder exists
-        run: |
-          if [ ! -d ".next" ]; then
-            echo "ERROR: .next folder was not created during build"
-            ls -la
-            exit 1
-          fi
-          echo ".next folder created successfully"
-          ls -la .next/
-
-      - name: Upload artifact for deployment job
+      - name: Upload source code for Azure build
         uses: actions/upload-artifact@v4
         with:
-          name: node-app
+          name: source-code
           path: |
             .
             !node_modules
             !.git
             !.github
             !*.log
+            !.next
 
   deploy:
     runs-on: ubuntu-latest
@@ -61,10 +47,10 @@ jobs:
       contents: read #This is required for actions/checkout
 
     steps:
-      - name: Download artifact from build job
+      - name: Download source code
         uses: actions/download-artifact@v4
         with:
-          name: node-app
+          name: source-code
       
       - name: Login to Azure
         uses: azure/login@v2
