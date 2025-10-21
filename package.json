@@ -1,17 +1,22 @@
 {
-  "name": "new_dawom",
+  "name": "health-care-program",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "dev": "cross-env NODE_PATH= next dev",
     "build": "npm run clean && cross-env NODE_PATH= next build",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rimraf .next .turbo node_modules/.cache"
+    "clean": "rimraf .next .turbo node_modules/.cache",
+    "postbuild": "npm run clean"
   },
   
   "dependencies": {
-    "@types/node": "20.4.2",
+    "@types/node": "^22.0.0",
     "@types/react": "18.2.15",
     "@types/react-dom": "18.2.7",
     "autoprefixer": "10.4.14",
