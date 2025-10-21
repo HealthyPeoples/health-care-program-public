@@ -9,10 +9,9 @@
   "scripts": {
     "dev": "cross-env NODE_PATH= next dev",
     "build": "npm run clean && cross-env NODE_PATH= next build",
-    "start": "next start",
+    "start": "next start -p %PORT%",
     "lint": "next lint",
-    "clean": "rimraf .next .turbo node_modules/.cache",
-    "postbuild": "npm run clean"
+    "clean": "rimraf .next .turbo node_modules/.cache"
   },
   
   "dependencies": {
