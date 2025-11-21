@@ -1,10 +1,9 @@
 "use client";
 import React, { useState } from 'react';
 
-export default function CounselingRecord() {
+export default function ConnectionRecord() {
 	const [selectedMember, setSelectedMember] = useState<number | null>(null);
 	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
-	const [selectedStatus, setSelectedStatus] = useState<string>('');
 	const [consultationDates, setConsultationDates] = useState<string[]>([
 		'2020년09월03일',
 		'2015년09월01일',
@@ -25,6 +24,7 @@ export default function CounselingRecord() {
 		{ id: 1, serialNo: 1, status: '입소', name: '박여울', gender: '여', grade: '1', age: '50' },
 		{ id: 2, serialNo: 2, status: '퇴소', name: '임동수', gender: '남', grade: '2', age: '70' },
 	]);
+	const [selectedStatus, setSelectedStatus] = useState<string>('');
 
 	// 날짜 생성 함수
 	const handleCreateDate = () => {
@@ -187,15 +187,7 @@ export default function CounselingRecord() {
 									className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[150px]"
 								/>
 							</div>
-							<div className="flex items-center gap-2">
-								<label className="text-sm text-blue-900 font-medium whitespace-nowrap">상담대상자</label>
-								<input
-									type="text"
-									value={formData.consultationSubstitute}
-									onChange={(e) => handleFormChange('consultationSubstitute', e.target.value)}
-									className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[150px]"
-								/>
-							</div>
+
 							<div className="ml-auto flex items-center gap-2">
 								<button
 									onClick={handleModify}
@@ -218,10 +210,9 @@ export default function CounselingRecord() {
 							</div>
 						</div>
 
-						{/* 두 번째 행 */}
 						<div className="mb-4 flex items-center gap-4 flex-wrap">
 							<div className="flex items-center gap-2">
-								<label className="text-sm text-blue-900 font-medium whitespace-nowrap">상담일시</label>
+								<label className="text-sm text-blue-900 font-medium whitespace-nowrap">연계일자</label>
 								<input
 									type="text"
 									value={formData.consultationDateTime}
@@ -229,29 +220,11 @@ export default function CounselingRecord() {
 									className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[150px]"
 								/>
 							</div>
-							<div className="flex items-center gap-2">
-								<label className="text-sm text-blue-900 font-medium whitespace-nowrap">상담사</label>
-								<input
-									type="text"
-									value={formData.consultant}
-									onChange={(e) => handleFormChange('consultant', e.target.value)}
-									className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[150px]"
-								/>
-							</div>
-							<div className="flex items-center gap-2">
-								<label className="text-sm text-blue-900 font-medium whitespace-nowrap">상담방법</label>
-								<input
-									type="text"
-									value={formData.consultationMethod}
-									onChange={(e) => handleFormChange('consultationMethod', e.target.value)}
-									className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[150px]"
-								/>
-							</div>
 						</div>
 
-						{/* 상담 내용 */}
+						{/* 심신 기능 상태 */}
 						<div className="mb-4">
-							<label className="block text-sm text-blue-900 font-medium mb-2">상담 내용</label>
+							<label className="block text-sm text-blue-900 font-medium mb-2">심신 기능 상태</label>
 							<textarea
 								value={formData.consultationContent}
 								onChange={(e) => handleFormChange('consultationContent', e.target.value)}
@@ -261,9 +234,21 @@ export default function CounselingRecord() {
 							/>
 						</div>
 
-						{/* 조치 사항 */}
+						{/* 제공한 급여 */}
 						<div>
-							<label className="block text-sm text-blue-900 font-medium mb-2">조치 사항</label>
+							<label className="block text-sm text-blue-900 font-medium mb-2">제공한 급여</label>
+							<textarea
+								value={formData.actionTaken}
+								onChange={(e) => handleFormChange('actionTaken', e.target.value)}
+								className="w-full px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								rows={8}
+								placeholder="조치 사항을 입력하세요"
+							/>
+						</div>
+
+						{/* 서비스 이용계획 */}
+						<div>
+							<label className="block text-sm text-blue-900 font-medium mb-2">서비스 이용계획</label>
 							<textarea
 								value={formData.actionTaken}
 								onChange={(e) => handleFormChange('actionTaken', e.target.value)}
