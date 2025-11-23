@@ -8,6 +8,69 @@ import MemberContractInfo from '@/component/nursing-home/pages/member-contract-i
 import GuardianInfo from '@/component/nursing-home/pages/guardian-info/GuardianInfo';
 import DailyBeneficiaryPerformance from '@/component/nursing-home/pages/daily-beneficiary-performance/DailyBeneficiaryPerformance';
 import DailyLongtermCare from '@/component/nursing-home/pages/daily-longterm-care/DailyLongtermCare';
+import SnackBulkRegistration from '@/component/nursing-home/pages/snack-bulk-registration/SnackBulkRegistration';
+import MedicationTime from '@/component/nursing-home/pages/medication-time/MedicationTime';
+import LongtermPhysicalActivity from '@/component/nursing-home/pages/longterm-physical-activity/LongtermPhysicalActivity';
+import LongtermNursingInstruction from '@/component/nursing-home/pages/longterm-nursing-instruction/LongtermNursingInstruction';
+import LongtermFunctionalCognitive from '@/component/nursing-home/pages/longterm-functional-cognitive/LongtermFunctionalCognitive';
+import LongtermBeneficiaryStatus from '@/component/nursing-home/pages/longterm-beneficiary-status/LongtermBeneficiaryStatus';
+import LongtermRecordFormat from '@/component/nursing-home/pages/longterm-record-format/LongtermRecordFormat';
+import FactVerification from '@/component/nursing-home/pages/fact-verification/FactVerification';
+import StatusChangeObservation from '@/component/nursing-home/pages/status-change-observation/StatusChangeObservation';
+import EmergencyRecord from '@/component/nursing-home/pages/emergency-record/EmergencyRecord';
+import CaseManagement from '@/component/nursing-home/pages/case-management/CaseManagement';
+import MonthlyLongtermSummary from '@/component/nursing-home/pages/monthly-longterm-summary/MonthlyLongtermSummary';
+import GuardianMeeting from '@/component/nursing-home/pages/guardian-meeting/GuardianMeeting';
+import BeneficiaryStatusInquiry from '@/component/nursing-home/pages/beneficiary-status-inquiry/BeneficiaryStatusInquiry';
+import LongtermCareRegistration from '@/component/nursing-home/pages/longterm-care-registration/LongtermCareRegistration';
+import IntensiveExcretionObservation from '@/component/nursing-home/pages/intensive-excretion-observation/IntensiveExcretionObservation';
+import ExcretionObservation from '@/component/nursing-home/pages/excretion-observation/ExcretionObservation';
+import BathService from '@/component/nursing-home/pages/bath-service/BathService';
+import PositionChangeRecord from '@/component/nursing-home/pages/position-change-record/PositionChangeRecord';
+import HealthExamination from '@/component/nursing-home/pages/health-examination/HealthExamination';
+import MedicationRegistration from '@/component/nursing-home/pages/medication-registration/MedicationRegistration';
+import MedicationPerformance from '@/component/nursing-home/pages/medication-performance/MedicationPerformance';
+import EntrustedMedical from '@/component/nursing-home/pages/entrusted-medical/EntrustedMedical';
+import NursingService from '@/component/nursing-home/pages/nursing-service/NursingService';
+import BedsoreManagement from '@/component/nursing-home/pages/bedsore-management/BedsoreManagement';
+import IndwellingCatheter from '@/component/nursing-home/pages/indwelling-catheter/IndwellingCatheter';
+import PhysicalTherapyStandardTime from '@/component/nursing-home/pages/physical-therapy-standard-time/PhysicalTherapyStandardTime';
+import PhysicalTherapyPlanEvaluation from '@/component/nursing-home/pages/physical-therapy-plan-evaluation/PhysicalTherapyPlanEvaluation';
+import PhysicalTherapyPerformanceEvaluation from '@/component/nursing-home/pages/physical-therapy-performance-evaluation/PhysicalTherapyPerformanceEvaluation';
+import ProgramEvaluation from '@/component/nursing-home/pages/program-evaluation/ProgramEvaluation';
+import ProgramDailyLog from '@/component/nursing-home/pages/program-daily-log/ProgramDailyLog';
+import MonthlyProgramPlan from '@/component/nursing-home/pages/monthly-program-plan/MonthlyProgramPlan';
+import ProgramFeedback from '@/component/nursing-home/pages/program-feedback/ProgramFeedback';
+import NeedsAssessmentRecord from '@/component/nursing-home/pages/needs-assessment-record/NeedsAssessmentRecord';
+import BedsoreRiskMeasurement from '@/component/nursing-home/pages/bedsore-risk-measurement/BedsoreRiskMeasurement';
+import FallRiskMeasurement from '@/component/nursing-home/pages/fall-risk-measurement/FallRiskMeasurement';
+import CognitiveAssessmentRecord from '@/component/nursing-home/pages/cognitive-assessment-record/CognitiveAssessmentRecord';
+import MonthlySalaryData from '@/component/nursing-home/pages/monthly-salary-data/MonthlySalaryData';
+import MonthlySalaryCollection from '@/component/nursing-home/pages/monthly-salary-collection/MonthlySalaryCollection';
+import MonthlySalaryStatement from '@/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatement';
+import GradeSalaryTable from '@/component/nursing-home/pages/grade-salary-table/GradeSalaryTable';
+import EmployeeAttendance from '@/component/nursing-home/pages/employee-attendance/EmployeeAttendance';
+import EmployeeAttendanceMonthly from '@/component/nursing-home/pages/employee-attendance-monthly/EmployeeAttendanceMonthly';
+import EmployeeAnnualLeave from '@/component/nursing-home/pages/employee-annual-leave/EmployeeAnnualLeave';
+import WorkSchedule from '@/component/nursing-home/pages/work-schedule/WorkSchedule';
+import AnnualSchedule from '@/component/nursing-home/pages/annual-schedule/AnnualSchedule';
+import EmployeeMeetingMinutes from '@/component/nursing-home/pages/employee-meeting-minutes/EmployeeMeetingMinutes';
+import EmployeeJobTraining from '@/component/nursing-home/pages/employee-job-training/EmployeeJobTraining';
+import FacilityBasicInfo from '@/component/nursing-home/pages/facility-basic-info/FacilityBasicInfo';
+import FacilityUserManagement from '@/component/nursing-home/pages/facility-user-management/FacilityUserManagement';
+import EmployeeProgramMapping from '@/component/nursing-home/pages/employee-program-mapping/EmployeeProgramMapping';
+import EmployeeBeneficiaryMapping from '@/component/nursing-home/pages/employee-beneficiary-mapping/EmployeeBeneficiaryMapping';
+import FacilityDailySchedule from '@/component/nursing-home/pages/facility-daily-schedule/FacilityDailySchedule';
+import FacilityWorkLog from '@/component/nursing-home/pages/facility-work-log/FacilityWorkLog';
+import FacilityWorkLogApproval from '@/component/nursing-home/pages/facility-work-log-approval/FacilityWorkLogApproval';
+import GroupVolunteerPerformance from '@/component/nursing-home/pages/group-volunteer-performance/GroupVolunteerPerformance';
+import IndividualVolunteerPerformance from '@/component/nursing-home/pages/individual-volunteer-performance/IndividualVolunteerPerformance';
+import NoticeRegistration from '@/component/nursing-home/pages/notice-registration/NoticeRegistration';
+import NoticeInquiry from '@/component/nursing-home/pages/notice-inquiry/NoticeInquiry';
+import DataRoom from '@/component/nursing-home/pages/data-room/DataRoom';
+import EvaluationChecklist from '@/component/nursing-home/pages/evaluation-checklist/EvaluationChecklist';
+import UDCPage from '@/component/nursing-home/pages/UDC-page/UDCPage';
+import UserCodeRegistration from '@/component/nursing-home/pages/user-code-registration/UserCodeRegistration';
 import OutingProcessing from '@/component/nursing-home/pages/outing-processing/OutingProcessing';
 import EmployeeBasicInfo from '@/component/nursing-home/pages/employee-basic-info/EmployeeBasicInfo';
 import ProgramPlanRegistration from '@/component/nursing-home/pages/program-plan-registration/ProgramPlanRegistration';
@@ -44,22 +107,22 @@ function renderInternal(href: string) {
     case '/nursingHome/daily-longterm-care':
       return <DailyLongtermCare />;
     case '/nursingHome/snack-bulk-registration':
-      return <DailyBeneficiaryPerformance />;
+      return <SnackBulkRegistration />;
     case '/nursingHome/outing-processing':
       return <OutingProcessing />;
 
     case '/nursingHome/medication-time':
-      return <MemberInfoView />;
+      return <MedicationTime />;
     case '/nursingHome/longterm-physical-activity':
-      return <MemberInfoView />;
+      return <LongtermPhysicalActivity />;
     case '/nursingHome/longterm-nursing-instruction':
-      return <MemberInfoView />;
+      return <LongtermNursingInstruction />;
     case '/nursingHome/longterm-functional-cognitive':
-      return <MemberInfoView />;
+      return <LongtermFunctionalCognitive />;
     case '/nursingHome/longterm-beneficiary-status':
-      return <MemberInfoView />;
+      return <LongtermBeneficiaryStatus />;
     case '/nursingHome/longterm-record-format':
-      return <MemberInfoView />;
+      return <LongtermRecordFormat />;
 
     case '/nursingHome/counseling-record':
       return <CounselingRecord />;
@@ -70,11 +133,13 @@ function renderInternal(href: string) {
     case '/nursingHome/outpatient-record':
       return <OutpatientRecord />;
     case '/nursingHome/fact-verification':
-      return <MemberInfoView />;
+      return <FactVerification />;
     case '/nursingHome/connection-record':
       return <ConnectionRecord />;
     case '/nursingHome/status-change-observation':
-      return <MemberInfoView />;
+      return <StatusChangeObservation />;
+    case '/nursingHome/emergency-record':
+      return <EmergencyRecord />;
     case '/nursingHome/fact-verification-record-detail-detail':
       return <MemberInfoView />;
 
@@ -85,6 +150,112 @@ function renderInternal(href: string) {
       return <EmployeeBasicInfo />;
     case '/nursingHome/program-plan-registration':
       return <ProgramPlanRegistration />;
+    case '/nursingHome/case-management':
+      return <CaseManagement />;
+    case '/nursingHome/monthly-longterm-summary':
+      return <MonthlyLongtermSummary />;
+    case '/nursingHome/guardian-meeting':
+      return <GuardianMeeting />;
+    case '/nursingHome/beneficiary-status-inquiry':
+      return <BeneficiaryStatusInquiry />;
+    case '/nursingHome/longterm-care-registration':
+      return <LongtermCareRegistration />;
+    case '/nursingHome/intensive-excretion-observation':
+      return <IntensiveExcretionObservation />;
+    case '/nursingHome/excretion-observation':
+      return <ExcretionObservation />;
+    case '/nursingHome/bath-service':
+      return <BathService />;
+    case '/nursingHome/position-change-record':
+      return <PositionChangeRecord />;
+    case '/nursingHome/health-examination':
+      return <HealthExamination />;
+    case '/nursingHome/medication-registration':
+      return <MedicationRegistration />;
+    case '/nursingHome/medication-performance':
+      return <MedicationPerformance />;
+    case '/nursingHome/entrusted-medical':
+      return <EntrustedMedical />;
+    case '/nursingHome/nursing-service':
+      return <NursingService />;
+    case '/nursingHome/bedsore-management':
+      return <BedsoreManagement />;
+    case '/nursingHome/indwelling-catheter':
+      return <IndwellingCatheter />;
+    case '/nursingHome/physical-therapy-standard-time':
+      return <PhysicalTherapyStandardTime />;
+    case '/nursingHome/physical-therapy-plan-evaluation':
+      return <PhysicalTherapyPlanEvaluation />;
+    case '/nursingHome/physical-therapy-performance-evaluation':
+      return <PhysicalTherapyPerformanceEvaluation />;
+    case '/nursingHome/program-evaluation':
+      return <ProgramEvaluation />;
+    case '/nursingHome/program-daily-log':
+      return <ProgramDailyLog />;
+    case '/nursingHome/monthly-program-plan':
+      return <MonthlyProgramPlan />;
+    case '/nursingHome/program-feedback':
+      return <ProgramFeedback />;
+    case '/nursingHome/needs-assessment-record':
+      return <NeedsAssessmentRecord />;
+    case '/nursingHome/bedsore-risk-measurement':
+      return <BedsoreRiskMeasurement />;
+    case '/nursingHome/fall-risk-measurement':
+      return <FallRiskMeasurement />;
+    case '/nursingHome/cognitive-assessment-record':
+      return <CognitiveAssessmentRecord />;
+    case '/nursingHome/monthly-salary-data':
+      return <MonthlySalaryData />;
+    case '/nursingHome/monthly-salary-collection':
+      return <MonthlySalaryCollection />;
+    case '/nursingHome/monthly-salary-statement':
+      return <MonthlySalaryStatement />;
+    case '/nursingHome/grade-salary-table':
+      return <GradeSalaryTable />;
+    case '/nursingHome/employee-attendance':
+      return <EmployeeAttendance />;
+    case '/nursingHome/employee-attendance-monthly':
+      return <EmployeeAttendanceMonthly />;
+    case '/nursingHome/employee-annual-leave':
+      return <EmployeeAnnualLeave />;
+    case '/nursingHome/work-schedule':
+      return <WorkSchedule />;
+    case '/nursingHome/annual-schedule':
+      return <AnnualSchedule />;
+    case '/nursingHome/employee-meeting-minutes':
+      return <EmployeeMeetingMinutes />;
+    case '/nursingHome/employee-job-training':
+      return <EmployeeJobTraining />;
+    case '/nursingHome/facility-basic-info':
+      return <FacilityBasicInfo />;
+    case '/nursingHome/facility-user-management':
+      return <FacilityUserManagement />;
+    case '/nursingHome/employee-program-mapping':
+      return <EmployeeProgramMapping />;
+    case '/nursingHome/employee-beneficiary-mapping':
+      return <EmployeeBeneficiaryMapping />;
+    case '/nursingHome/facility-daily-schedule':
+      return <FacilityDailySchedule />;
+    case '/nursingHome/facility-work-log':
+      return <FacilityWorkLog />;
+    case '/nursingHome/facility-work-log-approval':
+      return <FacilityWorkLogApproval />;
+    case '/nursingHome/group-volunteer-performance':
+      return <GroupVolunteerPerformance />;
+    case '/nursingHome/individual-volunteer-performance':
+      return <IndividualVolunteerPerformance />;
+    case '/nursingHome/notice-registration':
+      return <NoticeRegistration />;
+    case '/nursingHome/notice-inquiry':
+      return <NoticeInquiry />;
+    case '/nursingHome/data-room':
+      return <DataRoom />;
+    case '/nursingHome/evaluation-checklist':
+      return <EvaluationChecklist />;
+    case '/nursingHome/UDC-page':
+      return <UDCPage />;
+    case '/nursingHome/user-code-registration':
+      return <UserCodeRegistration />;
     default:
       return null;
   }
