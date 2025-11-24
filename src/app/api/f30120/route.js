@@ -15,7 +15,7 @@ export async function GET(req) {
     }
 
     const searchParams = req.nextUrl.searchParams;
-    const svdt = searchParams.get('svdt'); // 서비스 날짜 (yyyy-mm-dd 형식)
+    const rsdt = searchParams.get('rsdt'); // 조사일자 (yyyy-mm-dd 형식, 단일 날짜)
     const pnum = searchParams.get('pnum'); // 수급자번호 (선택)
     const ancd = searchParams.get('ancd'); // 시설코드 (선택, PNUM과 함께 사용)
     const startDate = searchParams.get('startDate'); // 시작일 (yyyy-mm-dd 형식, 선택)
@@ -39,32 +39,35 @@ export async function GET(req) {
       return dateStr.length === 8 && !isNaN(dateStr);
     };
 
-    // 기본 쿼리 구조
     let query = `
       SELECT 
-        f14020.[ANCD],
-        f14020.[PNUM],
-        f14020.[SVDT],
-        f14020.[ST_PLAC],
-        f14020.[ST_KIND],
-        f14020.[GYN],
-        f14020.[MOST],
-        f14020.[LCST],
-        f14020.[DNST],
-        f14020.[MGST],
-        f14020.[AGST],
-        f14020.[ST_ETC],
-        f14020.[INDT],
-        f14020.[ETC],
-        f14020.[INEMPNO],
-        f14020.[INEMPNM],
+        f30120.[ANCD],
+        f30120.[PNUM],
+        f30120.[RSDT],
+        f30120.[SBDS],
+        f30120.[EBDS],
+        f30120.[SBDP],
+        f30120.[EBDP],
+        f30120.[TMPBD],
+        f30120.[PUCNT],
+        f30120.[BRCNT],
+        f30120.[WEIGHT],
+        f30120.[HEIGHT],
+        f30120.[BJYN],
+        f30120.[BJDG],
+        f30120.[BJPA],
+        f30120.[NUDES],
+        f30120.[INDT],
+        f30120.[ETC],
+        f30120.[INEMPNO],
+        f30120.[INEMPNM],
         f10010.[P_NM],
-        f10010.[P_BRDT],
-        ROW_NUMBER() OVER (ORDER BY f14020.[SVDT] ASC, f14020.[INDT] DESC) as MENUM
-      FROM [돌봄시설DB].[dbo].[F14020] f14020
+        f10010.[P_ST],
+        f10010.[P_BRDT]
+      FROM [돌봄시설DB].[dbo].[F30120] f30120
       LEFT JOIN [돌봄시설DB].[dbo].[F10010] f10010 
-        ON f14020.[ANCD] = f10010.[ANCD] 
-        AND f14020.[PNUM] = f10010.[PNUM]
+        ON f30120.[ANCD] = f10010.[ANCD] 
+        AND f30120.[PNUM] = f10010.[PNUM]
       WHERE 1=1
     `;
 
@@ -83,13 +86,13 @@ export async function GET(req) {
       }
       const startFormatted = formatDateForDB(startDate);
       const endFormatted = formatDateForDB(endDate);
-      query += ` AND f14020.[SVDT] >= @startDate AND f14020.[SVDT] <= @endDate`;
+      query += ` AND f30120.[RSDT] >= @startDate AND f30120.[RSDT] <= @endDate`;
       request.input('startDate', startFormatted);
       request.input('endDate', endFormatted);
     }
-    // 단일 날짜 조회 (svdt만 있는 경우)
-    else if (svdt) {
-      if (!validateDate(svdt)) {
+    // 단일 날짜 조회 (rsdt만 있는 경우)
+    else if (rsdt) {
+      if (!validateDate(rsdt)) {
         return new Response(JSON.stringify({ 
           success: false, 
           error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.' 
@@ -98,13 +101,13 @@ export async function GET(req) {
           headers: { 'Content-Type': 'application/json' }
         });
       }
-      const svdtFormatted = formatDateForDB(svdt);
-      query += ` AND f14020.[SVDT] = @svdt`;
-      request.input('svdt', svdtFormatted);
+      const rsdtFormatted = formatDateForDB(rsdt);
+      query += ` AND f30120.[RSDT] = @rsdt`;
+      request.input('rsdt', rsdtFormatted);
     } else {
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'SVDT 또는 startDate/endDate 파라미터가 필요합니다' 
+        error: 'RSDT 또는 startDate/endDate 파라미터가 필요합니다' 
       }), { 
         status: 400,
         headers: { 'Content-Type': 'application/json' }
@@ -113,20 +116,20 @@ export async function GET(req) {
 
     // PNUM 필터 (수급자별 조회)
     if (pnum) {
-      query += ` AND CAST(f14020.[PNUM] AS VARCHAR) = CAST(@pnum AS VARCHAR)`;
+      query += ` AND CAST(f30120.[PNUM] AS VARCHAR) = CAST(@pnum AS VARCHAR)`;
       request.input('pnum', String(pnum));
       
       // ANCD도 함께 필터링 (정확한 수급자 식별)
       if (ancd) {
-        query += ` AND f14020.[ANCD] = @ancd`;
+        query += ` AND f30120.[ANCD] = @ancd`;
         request.input('ancd', ancd);
       }
     }
 
-    query += ` ORDER BY f14020.[SVDT] ASC, f14020.[INDT] DESC`;
+    query += ` ORDER BY f30120.[RSDT] ASC, f30120.[INDT] DESC`;
 
-    console.log('[F14020 API] 조회 요청:', {
-      svdt,
+    console.log('[F30120 API] 조회 요청:', {
+      rsdt,
       pnum,
       ancd,
       startDate,
@@ -145,7 +148,7 @@ export async function GET(req) {
     });
 
   } catch (err) {
-    console.error('F14020 테이블 조회 오류:', err);
+    console.error('F30120 테이블 조회 오류:', err);
     return new Response(JSON.stringify({ 
       success: false, 
       error: err.message,
