@@ -175,9 +175,20 @@ function usrguLabel(v: string | number | null | undefined, row?: MemberData | nu
 	return formatUsrguLabel(v, row);
 }
 
+/** 식대·간식·상급병실 + 기타금액(USRINFO_AMT) */
+function careBenefitTotalWon(row: MemberData | null | undefined): number {
+	if (!row) return 0;
+	return (
+		Number(row.EAMT || 0) +
+		Number(row.ETAMT || 0) +
+		Number(row.ESAMT || 0) +
+		Number(row.USRINFO_AMT ?? 0)
+	);
+}
+
 function recipientBurdenAmountWon(row: MemberData | null | undefined): number | null {
 	if (!row) return null;
-	const total = Number(row.EAMT || 0) + Number(row.ETAMT || 0) + Number(row.ESAMT || 0);
+	const total = careBenefitTotalWon(row);
 	const ur = Number(row.USRPER);
 	if (Number.isNaN(total) || Number.isNaN(ur)) return null;
 	return Math.round(total * (ur / 100));
@@ -275,6 +286,60 @@ function buildContractPrintHtml(
 	</div>
 </body>
 </html>`;
+}
+
+/** 인쇄 1행분: 수급자 1명 + F10110 계약 목록 + 보호자(계약자) */
+async function fetchContractPrintGroupForMember(m: MemberData): Promise<{
+	member: MemberData;
+	contracts: MemberData[];
+	contractor: string;
+	rel: string;
+}> {
+	const [cRes, gRes] = await Promise.all([
+		fetch('/api/f10010', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				query: `
+					SELECT [ANCD],[PNUM],[CDT],[SVSDT],[SVEDT],[USRGU]
+					FROM [돌봄시설DB].[dbo].[F10110]
+					WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
+					ORDER BY [CDT] DESC
+				`,
+				params: { ANCD: String(m.ANCD), PNUM: String(m.PNUM) }
+			})
+		}),
+		fetch(
+			`/api/f10020?ancd=${encodeURIComponent(String(m.ANCD))}&pnum=${encodeURIComponent(String(m.PNUM))}`
+		)
+	]);
+	const cj = await cRes.json();
+	const gj = await gRes.json();
+	const contracts = cj.success && Array.isArray(cj.data) ? cj.data : [];
+	const guardians = gj.success && Array.isArray(gj.data) ? gj.data : [];
+	const g0 = guardians.find((g: MemberData) => String(g.CONGU) === '1') ?? guardians[0];
+	const contractor = g0?.BHNM != null ? String(g0.BHNM) : '';
+	const rel =
+		g0?.BHREL === '10'
+			? '남편'
+			: g0?.BHREL === '11'
+				? '부인'
+				: g0?.BHREL === '20'
+					? '아들'
+					: g0?.BHREL === '21'
+						? '딸'
+						: g0?.BHREL === '22'
+							? '며느리'
+							: g0?.BHREL === '23'
+								? '사위'
+								: g0?.BHREL === '31'
+									? '손주'
+									: g0?.BHETC && String(g0.BHETC).trim() !== ''
+										? String(g0.BHETC)
+										: g0?.BHREL != null && String(g0.BHREL) !== ''
+											? String(g0.BHREL)
+											: '';
+	return { member: m, contracts, contractor, rel };
 }
 
 export default function MemberContractInfo() {
@@ -451,7 +516,7 @@ export default function MemberContractInfo() {
 						SELECT
 							[ANCD], [PNUM], [CDT], [SVSDT], [SVEDT],
 							[INSPER], [USRPER], [USRGU], [USRINFO],
-							[EAMT], [ETAMT], [ESAMT],
+							[EAMT], [ETAMT], [ESAMT], [USRINFO_AMT],
 							[CHGU], [INDT], [ETC], [INEMPNO], [INEMPNM]
 						FROM [돌봄시설DB].[dbo].[F10110]
 						WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
@@ -546,6 +611,20 @@ export default function MemberContractInfo() {
 		setCurrentPage(page);
 	};
 
+	const openPrintWindow = (html: string) => {
+		const w = window.open('', '_blank');
+		if (!w) {
+			alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
+			return;
+		}
+		w.document.write(html);
+		w.document.close();
+		setTimeout(() => {
+			w.focus();
+			w.print();
+		}, 300);
+	};
+
 	const handlePrintContractReport = async () => {
 		if (filteredMembers.length === 0) {
 			alert('출력할 수급자가 없습니다. 목록 필터를 확인해 주세요.');
@@ -556,67 +635,29 @@ export default function MemberContractInfo() {
 			const basis = new Date().toISOString().slice(0, 10);
 			const printDate = basis;
 			const groups = await Promise.all(
-				filteredMembers.map(async (m) => {
-					const [cRes, gRes] = await Promise.all([
-						fetch('/api/f10010', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({
-								query: `
-									SELECT [ANCD],[PNUM],[CDT],[SVSDT],[SVEDT],[USRGU]
-									FROM [돌봄시설DB].[dbo].[F10110]
-									WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
-									ORDER BY [CDT] DESC
-								`,
-								params: { ANCD: String(m.ANCD), PNUM: String(m.PNUM) }
-							})
-						}),
-						fetch(
-							`/api/f10020?ancd=${encodeURIComponent(String(m.ANCD))}&pnum=${encodeURIComponent(String(m.PNUM))}`
-						)
-					]);
-					const cj = await cRes.json();
-					const gj = await gRes.json();
-					const contracts = cj.success && Array.isArray(cj.data) ? cj.data : [];
-					const guardians = gj.success && Array.isArray(gj.data) ? gj.data : [];
-					const g0 =
-						guardians.find((g: MemberData) => String(g.CONGU) === '1') ?? guardians[0];
-					const contractor = g0?.BHNM != null ? String(g0.BHNM) : '';
-					const rel =
-						g0?.BHREL === '10'
-							? '남편'
-							: g0?.BHREL === '11'
-								? '부인'
-								: g0?.BHREL === '20'
-									? '아들'
-									: g0?.BHREL === '21'
-										? '딸'
-										: g0?.BHREL === '22'
-											? '며느리'
-											: g0?.BHREL === '23'
-												? '사위'
-												: g0?.BHREL === '31'
-													? '손주'
-													: g0?.BHETC && String(g0.BHETC).trim() !== ''
-														? String(g0.BHETC)
-														: g0?.BHREL != null && String(g0.BHREL) !== ''
-															? String(g0.BHREL)
-															: '';
-					return { member: m, contracts, contractor, rel };
-				})
+				filteredMembers.map((m) => fetchContractPrintGroupForMember(m))
 			);
 			const html = buildContractPrintHtml(basis, printDate, groups);
-			const w = window.open('', '_blank');
-			if (!w) {
-				alert('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
-				return;
-			}
-			w.document.write(html);
-			w.document.close();
-			setTimeout(() => {
-				w.focus();
-				w.print();
-			}, 300);
+			openPrintWindow(html);
+		} catch (e) {
+			console.error(e);
+			alert('출력 준비 중 오류가 발생했습니다.');
+		} finally {
+			setPrintLoading(false);
+		}
+	};
+
+	const handlePrintSingleMemberContractReport = async () => {
+		if (!selectedMember || selectedMember.ANCD == null || selectedMember.PNUM == null) {
+			alert('수급자를 선택해 주세요.');
+			return;
+		}
+		setPrintLoading(true);
+		try {
+			const basis = new Date().toISOString().slice(0, 10);
+			const group = await fetchContractPrintGroupForMember(selectedMember);
+			const html = buildContractPrintHtml(basis, basis, [group]);
+			openPrintWindow(html);
 		} catch (e) {
 			console.error(e);
 			alert('출력 준비 중 오류가 발생했습니다.');
@@ -731,12 +772,12 @@ export default function MemberContractInfo() {
 				INSERT INTO [돌봄시설DB].[dbo].[F10110] (
 					[ANCD], [PNUM], [CDT], [SVSDT], [SVEDT],
 					[INSPER], [USRPER], [USRGU], [USRINFO],
-					[EAMT], [ETAMT], [ESAMT],
+					[EAMT], [ETAMT], [ESAMT], [USRINFO_AMT],
 					[CHGU], [INDT], [ETC], [INEMPNO], [INEMPNM]
 				) VALUES (
 					@ANCD, @PNUM, @CDT, @SVSDT, @SVEDT,
 					@INSPER, @USRPER, @USRGU, @USRINFO,
-					@EAMT, @ETAMT, @ESAMT,
+					@EAMT, @ETAMT, @ESAMT, @USRINFO_AMT,
 					@CHGU, @INDT, @ETC, @INEMPNO, @INEMPNM
 				)
 			`;
@@ -754,6 +795,7 @@ export default function MemberContractInfo() {
 				EAMT: newContractInfo.EAMT ? parseFloat(newContractInfo.EAMT) : null,
 				ETAMT: newContractInfo.ETAMT ? parseFloat(newContractInfo.ETAMT) : null,
 				ESAMT: newContractInfo.ESAMT ? parseFloat(newContractInfo.ESAMT) : null,
+				USRINFO_AMT: newContractInfo.USRINFO_AMT ? parseFloat(String(newContractInfo.USRINFO_AMT)) : null,
 				CHGU: newContractInfo.CHGU || null,
 				INDT: nowStr,
 				ETC: newContractInfo.ETC?.trim() || null,
@@ -882,6 +924,7 @@ export default function MemberContractInfo() {
 					[EAMT] = @EAMT,
 					[ETAMT] = @ETAMT,
 					[ESAMT] = @ESAMT,
+					[USRINFO_AMT] = @USRINFO_AMT,
 					[CHGU] = @CHGU,
 					[ETC] = @ETC,
 					[INEMPNO] = @INEMPNO,
@@ -903,6 +946,7 @@ export default function MemberContractInfo() {
 				EAMT: editedContractInfo.EAMT ? parseFloat(editedContractInfo.EAMT) : null,
 				ETAMT: editedContractInfo.ETAMT ? parseFloat(editedContractInfo.ETAMT) : null,
 				ESAMT: editedContractInfo.ESAMT ? parseFloat(editedContractInfo.ESAMT) : null,
+				USRINFO_AMT: editedContractInfo.USRINFO_AMT ? parseFloat(String(editedContractInfo.USRINFO_AMT)) : null,
 				CHGU: editedContractInfo.CHGU || null,
 				ETC: editedContractInfo.ETC?.trim() || null,
 				INEMPNO: editedContractInfo.INEMPNO?.trim() || null,
@@ -1043,14 +1087,14 @@ export default function MemberContractInfo() {
 	return (
 		<div className="min-h-screen bg-white text-black flex flex-col">
 			<div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-blue-200 bg-white">
-				<h1 className="text-sm font-semibold text-blue-900">수급자 계약정보</h1>
+				{/* <h1 className="text-sm font-semibold text-blue-900">수급자 계약정보</h1> */}
 				<button
 					type="button"
 					onClick={handlePrintContractReport}
 					disabled={printLoading || filteredMembers.length === 0}
 					className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
 				>
-					{printLoading ? '출력 준비 중...' : '계약서 출력'}
+					{printLoading ? '출력 준비 중...' : '전체 계약서 출력'}
 				</button>
 			</div>
 			<div className="flex h-[calc(80vh-56px)] min-h-0 flex-1">
@@ -1343,13 +1387,23 @@ export default function MemberContractInfo() {
 						<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
 							<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
 								<h2 className="text-xl font-semibold text-blue-900">계약정보</h2>
-								<div className="flex items-center gap-2">
+								<div className="flex items-center gap-2 flex-wrap">
 									{contractInfo && !isEditing ? (
 										<button 
 											onClick={handleEditClick}
 											className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900"
 										>
 											수정 및 삭제
+										</button>
+									) : null}
+									{selectedMember && !isEditing && !isCreating ? (
+										<button
+											type="button"
+											onClick={handlePrintSingleMemberContractReport}
+											disabled={printLoading}
+											className="px-3 py-1 text-sm border border-blue-500 rounded bg-white hover:bg-blue-50 text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
+										>
+											{printLoading ? '출력 준비 중...' : '계약내역 출력'}
 										</button>
 									) : null}
 									{isCreating && (
@@ -1505,7 +1559,9 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자 내용</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+														수급자 내용 <span className="text-blue-700/80 font-normal">(기타금액내역)</span>
+													</label>
 													<input 
 														type="text"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
@@ -1514,7 +1570,7 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기본급여</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">식대 1회</label>
 													<input 
 														type="number"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
@@ -1524,7 +1580,7 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">추가급여</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">간식비 1회</label>
 													<input 
 														type="number"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
@@ -1534,12 +1590,22 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">특별급여</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">상급병실료</label>
 													<input 
 														type="number"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
 														value={newContractInfo.ESAMT || ''}
 														onChange={(e) => handleNewContractFieldChange('ESAMT', e.target.value)}
+														placeholder="원"
+													/>
+												</div>
+												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기타금액</label>
+													<input
+														type="number"
+														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+														value={newContractInfo.USRINFO_AMT || ''}
+														onChange={(e) => handleNewContractFieldChange('USRINFO_AMT', e.target.value)}
 														placeholder="원"
 													/>
 												</div>
@@ -1707,7 +1773,9 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자 내용</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+														수급자 내용 <span className="text-blue-700/80 font-normal">(기타금액내역)</span>
+													</label>
 													<input 
 														type="text"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
@@ -1716,7 +1784,7 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기본급여</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">식대 1회</label>
 													<input 
 														type="number"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
@@ -1725,7 +1793,7 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">추가급여</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">간식비 1회</label>
 													<input 
 														type="number"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
@@ -1734,12 +1802,22 @@ export default function MemberContractInfo() {
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">특별급여</label>
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">상급병실료</label>
 													<input 
 														type="number"
 														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
 														value={editedContractInfo.ESAMT || ''}
 														onChange={(e) => handleEditedContractFieldChange('ESAMT', e.target.value)}
+													/>
+												</div>
+												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기타금액</label>
+													<input
+														type="number"
+														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+														value={editedContractInfo.USRINFO_AMT || ''}
+														onChange={(e) => handleEditedContractFieldChange('USRINFO_AMT', e.target.value)}
+														placeholder="원"
 													/>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
@@ -1909,29 +1987,41 @@ export default function MemberContractInfo() {
 								</div>
 								<div className="p-4 space-y-2 text-sm">
 									<div className="flex items-center gap-2">
-										<span className="w-24 text-blue-900/80">기본급여</span>
+										<span className="w-24 text-blue-900/80">식대 1회</span>
 										<span className="flex-1 border-b border-blue-200">
 											{burdenRow?.EAMT ? `${Number(burdenRow.EAMT).toLocaleString()}원` : '-'}
 										</span>
 									</div>
 									<div className="flex items-center gap-2">
-										<span className="w-24 text-blue-900/80">추가급여</span>
+										<span className="w-24 text-blue-900/80">간식비 1회</span>
 										<span className="flex-1 border-b border-blue-200">
 											{burdenRow?.ETAMT ? `${Number(burdenRow.ETAMT).toLocaleString()}원` : '-'}
 										</span>
 									</div>
 									<div className="flex items-center gap-2">
-										<span className="w-24 text-blue-900/80">특별급여</span>
+										<span className="w-24 text-blue-900/80">상급병실료</span>
 										<span className="flex-1 border-b border-blue-200">
 											{burdenRow?.ESAMT ? `${Number(burdenRow.ESAMT).toLocaleString()}원` : '-'}
 										</span>
 									</div>
 									<div className="flex items-center gap-2">
+										<span className="w-24 shrink-0 text-blue-900/80">기타금액</span>
+										<span className="flex-1 border-b border-blue-200">
+											{burdenRow?.USRINFO_AMT != null && burdenRow.USRINFO_AMT !== ''
+												? `${Number(burdenRow.USRINFO_AMT).toLocaleString()}원`
+												: '-'}
+										</span>
+									</div>
+									<div className="flex items-start gap-2">
+										<span className="w-24 shrink-0 text-blue-900/80 pt-0.5">기타금액내역</span>
+										<span className="flex-1 border-b border-blue-200 whitespace-pre-wrap break-words min-h-[1.25rem]">
+											{burdenRow?.USRINFO?.trim() ? String(burdenRow.USRINFO) : '-'}
+										</span>
+									</div>
+									<div className="flex items-center gap-2">
 										<span className="w-24 text-blue-900/80">총급여</span>
 										<span className="flex-1 border-b border-blue-200">
-											{burdenRow
-												? `${(Number(burdenRow.EAMT || 0) + Number(burdenRow.ETAMT || 0) + Number(burdenRow.ESAMT || 0)).toLocaleString()}원`
-												: '-'}
+											{burdenRow ? `${careBenefitTotalWon(burdenRow).toLocaleString()}원` : '-'}
 										</span>
 									</div>
 								</div>
