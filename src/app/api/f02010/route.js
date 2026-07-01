@@ -25,24 +25,15 @@ export async function GET(req) {
 
     const searchParams = req.nextUrl.searchParams;
     const workDate = searchParams.get('workDate') || '';
+    const startDate = searchParams.get('startDate') || '';
+    const endDate = searchParams.get('endDate') || '';
+    const empnoParam = searchParams.get('empno');
 
-    if (!workDate) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: '근무일자(workDate) 파라미터가 필요합니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    }
-
-    // F02010 테이블에서 근무일자에 맞는 근태 데이터 조회
-    // F01010과 조인하여 사원명 가져오기
-    let query = `
+    const baseSelect = `
       SELECT 
         f02010.[ANCD],
         f02010.[EMPNO],
-        f02010.[WDT],
+        CONVERT(varchar(10), f02010.[WDT], 23) AS [WDT],
         f02010.[JOBADD],
         f02010.[JOBSH],
         f02010.[WGU],
@@ -55,13 +46,39 @@ export async function GET(req) {
       LEFT JOIN [돌봄시설DB].[dbo].[F01010] f01010
         ON f02010.[ANCD] = f01010.[ANCD]
         AND f02010.[EMPNO] = f01010.[EMPNO]
-      WHERE f02010.[WDT] = @workDate AND f02010.[ANCD] = @sessionAncd
-      ORDER BY f01010.[EMPNM]
     `;
 
     const request = pool.request();
-    request.input('workDate', workDate);
     request.input('sessionAncd', sessionAncd);
+
+    let query = '';
+
+    if (startDate && endDate) {
+      request.input('startDate', startDate);
+      request.input('endDate', endDate);
+      query = `${baseSelect}
+      WHERE f02010.[ANCD] = @sessionAncd
+        AND f02010.[WDT] >= @startDate
+        AND f02010.[WDT] <= @endDate`;
+      if (empnoParam != null && String(empnoParam).trim() !== '') {
+        request.input('empno', parseInt(String(empnoParam).trim(), 10));
+        query += ` AND f02010.[EMPNO] = @empno`;
+      }
+      query += ` ORDER BY f01010.[EMPNM], f02010.[WDT]`;
+    } else if (workDate) {
+      request.input('workDate', workDate);
+      query = `${baseSelect}
+      WHERE f02010.[WDT] = @workDate AND f02010.[ANCD] = @sessionAncd
+      ORDER BY f01010.[EMPNM]`;
+    } else {
+      return new Response(JSON.stringify({
+        success: false,
+        error: '근무일자(workDate) 또는 기간(startDate, endDate) 파라미터가 필요합니다'
+      }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
 
     const result = await request.query(query);
 
@@ -109,6 +126,89 @@ export async function POST(req) {
     }
 
     const body = await req.json();
+
+    /** 근무상태(JOBST)=1(근무) 사원 전원 — 해당 일자 근태 일괄 생성 */
+    if (body.action === 'bulkCreate') {
+      const workDate = String(body.workDate || body.WDT || '').trim();
+      if (!workDate) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: '근무일자(workDate)가 필요합니다'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const empResult = await pool.request()
+        .input('sessionAncd', sessionAncd)
+        .query(`
+          SELECT [ANCD], [EMPNO], [EMPNM], [JOBADD], [JOBSH]
+          FROM [돌봄시설DB].[dbo].[F01010]
+          WHERE [ANCD] = @sessionAncd
+            AND LTRIM(RTRIM(CAST([JOBST] AS VARCHAR(10)))) = '1'
+            AND LTRIM(RTRIM([EMPNM])) <> ''
+          ORDER BY [EMPNM]
+        `);
+
+      const existingResult = await pool.request()
+        .input('sessionAncd', sessionAncd)
+        .input('workDate', workDate)
+        .query(`
+          SELECT [EMPNO]
+          FROM [돌봄시설DB].[dbo].[F02010]
+          WHERE [ANCD] = @sessionAncd AND [WDT] = @workDate
+        `);
+
+      const existingSet = new Set(
+        (existingResult.recordset || []).map((r) => Number(r.EMPNO))
+      );
+
+      const employees = empResult.recordset || [];
+      let created = 0;
+      let skipped = 0;
+
+      for (const emp of employees) {
+        const empno = Number(emp.EMPNO);
+        if (existingSet.has(empno)) {
+          skipped += 1;
+          continue;
+        }
+
+        const ins = pool.request();
+        ins.input('ANCD', sessionAncd);
+        ins.input('EMPNO', empno);
+        ins.input('WDT', workDate);
+        ins.input('JOBADD', emp.JOBADD || '');
+        ins.input('JOBSH', emp.JOBSH || '');
+        ins.input('WGU', '');
+        ins.input('HODES', '');
+        ins.input('STM', '');
+        ins.input('ETM', '');
+
+        await ins.query(`
+          INSERT INTO [돌봄시설DB].[dbo].[F02010]
+            ([ANCD], [EMPNO], [WDT], [JOBADD], [JOBSH], [WGU], [HODES], [STM], [ETM], [INDT])
+          VALUES
+            (@ANCD, @EMPNO, @WDT, @JOBADD, @JOBSH, @WGU, @HODES, @STM, @ETM, GETDATE())
+        `);
+        existingSet.add(empno);
+        created += 1;
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        action: 'bulkCreate',
+        workDate,
+        created,
+        skipped,
+        total: employees.length
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
     const { ANCD, EMPNO, WDT, JOBADD, JOBSH, WGU, HODES, STM, ETM } = body;
 
     if (!ancdEquals(ANCD, sessionAncd)) {

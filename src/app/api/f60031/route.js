@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
+import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
-const TABLE_NAME = '[돌봄시설DB].[dbo].[F90030]';
+const TABLE_NAME = '[돌봄시설DB].[dbo].[F60031]';
 
 function normalizeYmd(v) {
   if (v == null || v === '') return null;
@@ -20,9 +21,15 @@ function normalizeYmd(v) {
 export async function GET(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
-    const obj3 = searchParams.get('obj3');
-    const icd = searchParams.get('icd');
-    const includeDeleted = searchParams.get('includeDeleted') === '1';
+    const seq = searchParams.get('seq');
+    const dAncd = searchParams.get('dAncd');
+
+    if (!seq) {
+      return new Response(JSON.stringify({ success: false, error: 'seq 파라미터가 필요합니다' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     const pool = await connPool;
     if (!pool) {
@@ -33,32 +40,24 @@ export async function GET(req) {
     }
 
     const request = pool.request();
-    let where = 'WHERE 1=1';
+    request.input('SEQ', parseInt(String(seq), 10));
 
-    if (obj3) {
-      request.input('OBJ3', String(obj3).trim().slice(0, 10));
-      where += ' AND [OBJ3] = @OBJ3';
-    }
-    if (icd) {
-      request.input('ICD', String(icd).trim().slice(0, 2));
-      where += ' AND [ICD] = @ICD';
-    }
-    if (!includeDeleted) {
-      where += " AND ISNULL([DEL], '') <> 'D'";
+    let where = 'WHERE [SEQ] = @SEQ';
+    if (dAncd) {
+      request.input('D_ANCD', parseInt(String(dAncd), 10));
+      where += ' AND [D_ANCD] = @D_ANCD';
     }
 
-    const query = `
-      SELECT [OBJ3],[OBJ1],[OBJ2],[OBJ3NM],[ANI],[INDT],[ETC],[URDT],[ICD],[DEL],[INEMPNO],[INEMPNM]
+    const result = await request.query(`
+      SELECT [SEQ], [D_ANCD], [CONF_FLAG], [CONF_DATE]
       FROM ${TABLE_NAME}
       ${where}
-      ORDER BY [OBJ3]
-    `;
+      ORDER BY [D_ANCD]
+    `);
 
-    const result = await request.query(query);
     const data = (result.recordset || []).map((r) => ({
       ...r,
-      INDT: normalizeYmd(r.INDT),
-      URDT: normalizeYmd(r.URDT),
+      CONF_DATE: normalizeYmd(r.CONF_DATE),
     }));
 
     return new Response(JSON.stringify({ success: true, data, count: data.length }), {
@@ -66,7 +65,7 @@ export async function GET(req) {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    console.error('F90030 조회 오류:', err);
+    console.error('F60031 조회 오류:', err);
     return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -77,10 +76,11 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
-    const obj3 = body?.OBJ3;
+    const seq = body?.SEQ;
+    const dAncd = body?.D_ANCD;
 
-    if (!obj3) {
-      return new Response(JSON.stringify({ success: false, error: 'OBJ3는 필수입니다' }), {
+    if (seq == null || dAncd == null) {
+      return new Response(JSON.stringify({ success: false, error: 'SEQ, D_ANCD는 필수입니다' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -95,43 +95,30 @@ export async function POST(req) {
     }
 
     const request = pool.request();
-    request.input('OBJ3', String(obj3).trim().slice(0, 10));
+    request.input('SEQ', parseInt(String(seq), 10));
+    request.input('D_ANCD', parseInt(String(dAncd), 10));
+    request.input('CONF_FLAG', body?.CONF_FLAG != null ? String(body.CONF_FLAG).slice(0, 1) : '0');
+    request.input('CONF_DATE', body?.CONF_DATE ? normalizeYmd(body.CONF_DATE) : null);
 
-    const pick = (k) => (Object.prototype.hasOwnProperty.call(body || {}, k) ? body[k] : null);
-    ['OBJ1', 'OBJ2', 'OBJ3NM', 'ANI', 'ETC', 'ICD', 'DEL', 'INEMPNM'].forEach((k) => {
-      request.input(k, pick(k) == null ? null : String(pick(k)));
-    });
-    const inempno = pick('INEMPNO');
-    request.input('INEMPNO', inempno == null || inempno === '' ? null : parseInt(String(inempno), 10));
-
-    const query = `
+    await request.query(`
       MERGE ${TABLE_NAME} AS T
-      USING (SELECT @OBJ3 AS OBJ3) AS S ON (T.[OBJ3] = S.[OBJ3])
+      USING (SELECT @SEQ AS SEQ, @D_ANCD AS D_ANCD) AS S
+        ON (T.[SEQ] = S.[SEQ] AND T.[D_ANCD] = S.[D_ANCD])
       WHEN MATCHED THEN
         UPDATE SET
-          [OBJ1] = @OBJ1,
-          [OBJ2] = @OBJ2,
-          [OBJ3NM] = @OBJ3NM,
-          [ANI] = @ANI,
-          [ETC] = @ETC,
-          [ICD] = @ICD,
-          [DEL] = ISNULL(@DEL, T.[DEL]),
-          [INEMPNO] = @INEMPNO,
-          [INEMPNM] = @INEMPNM,
-          [URDT] = CONVERT(date, GETDATE())
+          [CONF_FLAG] = @CONF_FLAG,
+          [CONF_DATE] = ${body?.CONF_DATE ? 'CONVERT(date, @CONF_DATE)' : 'NULL'}
       WHEN NOT MATCHED THEN
-        INSERT ([OBJ3],[OBJ1],[OBJ2],[OBJ3NM],[ANI],[ETC],[ICD],[DEL],[INEMPNO],[INEMPNM],[INDT],[URDT])
-        VALUES (@OBJ3, @OBJ1, @OBJ2, @OBJ3NM, @ANI, @ETC, @ICD, ISNULL(@DEL, ' '), @INEMPNO, @INEMPNM, CONVERT(date, GETDATE()), CONVERT(date, GETDATE()));
-    `;
-
-    await request.query(query);
+        INSERT ([SEQ], [D_ANCD], [CONF_FLAG], [CONF_DATE])
+        VALUES (@SEQ, @D_ANCD, @CONF_FLAG, ${body?.CONF_DATE ? 'CONVERT(date, @CONF_DATE)' : 'NULL'});
+    `);
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    console.error('F90030 저장 오류:', err);
+    console.error('F60031 저장 오류:', err);
     return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -142,10 +129,11 @@ export async function POST(req) {
 export async function DELETE(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
-    const obj3 = searchParams.get('obj3');
+    const seq = searchParams.get('seq');
+    const dAncd = searchParams.get('dAncd');
 
-    if (!obj3) {
-      return new Response(JSON.stringify({ success: false, error: 'obj3 파라미터가 필요합니다' }), {
+    if (!seq) {
+      return new Response(JSON.stringify({ success: false, error: 'seq 파라미터가 필요합니다' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -160,20 +148,22 @@ export async function DELETE(req) {
     }
 
     const request = pool.request();
-    request.input('OBJ3', String(obj3).trim().slice(0, 10));
+    request.input('SEQ', parseInt(String(seq), 10));
 
-    await request.query(`
-      UPDATE ${TABLE_NAME}
-      SET [DEL] = 'D', [URDT] = CONVERT(date, GETDATE())
-      WHERE [OBJ3] = @OBJ3
-    `);
+    let query = `DELETE FROM ${TABLE_NAME} WHERE [SEQ] = @SEQ`;
+    if (dAncd) {
+      request.input('D_ANCD', parseInt(String(dAncd), 10));
+      query += ' AND [D_ANCD] = @D_ANCD';
+    }
+
+    await request.query(query);
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    console.error('F90030 삭제 오류:', err);
+    console.error('F60031 삭제 오류:', err);
     return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
