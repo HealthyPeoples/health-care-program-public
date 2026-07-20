@@ -3,163 +3,10 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 const sql = require('mssql');
 
-const TABLE = '[돌봄시설DB].[dbo].[F51012]';
+const TABLE = '[돌봄시설DB].[dbo].[F51014_1]';
 
 /** MERGE에 포함할 컬럼(키 ANCD,PNUM,RQDT 및 INDT 제외) */
-const DATA_COLUMNS = [
-	'RQEMP',
-	'HEIGHT',
-	'WEIGHT',
-	'C01',
-	'C02',
-	'C03',
-	'C04',
-	'C05',
-	'C06',
-	'C07',
-	'C08',
-	'C09',
-	'C10',
-	'C11',
-	'C12',
-	'C90',
-	'C99',
-	'D01_01',
-	'D01_02',
-	'D01_03',
-	'D01_04',
-	'D01_05',
-	'D01_06',
-	'D01_07',
-	'D01_08',
-	'D02_01',
-	'D02_02',
-	'D02_03',
-	'D02_04',
-	'D02_05',
-	'D02_06',
-	'D03_01',
-	'D03_02',
-	'D03_03',
-	'D03_04',
-	'D03_05',
-	'D03_06',
-	'D04_01',
-	'D04_02',
-	'D04_03',
-	'D04_04',
-	'D04_05',
-	'D05_01',
-	'D05_02',
-	'D05_03',
-	'D05_04',
-	'D05_05',
-	'D05_06',
-	'D06_01',
-	'D06_02',
-	'D06_03',
-	'D06_04',
-	'D07_01',
-	'D07_02',
-	'D07_03',
-	'D07_04',
-	'D08_01',
-	'D08_02',
-	'D08_03',
-	'D09_01',
-	'D09_02',
-	'D09_03',
-	'D09_04',
-	'D10_01',
-	'D10_02',
-	'D10_02_01',
-	'D20',
-	'D21',
-	'D90',
-	'E01',
-	'E02',
-	'E03',
-	'E04',
-	'E05_01',
-	'E05_02',
-	'E06_01',
-	'E06_02',
-	'E07_01',
-	'E07_02',
-	'E08_01',
-	'E08_02',
-	'E09_01',
-	'E09_02',
-	'E10_01',
-	'E10_02',
-	'E90',
-	'F01',
-	'F02',
-	'F03',
-	'F04',
-	'F05',
-	'F06',
-	'F07',
-	'F08',
-	'F09',
-	'F10',
-	'F11',
-	'F90',
-	'G01',
-	'G02',
-	'G03',
-	'G04',
-	'G05',
-	'G06',
-	'G07',
-	'G08',
-	'G09',
-	'G10',
-	'G11',
-	'G12',
-	'G13',
-	'G14',
-	'G15',
-	'G90',
-	'H01',
-	'H02',
-	'H03',
-	'H90',
-	'H99',
-	'I01',
-	'I02',
-	'I03',
-	'I04',
-	'I05',
-	'I90',
-	'I99',
-	'J01',
-	'J01_01',
-	'J01_02',
-	'J02',
-	'J02_01',
-	'J02_02',
-	'J02_03',
-	'J02_04',
-	'J03',
-	'J90',
-	'J99',
-	'K01',
-	'K01_01',
-	'K02',
-	'K02_01',
-	'K03_01',
-	'K03_02',
-	'K03_03',
-	'K03_04',
-	'K90',
-	'K99',
-	'L01',
-	'L01_01',
-	'L01_02',
-	'L01_03',
-	'L02',
-];
+const DATA_COLUMNS = ['RQEMP', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B80', 'B81', 'B90'];
 
 function normalizeYmd(v) {
 	if (v == null || v === '') return null;
@@ -170,7 +17,6 @@ function normalizeYmd(v) {
 	return null;
 }
 
-/** JSON 직렬화 전 행 정규화 (Date/Buffer/숫자 → 문자열) */
 function serializeRow(row) {
 	if (!row || typeof row !== 'object') return null;
 	const out = {};
@@ -178,11 +24,24 @@ function serializeRow(row) {
 		if (v == null) {
 			out[k] = null;
 		} else if (v instanceof Date) {
-			out[k] = normalizeYmd(v.toISOString()) || v.toISOString();
+			const y = v.getUTCFullYear();
+			const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+			const d = String(v.getUTCDate()).padStart(2, '0');
+			const key = String(k).toUpperCase();
+			const dateOnlyMid =
+				v.getUTCHours() === 0 &&
+				v.getUTCMinutes() === 0 &&
+				v.getUTCSeconds() === 0 &&
+				v.getUTCMilliseconds() === 0;
+			// RQDT 등 DATE 컬럼은 yyyy-mm-dd만 (toISOString 사용 시 TZ로 하루 밀림)
+			if (key === 'RQDT' || dateOnlyMid) {
+				out[k] = `${y}-${m}-${d}`;
+			} else {
+				out[k] = v.toISOString();
+			}
 		} else if (typeof Buffer !== 'undefined' && Buffer.isBuffer(v)) {
-			out[k] = v.toString('utf8').trim();
-		} else if (typeof v === 'number' && Number.isFinite(v)) {
-			// C01~C12 등 char 코드가 number로 오는 경우
+			out[k] = v.toString('utf8');
+		} else if (typeof v === 'number') {
 			out[k] = Number.isInteger(v) ? String(v) : String(v);
 		} else {
 			out[k] = v;
@@ -194,7 +53,7 @@ function serializeRow(row) {
 function bindDataInputs(request, row) {
 	for (const col of DATA_COLUMNS) {
 		const v = row[col];
-		if (col === 'RQEMP' || col === 'J01_02' || col === 'J02_01') {
+		if (col === 'RQEMP' || col === 'B80') {
 			if (v == null || v === '') {
 				request.input(col, sql.Int, null);
 			} else {
@@ -203,72 +62,16 @@ function bindDataInputs(request, row) {
 			}
 			continue;
 		}
-		if (col === 'HEIGHT' || col === 'WEIGHT') {
-			if (v == null || v === '') {
-				request.input(col, sql.Decimal(10, 2), null);
-			} else {
-				const n = Number(String(v).replace(',', '.'));
-				request.input(col, sql.Decimal(10, 2), Number.isFinite(n) ? n : null);
-			}
-			continue;
-		}
-		if (
-			[
-				'C90',
-				'D20',
-				'D21',
-				'D90',
-				'E90',
-				'F90',
-				'G90',
-				'H90',
-				'I90',
-				'J90',
-				'K90',
-				'L01',
-				'L02',
-				'J02_03',
-				'K01_01',
-				'K02',
-				'K02_01',
-				'K03_04',
-				'D10_02_01',
-			].includes(col)
-		) {
+		if (col === 'B81' || col === 'B90') {
 			request.input(col, sql.NVarChar(sql.MAX), v == null || v === '' ? null : String(v));
 			continue;
 		}
-		// 신체 활동 C01..C12, C99 : 1=완전도움, 2=부분도움, 3=완전자립 / C99 0·1
-		if (/^C\d{2}$/.test(col)) {
-			if (v == null || v === '') {
-				request.input(col, sql.Char(1), null);
-			} else {
-				request.input(col, sql.Char(1), String(v).trim().slice(0, 1));
-			}
-			continue;
+		// B01~B07 : char(1)
+		if (v == null || v === '') {
+			request.input(col, sql.Char(1), null);
+		} else {
+			request.input(col, sql.Char(1), String(v).trim().slice(0, 1));
 		}
-		// 의사소통 H01~H03, H99 : 코드 char(1)
-		if (['H01', 'H02', 'H03', 'H99'].includes(col)) {
-			if (v == null || v === '') {
-				request.input(col, sql.Char(1), null);
-			} else {
-				request.input(col, sql.Char(1), String(v).trim().slice(0, 1));
-			}
-			continue;
-		}
-		// 영양·가족·자원이용 일부 : 코드 1~9
-		// 영양 I01~I05, I99 / 가족·자원이용 일부 : 코드 1~9
-		if (['I01', 'I02', 'I03', 'I04', 'I05', 'I99', 'J01', 'J01_01', 'J02', 'J02_02', 'J02_04', 'J03', 'J99', 'K01', 'K99'].includes(col)) {
-			if (v == null || v === '') {
-				request.input(col, sql.Char(1), null);
-			} else {
-				request.input(col, sql.Char(1), String(v).trim().slice(0, 1));
-			}
-			continue;
-		}
-		// 그 외 질병·재활·간호·인지·지역사회 : Y/N
-		const yn = v == null || v === '' ? 'N' : String(v).trim().toUpperCase().slice(0, 1);
-		request.input(col, sql.Char(1), yn === 'Y' ? 'Y' : 'N');
 	}
 }
 
@@ -311,11 +114,13 @@ export async function GET(req) {
 					headers: { 'Content-Type': 'application/json' },
 				});
 			}
-			// 문자열 날짜 비교 — Date 객체 timezone 이슈로 단건 누락 방지
 			request.input('rqdt', sql.VarChar(10), ymd);
 			const result = await request.query(`
         SELECT TOP 1
-          t.*,
+          CONVERT(varchar(10), CAST(t.[RQDT] AS DATE), 23) AS RQDT,
+          t.[ANCD], t.[PNUM], t.[RQEMP], t.[INDT],
+          t.[B01], t.[B02], t.[B03], t.[B04], t.[B05], t.[B06], t.[B07],
+          t.[B80], t.[B81], t.[B90],
           e.[EMPNM] AS RQEMP_NM
         FROM ${TABLE} t
         LEFT JOIN [돌봄시설DB].[dbo].[F01010] e
@@ -342,10 +147,13 @@ export async function GET(req) {
 		const dates = (result.recordset || []).map((r) => r.rqdt || r.RQDT).filter(Boolean);
 		return new Response(JSON.stringify({ success: true, data: dates, count: dates.length }), {
 			status: 200,
-			headers: { 'Content-Type': 'application/json' },
+			headers: {
+				'Content-Type': 'application/json',
+				'Cache-Control': 'no-store, no-cache, must-revalidate',
+			},
 		});
 	} catch (err) {
-		console.error('F51012 GET 오류:', err);
+		console.error('F51014_1 GET 오류:', err);
 		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },
@@ -369,7 +177,7 @@ export async function POST(req) {
 
 		const ymd = normalizeYmd(row.RQDT);
 		if (!ymd) {
-			return new Response(JSON.stringify({ success: false, error: 'RQDT(작성일자)가 필요합니다.' }), {
+			return new Response(JSON.stringify({ success: false, error: 'RQDT(검사일자)가 필요합니다.' }), {
 				status: 400,
 				headers: { 'Content-Type': 'application/json' },
 			});
@@ -386,21 +194,22 @@ export async function POST(req) {
 		const request = pool.request();
 		request.input('ANCD', sql.VarChar(30), String(gate.sessionAncd));
 		request.input('PNUM', sql.VarChar(30), String(row.PNUM ?? '').trim());
-		request.input('RQDT', sql.Date, new Date(`${ymd}T00:00:00`));
+		// Date 객체 바인딩 시 TZ로 하루 밀림 → yyyy-mm-dd 문자열 + CAST 사용
+		request.input('RQDT', sql.VarChar(10), ymd);
 
 		const merged = { ...row, ANCD: gate.sessionAncd, RQDT: ymd };
 		bindDataInputs(request, merged);
 
 		const updateSet = DATA_COLUMNS.map((c) => `[${c}] = @${c}`).join(', ');
 		const insertCols = ['[ANCD]', '[PNUM]', '[RQDT]', '[INDT]', ...DATA_COLUMNS.map((c) => `[${c}]`)];
-		const insertParams = ['@ANCD', '@PNUM', '@RQDT', 'GETDATE()', ...DATA_COLUMNS.map((c) => `@${c}`)];
+		const insertParams = ['@ANCD', '@PNUM', 'CAST(@RQDT AS DATE)', 'GETDATE()', ...DATA_COLUMNS.map((c) => `@${c}`)];
 
 		const mergeSql = `
       MERGE ${TABLE} AS t
-      USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, @RQDT AS RQDT) AS s
+      USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, CAST(@RQDT AS DATE) AS RQDT) AS s
       ON CAST(t.[ANCD] AS VARCHAR(30)) = CAST(s.ANCD AS VARCHAR(30))
          AND CAST(t.[PNUM] AS VARCHAR(30)) = CAST(s.PNUM AS VARCHAR(30))
-         AND CAST(t.[RQDT] AS DATE) = CAST(s.RQDT AS DATE)
+         AND CAST(t.[RQDT] AS DATE) = s.RQDT
       WHEN MATCHED THEN
         UPDATE SET ${updateSet}
       WHEN NOT MATCHED THEN
@@ -415,7 +224,7 @@ export async function POST(req) {
 			headers: { 'Content-Type': 'application/json' },
 		});
 	} catch (err) {
-		console.error('F51012 POST 오류:', err);
+		console.error('F51014_1 POST 오류:', err);
 		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },
@@ -465,7 +274,7 @@ export async function DELETE(req) {
 			headers: { 'Content-Type': 'application/json' },
 		});
 	} catch (err) {
-		console.error('F51012 DELETE 오류:', err);
+		console.error('F51014_1 DELETE 오류:', err);
 		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },

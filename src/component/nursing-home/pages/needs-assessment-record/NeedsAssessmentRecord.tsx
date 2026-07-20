@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {
 	NO_ROOM_VALUE,
@@ -12,9 +12,26 @@ import {
 	hydrateFromF51012Row,
 	buildF51012RowPayload,
 	collectUiSnapshot,
+	PHYSICAL_ACTIVITY_ITEMS,
+	H01_OPTIONS,
+	H02_OPTIONS,
+	H03_OPTIONS,
+	I01_OPTIONS,
+	I02_OPTIONS,
+	I03_OPTIONS,
+	I04_OPTIONS,
+	I05_OPTIONS,
+	J01_OPTIONS,
+	J01_01_OPTIONS,
+	J02_OPTIONS,
+	J02_02_OPTIONS,
+	J02_04_OPTIONS,
+	J03_OPTIONS,
+	K01_OPTIONS,
 	type ActivityAssessment,
 	type F51012UiSnapshot,
 } from './f51012Mapper';
+import { openNeedsAssessmentBatchPrint, openNeedsAssessmentPrint } from './needsAssessmentRecordPrint';
 
 interface MemberData {
 	ANCD: string;
@@ -24,6 +41,8 @@ interface MemberData {
 	P_GRD: string;
 	P_BRDT: string;
 	P_ST: string;
+	P_YYNO?: string | null;
+	P_NO?: string | null;
 	ROOM_NO?: string | null;
 	[key: string]: any;
 }
@@ -33,223 +52,41 @@ export default function NeedsAssessmentRecord() {
 	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
 	const [recordDates, setRecordDates] = useState<string[]>([]);
 	const [loadingDates, setLoadingDates] = useState(false);
+	/** 일괄출력용 체크된 수급자 키 (ANCD-PNUM) */
+	const [checkedMemberKeys, setCheckedMemberKeys] = useState<Set<string>>(new Set());
+	const [batchPrintFrom, setBatchPrintFrom] = useState('');
+	const [batchPrintTo, setBatchPrintTo] = useState('');
+	const [batchPrinting, setBatchPrinting] = useState(false);
 	const [activeTab, setActiveTab] = useState<string>('신체');
+	/** false = 읽기모드, true = 수정모드 */
+	const [isEditMode, setIsEditMode] = useState(false);
+	/** 수정 취소 시 복원용 */
+	const [backupSnapshot, setBackupSnapshot] = useState<F51012UiSnapshot | null>(null);
 
-	// 폼 데이터
-	const [formData, setFormData] = useState({
-		beneficiary: '', // 수급자
-		creationDate: '2025-11-05', // 작성일자
-		creator: '염소연', // 작성자
-		height: '0.0', // 키
-		weight: '0.0', // 체중
-		judgmentBasis: '' // 판단근거
-	});
+	/** 작성자(F01010) 검색 */
+	const [creatorSuggestions, setCreatorSuggestions] = useState<Array<{ EMPNO: string | number; EMPNM: string }>>([]);
+	const [showCreatorDropdown, setShowCreatorDropdown] = useState(false);
+	const [creatorSearchLoading, setCreatorSearchLoading] = useState(false);
+	const creatorWrapRef = useRef<HTMLDivElement | null>(null);
 
-	// 활동 평가 데이터
-	const [activities, setActivities] = useState<ActivityAssessment[]>([
-		{ activity: '옷 벗고 입기', value: '△' },
-		{ activity: '식사 하기', value: '○' },
-		{ activity: '일어나 앉기', value: '△' },
-		{ activity: '화장실 사용하기', value: 'X' },
-		{ activity: '세수하기', value: 'X' },
-		{ activity: '목욕하기', value: 'X' },
-		{ activity: '옮겨 앉기', value: 'X' },
-		{ activity: '대변 조절하기', value: '△' },
-		{ activity: '양치질하기', value: '△' },
-		{ activity: '체위변경 하기', value: '△' },
-		{ activity: '방밖으로 나오기', value: '△' },
-		{ activity: '소변조절하기', value: '△' }
-	]);
-
-	// 질병1/질병2 데이터
-	const [disease1Data, setDisease1Data] = useState<{ [key: string]: boolean }>({
-		'내분.대사-당뇨': false,
-		'내분.대사-갑상선질환': false,
-		'내분.대사-탈수': false,
-		'내분.대사-영양상태이상': false,
-		'내분.대사-만성간염': false,
-		'내분.대사-자기면역질환': false,
-		'내분.대사-빈혈': false,
-		'내분.대사-기타': false,
-		'소화기계-위염': false,
-		'소화기계-위궤양': false,
-		'소화기계-십이지궤양': false,
-		'소화기계-변비': false,
-		'소화기계-간경변증': false,
-		'소화기계-기타': false,
-		'순환기계-고혈압': true,
-		'순환기계-저혈압': false,
-		'순환기계-협심증': false,
-		'순환기계-심근경색증': false,
-		'순환기계-뇌혈관질환': false,
-		'순환기계-기타': true,
-		'근골격계-관절염': true,
-		'근골격계-요통,좌골통': false,
-		'근골격계-기타 척추질환': false,
-		'근골격계-골다공증': false,
-		'근골격계-기타': false,
-		'신경계-치매': true,
-		'신경계-뇌경색': false,
-		'신경계-파킨슨병': false,
-		'신경계-두통': false,
-		'신경계-두통외 통증': false,
-		'신경계-기타': false,
-		'정신.행동-신경증': false,
-		'정신.행동-우울증': false,
-		'정신.행동-수면장애': false,
-		'정신.행동-기타': false,
-		'호흡기계-폐결핵': false,
-		'호흡기계-만성기관지염': false,
-		'호흡기계-호흡곤란': false,
-		'호흡기계-기타': false,
-		'눈.귀질환-시각장애': false,
-		'눈.귀질환-난청': false,
-		'눈.귀질환-기타': false
-	});
-
-	const [disease2Data, setDisease2Data] = useState<{ [key: string]: boolean }>({
-		'비뇨.생식-전립선비대': true,
-		'비뇨.생식-요실금': true,
-		'비뇨.생식-만성방광염': true,
-		'비뇨.생식-기타': true,
-		'만성신장-만성신부전증': true,
-		'만성신장-기타': true
-	});
-
-	const [diseaseFormData, setDiseaseFormData] = useState({
-		pastMedicalHistory: '흉추골절로시술/낙상으로 인한 고관절수술',
-		currentDiagnosis: '치매, 고혈압, 고지혈증, 관절염',
-		judgmentBasis: '아리셉트정 / 펠로정 / 명인트라조돈염산염정50mg / 명인트라조돈염산염정25mg 노바스크정5mg / 리피토정10mg / 아모딘정 / 아토릭스정10mg / 세레콕시브캡슐 200mg / 라베뉴정 1일 2회 복용중이심'
-	});
-
-	// 재활 데이터
-	const [rehabilitationData, setRehabilitationData] = useState<{ [key: string]: boolean }>({
-		'우측상지': false,
-		'어깨관절(우)': false,
-		'손목 및 수지관절(우)': false,
-		'무릎관절(우)': true,
-		'좌측상지': false,
-		'어깨관절(좌)': false,
-		'손목 및 수지관절(좌)': false,
-		'무릎관절(좌)': true,
-		'우측하지': false,
-		'팔꿈치관절(우)': false,
-		'고관절(우)': false,
-		'발목관절(우)': false,
-		'좌측하지': false,
-		'팔꿈치관절(좌)': false,
-		'고관절(좌)': false,
-		'발목관절(좌)': false
-	});
-
-	const [rehabilitationJudgmentBasis, setRehabilitationJudgmentBasis] = useState('고관절수술, 고관절 주의하여 움직임 가능, 경력과 무릎 관절 악화된 상태');
-
-	// 간호 데이터
-	const [nursingData, setNursingData] = useState<{ [key: string]: boolean }>({
-		'기관지 절개관 간호': true,
-		'흡인': true,
-		'산소요법': true,
-		'욕창간호': true,
-		'경관영양': true,
-		'통증간호': true,
-		'장루간호': true,
-		'도뇨관리': true,
-		'투석간호': true,
-		'당뇨발간호': true,
-		'상처간호': true
-	});
-
-	const [nursingJudgmentBasis, setNursingJudgmentBasis] = useState('- 간호가 필요시 가정간호사의 도움을 받아 처치');
-
-	// 인지 데이터
-	const [cognitionData, setCognitionData] = useState<{ [key: string]: boolean }>({
-		'지남력': true,
-		'기억력': true,
-		'주의집중 및 계산': true,
-		'언어적기능': false,
-		'판단력': true,
-		'편집증과 망상': true,
-		'환각': false,
-		'배회': false,
-		'반복적인 활동': true,
-		'부적절한 행동': false,
-		'언어폭팔': false,
-		'신체적 공격 또는 폭력행위': false,
-		'우울': true,
-		'일반적인 불안': false,
-		'혼자 남겨짐에 대한 공포': false
-	});
-
-	const [cognitionJudgmentBasis, setCognitionJudgmentBasis] = useState('- 지남력, 기억력, 계산능력, 시공간구성 사물 및 사람에 대한 기억등 저하가 심한 편이심.\n- 물건을 손에 쥐게 되면 접고 반듯하게 정리하는 행동을 반복적으로 하시며 식사 시 반찬을 한 그릇에 모아두시는 등의 행동을 보임.\n- 인지검사 중 질문에 대한 답을 하지 않으시고 동문서답을 하셔서 4점으로 평가됨');
-
-	// 의사소통 데이터
-	const [communicationData, setCommunicationData] = useState({
-		listeningAbility: '보통의 소리를 듣기는 하고, 못 듣기도 한다',
-		communication: '가끔 이해하고 의사를 표현한다',
-		pronunciationAbility: '간혹 어눌한 발음이 섞인다',
-		judgmentBasis: '좌측 청력 위주로 소통하심.\n말씀은 계속해서 하시나 동문서답하시고, 본인이 하고 싶은 이야기 위주로 하심.\n간혹 말을 이해하고 의사를 표현하시나 대부분 혼잣말을 하심.'
-	});
-
-	// 영양 데이터
-	const [nutritionData, setNutritionData] = useState({
-		dentalCondition: '양호',
-		eatingProblems: '식욕저하',
-		eatingStatus: '일반식',
-		toolUsage: '젓가락',
-		excretionPattern: '정상',
-		judgmentBasis: '아래부분 앞니두개 임플란트이며, 대부분 본니를 유지하고 계심.\n상체운동기능 양호하시고 도구를 사용하여 식사시 어려움이 없으심\n식사량이 많지 않으시며, 입소 전에도 소식하셨음\n요의와 배뇨를 느끼시고 표현하시며 배설상태 양호하심'
-	});
-
-	// 가족환경 데이터
-	const [familyEnvironmentData, setFamilyEnvironmentData] = useState({
-		maritalStatus: '기혼',
-		primaryCaregiver: '유',
-		primaryCaregiverRelationship: '자녀',
-		cohabitant: '자녀',
-		numberOfChildren: '5',
-		primaryCaregiverAge: '60',
-		otherRelationship: '',
-		spouseSurvivalStatus: '사망',
-		primaryCaregiverEconomicStatus: '안정',
-		judgmentBasis: '슬하에 1남 4녀를 두셨으며, 유대관계를 매우 돈독하게 유지하고 계심.\n85세까지 강연을 하시는 여류서예가로 50년 동안 활동하시어 모든 사람을 제자 및 자녀로 생각하심.'
-	});
-
-	// 자원이용 데이터
-	const [resourceUtilizationData, setResourceUtilizationData] = useState<{
-		religion: string;
-		religionOther: string;
-		primaryMedicalInstitution: string;
-		phoneNumber: string;
-		communityServices: { [key: string]: boolean };
-		housingImprovementProject: boolean;
-		other: string;
-		judgmentBasis: string;
-	}>({
-		religion: '기타',
-		religionOther: '무교',
-		primaryMedicalInstitution: '한울 정신의학과',
-		phoneNumber: '',
-		communityServices: {
-			'급식 및 도시락배달': true,
-			'이미용': true
-		},
-		housingImprovementProject: false,
-		other: '',
-		judgmentBasis: '- 종교는 무교이고, 현재 한울 정신의학과에서 촉탁의 진료 및 처방을 받고 계심.\n- 이미용 등 필요시 요청에 따라 진행해 주기를 원하심.'
-	});
-
-	// 개별욕구 데이터
-	const [individualNeedsData, setIndividualNeedsData] = useState({
-		medicationAdministrationRequest: true,
-		hospitalAccompaniment: false,
-		outingAccompaniment: true,
-		notes: '- 과거에 골절 시술 및 수술을 한 이력이 있어 더이상 악화되지 않고 유지 되기를 희망하심.\n- 촉탁의를 통한 진료 및 약처방을 원하심.'
-	});
-
-	// 총평 데이터
-	const [overallAssessmentData, setOverallAssessmentData] = useState({
-		content: '상체 기능은 양호하나 신체 활용에 대한 인지 저하로 인해 의복 착?탈의 시 부분적 도움이 필요함.\n양치질은 스스로 가능하나 마무리 과정에서 약간의 도움이 요구됨.\n식사 시에는 도구 사용에 어려움이 없으나 식사량이 적으며, 입소 전부터 지속된 소식 경향을 보이심.\n반찬을 한 그릇에 모으는 등 반복적 정리 행동이 관찰됨.\n배뇨?배변 감각과 표현은 가능하며, 전적인 도움을 통해 화장실 이용이 가능하고 배설 상태는 양호하심\n\n과거 고관절 수술 및 골절 시술 이력이 있으며 고관절과 무릎 관절 상태가 악화되지 않고 유지되기를 희망하심.\n상지 기능은 비교적 양호하나 청력은 좌측 위주로 소통이 가능하고 치아는 아래 앞니 두 개가 임플란트이며 대부분 자연치를 유지하고 있음.\n\n치매로 인한 지남력, 기억력, 계산능력, 시공간 구성 능력 등 전반적 인지 기능이 심하게 저하되어 있으며, 인지검사에서는 질문에 적절한 답을 하지 못하고 동문서답을 지속해 4점으로 평가되었음.\n평소에도 대화가 본인의 하고 싶은 말 위주로 이어지며, 혼잣말이 많고 의사소통의 일관성이 떨어진 상태이나 간혹 질문을 이해하고 의사를 표현할 때도 있으나 그 빈도는 낮은 편'
-	});
+	const initialSnap = emptySnapshot('', '');
+	const [formData, setFormData] = useState(initialSnap.formData);
+	const [activities, setActivities] = useState<ActivityAssessment[]>(initialSnap.activities);
+	const [disease1Data, setDisease1Data] = useState<{ [key: string]: boolean }>(initialSnap.disease1Data);
+	const [disease2Data, setDisease2Data] = useState<{ [key: string]: boolean }>(initialSnap.disease2Data);
+	const [diseaseFormData, setDiseaseFormData] = useState(initialSnap.diseaseFormData);
+	const [rehabilitationData, setRehabilitationData] = useState<{ [key: string]: boolean }>(initialSnap.rehabilitationData);
+	const [rehabilitationJudgmentBasis, setRehabilitationJudgmentBasis] = useState(initialSnap.rehabilitationJudgmentBasis);
+	const [nursingData, setNursingData] = useState<{ [key: string]: boolean }>(initialSnap.nursingData);
+	const [nursingJudgmentBasis, setNursingJudgmentBasis] = useState(initialSnap.nursingJudgmentBasis);
+	const [cognitionData, setCognitionData] = useState<{ [key: string]: boolean }>(initialSnap.cognitionData);
+	const [cognitionJudgmentBasis, setCognitionJudgmentBasis] = useState(initialSnap.cognitionJudgmentBasis);
+	const [communicationData, setCommunicationData] = useState(initialSnap.communicationData);
+	const [nutritionData, setNutritionData] = useState(initialSnap.nutritionData);
+	const [familyEnvironmentData, setFamilyEnvironmentData] = useState(initialSnap.familyEnvironmentData);
+	const [resourceUtilizationData, setResourceUtilizationData] = useState(initialSnap.resourceUtilizationData);
+	const [individualNeedsData, setIndividualNeedsData] = useState(initialSnap.individualNeedsData);
+	const [overallAssessmentData, setOverallAssessmentData] = useState(initialSnap.overallAssessmentData);
 
 	const applyF51012Snapshot = (s: F51012UiSnapshot) => {
 		setFormData(s.formData);
@@ -271,6 +108,27 @@ export default function NeedsAssessmentRecord() {
 		setOverallAssessmentData(s.overallAssessmentData);
 	};
 
+	const captureCurrentSnapshot = (): F51012UiSnapshot =>
+		collectUiSnapshot({
+			formData,
+			activities,
+			disease1Data,
+			disease2Data,
+			diseaseFormData,
+			rehabilitationData,
+			rehabilitationJudgmentBasis,
+			nursingData,
+			nursingJudgmentBasis,
+			cognitionData,
+			cognitionJudgmentBasis,
+			communicationData,
+			nutritionData,
+			familyEnvironmentData,
+			resourceUtilizationData,
+			individualNeedsData,
+			overallAssessmentData,
+		});
+
 	// 수급자 목록 데이터
 	const [memberList, setMemberList] = useState<MemberData[]>([]);
 	const [loading, setLoading] = useState(false);
@@ -282,6 +140,19 @@ export default function NeedsAssessmentRecord() {
 	const itemsPerPage = 10;
 
 	const availableFloors = availableFloorsFromMembers(memberList);
+
+	const memberKey = (m: Pick<MemberData, 'ANCD' | 'PNUM'>) =>
+		`${String(m.ANCD ?? '').trim()}::${String(m.PNUM ?? '').trim()}`;
+
+	const toggleMemberChecked = (member: MemberData, checked: boolean) => {
+		const key = memberKey(member);
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			if (checked) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	};
 
 	// 수급자 목록 조회
 	const fetchMembers = async (nameSearch?: string) => {
@@ -363,6 +234,21 @@ export default function NeedsAssessmentRecord() {
 	const endIndex = startIndex + itemsPerPage;
 	const currentMembers = filteredMembers.slice(startIndex, endIndex);
 
+	const allFilteredChecked =
+		filteredMembers.length > 0 && filteredMembers.every((m) => checkedMemberKeys.has(memberKey(m)));
+
+	const toggleAllFilteredChecked = (checked: boolean) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			for (const m of filteredMembers) {
+				const key = memberKey(m);
+				if (checked) next.add(key);
+				else next.delete(key);
+			}
+			return next;
+		});
+	};
+
 	const handlePageChange = (page: number) => {
 		setCurrentPage(page);
 	};
@@ -416,6 +302,8 @@ export default function NeedsAssessmentRecord() {
 	const handleSelectMember = (member: MemberData) => {
 		setSelectedMember(member);
 		setSelectedDateIndex(null);
+		setIsEditMode(false);
+		setBackupSnapshot(null);
 		applyF51012Snapshot(emptySnapshot(member.P_NM || '', ''));
 		void fetchRecordDates(member.ANCD, member.PNUM);
 	};
@@ -427,6 +315,8 @@ export default function NeedsAssessmentRecord() {
 		if (rqdtRaw == null) return;
 
 		setSelectedDateIndex(index);
+		setIsEditMode(false);
+		setBackupSnapshot(null);
 		const rqdt = formatDateDisplay(String(rqdtRaw));
 		setFormData((prev) => ({ ...prev, creationDate: rqdt }));
 
@@ -436,9 +326,11 @@ export default function NeedsAssessmentRecord() {
 				`/api/f51012?pnum=${encodeURIComponent(String(selectedMember.PNUM).trim())}&rqdt=${encodeURIComponent(rqdt)}`
 			);
 			const result = await res.json();
-			if (result.success && result.data) {
-				applyF51012Snapshot(hydrateFromF51012Row(result.data as Record<string, unknown>, selectedMember.P_NM || ''));
+			if (result.success && result.data && typeof result.data === 'object') {
+				const hydrated = hydrateFromF51012Row(result.data as Record<string, unknown>, selectedMember.P_NM || '');
+				applyF51012Snapshot(hydrated);
 			} else {
+				console.warn('F51012 단건 없음:', { pnum: selectedMember.PNUM, rqdt, result });
 				applyF51012Snapshot(emptySnapshot(selectedMember.P_NM || '', rqdt));
 			}
 		} catch (err) {
@@ -446,6 +338,108 @@ export default function NeedsAssessmentRecord() {
 			alert('기록을 불러오는 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingDates(false);
+		}
+	};
+
+	/** 작성일자 목록 개별출력 — 해당 일자 데이터 즉시 인쇄 */
+	const handlePrintRecord = async (index: number) => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		const rqdtRaw = recordDates[index];
+		if (rqdtRaw == null) return;
+		const rqdt = formatDateDisplay(String(rqdtRaw));
+		if (!rqdt) {
+			alert('출력할 작성일자가 올바르지 않습니다.');
+			return;
+		}
+
+		try {
+			const res = await fetch(
+				`/api/f51012?pnum=${encodeURIComponent(String(selectedMember.PNUM).trim())}&rqdt=${encodeURIComponent(rqdt)}`
+			);
+			const result = await res.json();
+			if (!(result.success && result.data && typeof result.data === 'object')) {
+				alert('출력할 기록을 찾을 수 없습니다.');
+				return;
+			}
+			const snap = hydrateFromF51012Row(result.data as Record<string, unknown>, selectedMember.P_NM || '');
+			openNeedsAssessmentPrint(snap, selectedMember);
+		} catch (err) {
+			console.error('욕구사정 개별출력 오류:', err);
+			alert('출력 준비 중 오류가 발생했습니다.');
+		}
+	};
+
+	/** 체크된 수급자 + 기간 일괄출력 */
+	const handleBatchPrint = async () => {
+		if (checkedMemberKeys.size === 0) {
+			alert('출력할 수급자를 체크해주세요.');
+			return;
+		}
+		if (!batchPrintFrom || !batchPrintTo) {
+			alert('출력 기간(시작일·종료일)을 설정해주세요.');
+			return;
+		}
+		const from = formatDateDisplay(batchPrintFrom);
+		const to = formatDateDisplay(batchPrintTo);
+		if (!from || !to) {
+			alert('출력 기간 형식이 올바르지 않습니다.');
+			return;
+		}
+		if (from > to) {
+			alert('시작일이 종료일보다 늦을 수 없습니다.');
+			return;
+		}
+
+		const targets = memberList.filter((m) => checkedMemberKeys.has(memberKey(m)));
+		if (targets.length === 0) {
+			alert('체크된 수급자를 찾을 수 없습니다.');
+			return;
+		}
+
+		setBatchPrinting(true);
+		try {
+			const printItems: Array<{ snap: F51012UiSnapshot; member: MemberData }> = [];
+
+			for (const member of targets) {
+				const listRes = await fetch(
+					`/api/f51012?pnum=${encodeURIComponent(String(member.PNUM).trim())}`
+				);
+				const listJson = await listRes.json();
+				const dates: string[] = Array.isArray(listJson?.data) ? listJson.data : [];
+				const inRange = dates
+					.map((d) => formatDateDisplay(String(d)))
+					.filter((d) => d && d >= from && d <= to)
+					.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+				for (const rqdt of inRange) {
+					const detailRes = await fetch(
+						`/api/f51012?pnum=${encodeURIComponent(String(member.PNUM).trim())}&rqdt=${encodeURIComponent(rqdt)}`
+					);
+					const detailJson = await detailRes.json();
+					if (detailJson?.success && detailJson.data && typeof detailJson.data === 'object') {
+						const snap = hydrateFromF51012Row(
+							detailJson.data as Record<string, unknown>,
+							member.P_NM || ''
+						);
+						printItems.push({ snap, member });
+					}
+				}
+			}
+
+			if (printItems.length === 0) {
+				alert('선택한 수급자·기간에 해당하는 욕구사정기록이 없습니다.');
+				return;
+			}
+
+			openNeedsAssessmentBatchPrint(printItems);
+		} catch (err) {
+			console.error('욕구사정 일괄출력 오류:', err);
+			alert('일괄출력 준비 중 오류가 발생했습니다.');
+		} finally {
+			setBatchPrinting(false);
 		}
 	};
 
@@ -464,11 +458,127 @@ export default function NeedsAssessmentRecord() {
 		return dateStr;
 	};
 
-	// 활동 평가 값 변경 함수
 	const handleActivityChange = (index: number, value: '○' | '△' | 'X' | '') => {
-		const updatedActivities = [...activities];
-		updatedActivities[index].value = value;
-		setActivities(updatedActivities);
+		if (!isEditMode) return;
+		setActivities((prev) => {
+			const updatedActivities = [...prev];
+			const current = updatedActivities[index];
+			if (!current) return prev;
+			updatedActivities[index] = {
+				...current,
+				value: current.value === value ? '' : value,
+			};
+			return updatedActivities;
+		});
+	};
+
+	const isReadOnly = !isEditMode;
+
+	const searchCreatorByName = useCallback(async (name: string) => {
+		const q = name.trim();
+		if (!q) {
+			setCreatorSuggestions([]);
+			setShowCreatorDropdown(false);
+			return;
+		}
+		setCreatorSearchLoading(true);
+		try {
+			const res = await fetch(`/api/f01010?name=${encodeURIComponent(q)}`);
+			const json = await res.json();
+			if (json?.success && Array.isArray(json.data)) {
+				setCreatorSuggestions(json.data);
+				setShowCreatorDropdown(json.data.length > 0);
+			} else {
+				setCreatorSuggestions([]);
+				setShowCreatorDropdown(false);
+			}
+		} catch {
+			setCreatorSuggestions([]);
+			setShowCreatorDropdown(false);
+		} finally {
+			setCreatorSearchLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		if (!isEditMode) {
+			setShowCreatorDropdown(false);
+			return;
+		}
+		// 이미 목록에서 선택한 EMPNO가 있으면 재검색하지 않음
+		if (String(formData.creatorEmpno ?? '').trim()) {
+			setShowCreatorDropdown(false);
+			return;
+		}
+		const name = String(formData.creator ?? '').trim();
+		const timer = setTimeout(() => {
+			if (name.length >= 1) {
+				void searchCreatorByName(name);
+			} else {
+				setCreatorSuggestions([]);
+				setShowCreatorDropdown(false);
+			}
+		}, 280);
+		return () => clearTimeout(timer);
+	}, [formData.creator, formData.creatorEmpno, isEditMode, searchCreatorByName]);
+
+	useEffect(() => {
+		const onDocClick = (e: MouseEvent) => {
+			const t = e.target as Node;
+			if (creatorWrapRef.current && !creatorWrapRef.current.contains(t)) {
+				setShowCreatorDropdown(false);
+			}
+		};
+		document.addEventListener('mousedown', onDocClick);
+		return () => document.removeEventListener('mousedown', onDocClick);
+	}, []);
+
+	const handlePickCreator = (emp: { EMPNO: string | number; EMPNM: string }) => {
+		setFormData((prev) => ({
+			...prev,
+			creator: String(emp.EMPNM ?? '').trim(),
+			creatorEmpno: emp.EMPNO != null ? String(emp.EMPNO) : '',
+		}));
+		setShowCreatorDropdown(false);
+		setCreatorSuggestions([]);
+	};
+
+	const handleEnterEditMode = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		if (!formatDateDisplay(formData.creationDate.trim())) {
+			alert('수정할 작성일자를 목록에서 선택해 주세요.\n새 기록을 만들려면 「신규생성」을 눌러 주세요.');
+			return;
+		}
+		setBackupSnapshot(captureCurrentSnapshot());
+		setIsEditMode(true);
+	};
+
+	const handleCreateNew = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		if (isEditMode) {
+			alert('수정/작성 중에는 신규생성을 할 수 없습니다. 먼저 저장하거나 취소해 주세요.');
+			return;
+		}
+		const d = new Date();
+		const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+		setBackupSnapshot(captureCurrentSnapshot());
+		setSelectedDateIndex(null);
+		applyF51012Snapshot(emptySnapshot(selectedMember.P_NM || '', today));
+		setIsEditMode(true);
+	};
+
+	const handleCancelEdit = () => {
+		if (backupSnapshot) {
+			applyF51012Snapshot(backupSnapshot);
+		}
+		setBackupSnapshot(null);
+		setIsEditMode(false);
 	};
 
 	// 저장 — F51012 MERGE (작성일자 RQDT 기준)
@@ -477,10 +587,19 @@ export default function NeedsAssessmentRecord() {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
+		if (!isEditMode) {
+			alert('수정 버튼을 눌러 수정모드로 전환해 주세요.');
+			return;
+		}
 
 		const rqdt = formatDateDisplay(formData.creationDate.trim());
 		if (!rqdt) {
 			alert('작성일자(RQDT)를 YYYY-MM-DD 형식으로 입력해주세요.');
+			return;
+		}
+		const empno = String(formData.creatorEmpno ?? '').trim();
+		if (!empno || !Number.isFinite(parseInt(empno, 10))) {
+			alert('작성자를 직원 검색에서 선택해 주세요. (F01010 EMPNO → RQEMP)');
 			return;
 		}
 
@@ -522,9 +641,21 @@ export default function NeedsAssessmentRecord() {
 			}
 
 			alert('욕구 사정 기록지가 저장되었습니다.');
+			setIsEditMode(false);
+			setBackupSnapshot(null);
 			const dates = await fetchRecordDates(selectedMember.ANCD, selectedMember.PNUM);
 			const idx = dates.findIndex((d) => formatDateDisplay(d) === rqdt);
-			if (idx >= 0) setSelectedDateIndex(idx);
+			if (idx >= 0) {
+				setSelectedDateIndex(idx);
+				// 저장 후 최신 데이터 재조회
+				const res = await fetch(
+					`/api/f51012?pnum=${encodeURIComponent(String(selectedMember.PNUM).trim())}&rqdt=${encodeURIComponent(rqdt)}`
+				);
+				const detail = await res.json();
+				if (detail.success && detail.data) {
+					applyF51012Snapshot(hydrateFromF51012Row(detail.data as Record<string, unknown>, selectedMember.P_NM || ''));
+				}
+			}
 		} catch (err) {
 			console.error('욕구 사정 기록지 저장 오류:', err);
 			alert('욕구 사정 기록지 저장 중 오류가 발생했습니다.');
@@ -546,9 +677,11 @@ export default function NeedsAssessmentRecord() {
 			return;
 		}
 
-		if (!confirm('정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-			return;
-		}
+		const name = String(selectedMember.P_NM || formData.beneficiary || '').trim() || '해당 수급자';
+		const ok = window.confirm(
+			`정말 삭제하시겠습니까?\n\n수급자: ${name}\n작성일자: ${rqdt}\n\n삭제된 기록은 복구할 수 없습니다.`
+		);
+		if (!ok) return;
 
 		setLoadingDates(true);
 		try {
@@ -565,6 +698,8 @@ export default function NeedsAssessmentRecord() {
 			alert('욕구 사정 기록지가 삭제되었습니다.');
 			await fetchRecordDates(selectedMember.ANCD, selectedMember.PNUM);
 			setSelectedDateIndex(null);
+			setIsEditMode(false);
+			setBackupSnapshot(null);
 			applyF51012Snapshot(emptySnapshot(selectedMember.P_NM || '', ''));
 		} catch (err) {
 			console.error('욕구 사정 기록지 삭제 오류:', err);
@@ -581,6 +716,34 @@ export default function NeedsAssessmentRecord() {
 			<div className="flex h-[calc(100vh-56px)]">
 				{/* 좌측 패널: 수급자 목록 */}
 				<div className="flex flex-col w-1/4 p-4 bg-white border-r border-blue-200">
+					{/* 일괄출력: 기간 + 버튼 */}
+					<div className="mb-3 p-2 space-y-2 border border-blue-200 rounded-lg bg-blue-50/60">
+						<div className="text-xs font-semibold text-blue-900">일괄출력 기간</div>
+						<div className="flex items-center gap-1">
+							<input
+								type="date"
+								value={batchPrintFrom}
+								onChange={(e) => setBatchPrintFrom(e.target.value)}
+								className="flex-1 min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+							/>
+							<span className="text-xs text-blue-900 shrink-0">~</span>
+							<input
+								type="date"
+								value={batchPrintTo}
+								onChange={(e) => setBatchPrintTo(e.target.value)}
+								className="flex-1 min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+							/>
+						</div>
+						<button
+							type="button"
+							onClick={() => void handleBatchPrint()}
+							disabled={batchPrinting || checkedMemberKeys.size === 0}
+							className="w-full px-2 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{batchPrinting ? '출력 준비 중...' : `일괄출력 (${checkedMemberKeys.size}명)`}
+						</button>
+					</div>
+
 					{/* 필터 헤더 */}
 					<div className="mb-3">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
@@ -654,46 +817,72 @@ export default function NeedsAssessmentRecord() {
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
-										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
-										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">현황</th>
-										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
-										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">성별</th>
-										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">등급</th>
-										<th className="px-2 py-1.5 font-semibold text-center text-blue-900">나이</th>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200 w-8">
+											<input
+												type="checkbox"
+												checked={allFilteredChecked}
+												onChange={(e) => toggleAllFilteredChecked(e.target.checked)}
+												className="w-3.5 h-3.5 border-blue-300 rounded"
+												title="현재 필터 수급자 전체 선택"
+											/>
+										</th>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">현황</th>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">성별</th>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">등급</th>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900">나이</th>
 									</tr>
 								</thead>
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
 										</tr>
 									) : filteredMembers.length === 0 ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
 										</tr>
 									) : (
-										currentMembers.map((member, index) => (
-											<tr
-												key={`${member.ANCD}-${member.PNUM}-${index}`}
-												onClick={() => handleSelectMember(member)}
-												className={`border-b border-blue-50 hover:bg-blue-50 cursor-pointer ${
-													selectedMember?.ANCD === member.ANCD && selectedMember?.PNUM === member.PNUM ? 'bg-blue-100' : ''
-												}`}
-											>
-												<td className="px-2 py-1.5 text-center border-r border-blue-100">{startIndex + index + 1}</td>
-												<td className="px-2 py-1.5 text-center border-r border-blue-100">
-													{member.P_ST === '1' ? '입소' : member.P_ST === '9' ? '퇴소' : '-'}
-												</td>
-												<td className="px-2 py-1.5 text-center border-r border-blue-100">{member.P_NM || '-'}</td>
-												<td className="px-2 py-1.5 text-center border-r border-blue-100">
-													{member.P_SEX === '1' ? '남' : member.P_SEX === '2' ? '여' : '-'}
-												</td>
-												<td className="px-2 py-1.5 text-center border-r border-blue-100">
-													{formatCareGradeLabel(member.P_GRD)}
-												</td>
-												<td className="px-2 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>
-											</tr>
-										))
+										currentMembers.map((member, index) => {
+											const key = memberKey(member);
+											const isChecked = checkedMemberKeys.has(key);
+											return (
+												<tr
+													key={`${member.ANCD}-${member.PNUM}-${index}`}
+													onClick={() => handleSelectMember(member)}
+													className={`border-b border-blue-50 hover:bg-blue-50 cursor-pointer ${
+														selectedMember?.ANCD === member.ANCD && selectedMember?.PNUM === member.PNUM
+															? 'bg-blue-100'
+															: ''
+													}`}
+												>
+													<td
+														className="px-1 py-1.5 text-center border-r border-blue-100"
+														onClick={(e) => e.stopPropagation()}
+													>
+														<input
+															type="checkbox"
+															checked={isChecked}
+															onChange={(e) => toggleMemberChecked(member, e.target.checked)}
+															className="w-3.5 h-3.5 border-blue-300 rounded"
+														/>
+													</td>
+													<td className="px-1 py-1.5 text-center border-r border-blue-100">{startIndex + index + 1}</td>
+													<td className="px-1 py-1.5 text-center border-r border-blue-100">
+														{member.P_ST === '1' ? '입소' : member.P_ST === '9' ? '퇴소' : '-'}
+													</td>
+													<td className="px-1 py-1.5 text-center border-r border-blue-100">{member.P_NM || '-'}</td>
+													<td className="px-1 py-1.5 text-center border-r border-blue-100">
+														{member.P_SEX === '1' ? '남' : member.P_SEX === '2' ? '여' : '-'}
+													</td>
+													<td className="px-1 py-1.5 text-center border-r border-blue-100">
+														{formatCareGradeLabel(member.P_GRD)}
+													</td>
+													<td className="px-1 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>
+												</tr>
+											);
+										})
 									)}
 								</tbody>
 							</table>
@@ -792,12 +981,28 @@ export default function NeedsAssessmentRecord() {
 										recordDates.map((date, index) => (
 											<div
 												key={index}
-												onClick={() => handleSelectDate(index)}
-												className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-blue-50 ${
+												className={`flex items-center gap-1 px-2 py-1.5 text-sm border-b border-blue-50 ${
 													selectedDateIndex === index ? 'bg-blue-100 font-semibold' : ''
 												}`}
 											>
-												{formatDateDisplay(date)}
+												<button
+													type="button"
+													onClick={() => void handleSelectDate(index)}
+													className="flex-1 min-w-0 text-left hover:text-blue-700 truncate"
+												>
+													{formatDateDisplay(date)}
+												</button>
+												<button
+													type="button"
+													onClick={(e) => {
+														e.stopPropagation();
+														void handlePrintRecord(index);
+													}}
+													className="shrink-0 px-1.5 py-0.5 text-[11px] font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded hover:bg-blue-200"
+													title="개별출력"
+												>
+													출력
+												</button>
 											</div>
 										))
 									)}
@@ -807,8 +1012,29 @@ export default function NeedsAssessmentRecord() {
 
 						{/* 오른쪽: 평가 폼 */}
 						<div className="flex flex-1 overflow-hidden bg-white">
-							<div className="flex-1 p-4 overflow-y-auto">
-								<div className="space-y-4">
+							<div className="relative flex-1 min-w-0 overflow-hidden">
+								<div
+									className={`h-full p-4 overflow-y-auto ${
+										selectedMember && selectedDateIndex == null && !isEditMode
+											? 'blur-sm select-none pointer-events-none opacity-70'
+											: ''
+									}`}
+								>
+								{!selectedMember ? (
+									<div className="flex items-center justify-center h-40 text-sm text-blue-900/60">
+										수급자를 선택해주세요
+									</div>
+								) : (
+								<fieldset
+									className={`min-w-0 space-y-4 border-0 p-0 m-0 ${isReadOnly ? 'pointer-events-none select-none' : ''}`}
+								>
+								{!isEditMode ? (
+									<p className="text-xs text-blue-900/70 -mt-1">읽기모드 · 「신규생성」또는 「수정」으로 작성할 수 있습니다.</p>
+								) : selectedDateIndex == null ? (
+									<p className="text-xs text-green-800 -mt-1">신규 작성모드 · 작성일자·작성자 입력 후 「저장」하세요.</p>
+								) : (
+									<p className="text-xs text-green-800 -mt-1">수정모드 · 변경 후 「저장」으로 반영합니다.</p>
+								)}
 								{/* 상단 정보 필드 */}
 								<div className="flex flex-wrap items-center gap-4">
 									<div className="flex items-center gap-2">
@@ -823,29 +1049,73 @@ export default function NeedsAssessmentRecord() {
 									<div className="flex items-center gap-2">
 										<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">작성일자</label>
 										<input
-											type="text"
-											value={formData.creationDate}
-											onChange={(e) => setFormData(prev => ({ ...prev, creationDate: e.target.value }))}
-											className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[120px]"
-											placeholder="YYYY-MM-DD"
+											type="date"
+											value={formatDateDisplay(formData.creationDate) || ''}
+											onChange={(e) => setFormData((prev) => ({ ...prev, creationDate: e.target.value }))}
+											readOnly={isReadOnly}
+											disabled={isReadOnly}
+											className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px] disabled:bg-gray-50 disabled:text-blue-900"
 										/>
 									</div>
 									<div className="flex items-center gap-2">
 										<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">작성자</label>
-										<input
-											type="text"
-											value={formData.creator}
-											onChange={(e) => setFormData(prev => ({ ...prev, creator: e.target.value }))}
-											className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[120px]"
-											placeholder="면접사원번호(RQEMP, 숫자)"
-										/>
+										<div ref={creatorWrapRef} className="relative employee-dropdown-container min-w-[160px]">
+											<input
+												type="text"
+												value={formData.creator}
+												onChange={(e) => {
+													const v = e.target.value;
+													setFormData((prev) => ({
+														...prev,
+														creator: v,
+														// 이름을 직접 수정하면 EMPNO 매칭 해제
+														creatorEmpno: '',
+													}));
+												}}
+												onFocus={() => {
+													if (isReadOnly) return;
+													if (String(formData.creator ?? '').trim().length >= 1) {
+														setShowCreatorDropdown(true);
+													}
+												}}
+												className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[160px] disabled:bg-gray-50"
+												placeholder={isReadOnly ? '' : '이름 검색 후 선택'}
+												autoComplete="off"
+												readOnly={isReadOnly}
+											/>
+											{!isReadOnly && showCreatorDropdown ? (
+												<ul className="absolute z-[100] left-0 right-0 mt-1 max-h-48 overflow-auto rounded border border-blue-300 bg-white shadow-lg min-w-[220px]">
+													{creatorSearchLoading ? (
+														<li className="px-3 py-2 text-sm text-blue-900/60">검색 중...</li>
+													) : creatorSuggestions.length === 0 ? (
+														<li className="px-3 py-2 text-sm text-blue-900/60">검색 결과 없음</li>
+													) : (
+														creatorSuggestions.map((emp, i) => (
+															<li
+																key={`${emp.EMPNO}-${i}`}
+																className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-blue-50 last:border-0"
+																onMouseDown={(e) => e.preventDefault()}
+																onClick={() => handlePickCreator(emp)}
+															>
+																<span className="font-medium text-blue-900">{emp.EMPNM}</span>
+																<span className="ml-2 text-blue-900/70">사번 {emp.EMPNO ?? '-'}</span>
+															</li>
+														))
+													)}
+												</ul>
+											) : null}
+											{formData.creatorEmpno && isEditMode ? (
+												<p className="text-[10px] text-blue-900/60 mt-0.5">선택됨 (사번 {formData.creatorEmpno})</p>
+											) : isEditMode ? (
+												<p className="text-[10px] text-amber-700 mt-0.5">목록에서 직원을 선택해야 저장됩니다</p>
+											) : null}
+										</div>
 									</div>
 								</div>
 
 								{/* 탭별 컨텐츠 */}
 								{activeTab === '신체' && (
 									<>
-										{/* 키, 체중 */}
 										<div className="flex items-center gap-4">
 											<div className="flex items-center gap-2">
 												<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">키</label>
@@ -853,7 +1123,8 @@ export default function NeedsAssessmentRecord() {
 													type="text"
 													value={formData.height}
 													onChange={(e) => setFormData(prev => ({ ...prev, height: e.target.value }))}
-													className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 w-24"
+													disabled={isReadOnly}
+													className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 w-24 disabled:bg-gray-50"
 												/>
 											</div>
 											<div className="flex items-center gap-2">
@@ -862,61 +1133,95 @@ export default function NeedsAssessmentRecord() {
 													type="text"
 													value={formData.weight}
 													onChange={(e) => setFormData(prev => ({ ...prev, weight: e.target.value }))}
-													className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 w-24"
+													disabled={isReadOnly}
+													className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 w-24 disabled:bg-gray-50"
 												/>
 											</div>
+											<label className="flex items-center gap-2 text-sm text-blue-900 ml-auto">
+												<input
+													type="checkbox"
+													checked={formData.physicalInputComplete}
+													onChange={(e) =>
+														setFormData((prev) => ({ ...prev, physicalInputComplete: e.target.checked }))
+													}
+													disabled={isReadOnly}
+													className="w-4 h-4 border-blue-300 rounded"
+												/>
+												<span className="font-medium">신체 상태 입력완료 (C99)</span>
+											</label>
 										</div>
 
-										{/* 활동 평가 그리드 */}
 										<div className="p-4 bg-white border border-blue-300 rounded-lg">
-											<h3 className="mb-4 text-base font-semibold text-blue-900">활동 평가</h3>
+											<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+												<h3 className="text-base font-semibold text-blue-900">활동 평가 (F51012 C01~C12)</h3>
+												<p className="text-xs text-blue-900/80">
+													<span className="font-semibold">X</span> 완전도움(1) ·{' '}
+													<span className="font-semibold">△</span> 부분도움(2) ·{' '}
+													<span className="font-semibold">○</span> 완전자립(3)
+												</p>
+											</div>
 											<div className="grid grid-cols-3 gap-4">
-												{activities.map((activity, index) => (
-													<div key={index} className="flex items-center gap-2">
-														<div className="flex items-center gap-1">
+												{PHYSICAL_ACTIVITY_ITEMS.map((item, index) => {
+													const val = activities[index]?.value ?? '';
+													const btnBase =
+														'w-8 h-8 text-sm border rounded flex items-center justify-center';
+													const selectedCls = 'bg-blue-500 text-white border-blue-500';
+													const idleCls = isReadOnly
+														? 'bg-white text-blue-900/50 border-blue-200'
+														: 'bg-white text-blue-900 border-blue-300 hover:bg-blue-50';
+													return (
+													<div key={item.key} className="flex items-center gap-2">
+														<div className="flex items-center gap-1 shrink-0">
 															<button
 																type="button"
-																onClick={() => handleActivityChange(index, '○')}
-																className={`w-8 h-8 text-sm border border-blue-300 rounded flex items-center justify-center ${
-																	activity.value === '○' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-blue-900 hover:bg-blue-50'
-																}`}
+																onClick={() => handleActivityChange(index, 'X')}
+																tabIndex={isReadOnly ? -1 : 0}
+																title="완전도움 (1)"
+																className={`${btnBase} ${val === 'X' ? selectedCls : idleCls}`}
 															>
-																○
+																X
 															</button>
 															<button
 																type="button"
 																onClick={() => handleActivityChange(index, '△')}
-																className={`w-8 h-8 text-sm border border-blue-300 rounded flex items-center justify-center ${
-																	activity.value === '△' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-blue-900 hover:bg-blue-50'
-																}`}
+																tabIndex={isReadOnly ? -1 : 0}
+																title="부분도움 (2)"
+																className={`${btnBase} ${val === '△' ? selectedCls : idleCls}`}
 															>
 																△
 															</button>
 															<button
 																type="button"
-																onClick={() => handleActivityChange(index, 'X')}
-																className={`w-8 h-8 text-sm border border-blue-300 rounded flex items-center justify-center ${
-																	activity.value === 'X' ? 'bg-blue-500 text-white border-blue-500' : 'bg-white text-blue-900 hover:bg-blue-50'
-																}`}
+																onClick={() => handleActivityChange(index, '○')}
+																tabIndex={isReadOnly ? -1 : 0}
+																title="완전자립 (3)"
+																className={`${btnBase} ${val === '○' ? selectedCls : idleCls}`}
 															>
-																X
+																○
 															</button>
 														</div>
-														<span className="text-sm text-blue-900">{activity.activity}</span>
+														<span className="text-sm text-blue-900">
+															<span className="text-[10px] text-blue-700/70 mr-1">{item.key}</span>
+															{item.label}
+														</span>
 													</div>
-												))}
+													);
+												})}
 											</div>
 										</div>
 
-										{/* 판단근거 */}
 										<div className="flex items-start gap-2">
-											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">판단근거</label>
+											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+												판단근거
+												<span className="block text-[10px] font-normal text-blue-800/70">C90</span>
+											</label>
 											<textarea
 												value={formData.judgmentBasis}
 												onChange={(e) => setFormData(prev => ({ ...prev, judgmentBasis: e.target.value }))}
-												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px]"
+												disabled={isReadOnly}
+												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px] disabled:bg-gray-50"
 												rows={6}
-												placeholder="- 상체 움직임에 이상은 없으시나 신체활용 인지가 저하되시어 부분적 도움으로 벗고 입기 가능하심&#10;- 양치질하기는 스스로 수행이 가능하며, 뒷마무리만 도움이 필요함.&#10;- 식사 도구를 활용하여 드시는데 어려움 없으심.&#10;- 변의를 느끼시며 저절로 조절이 가능하시나..."
+												placeholder="- 상체 움직임에 이상은 없으시나 신체활용 인지가 저하되시어 부분적 도움으로 벗고 입기 가능하심&#10;- 양치질하기는 스스로 수행이 가능하며, 뒷마무리만 도움이 필요함."
 											/>
 										</div>
 									</>
@@ -1182,50 +1487,84 @@ export default function NeedsAssessmentRecord() {
 								{/* 의사소통 탭 */}
 								{activeTab === '의사소통' && (
 									<>
+										<div className="flex items-center justify-end mb-1">
+											<label className="flex items-center gap-2 text-sm text-blue-900">
+												<input
+													type="checkbox"
+													checked={communicationData.inputComplete}
+													onChange={(e) =>
+														setCommunicationData((prev) => ({ ...prev, inputComplete: e.target.checked }))
+													}
+													className="w-4 h-4 border-blue-300 rounded"
+												/>
+												<span className="font-medium">의사소통 입력완료 (H99)</span>
+											</label>
+										</div>
 										<div className="space-y-4">
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">청취능력</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													청취능력
+													<span className="block text-[10px] font-normal text-blue-800/70">H01</span>
+												</label>
 												<select
 													value={communicationData.listeningAbility}
-													onChange={(e) => setCommunicationData(prev => ({ ...prev, listeningAbility: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setCommunicationData((prev) => ({ ...prev, listeningAbility: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="보통의 소리를 듣기는 하고, 못 듣기도 한다">보통의 소리를 듣기는 하고, 못 듣기도 한다</option>
-													<option value="정상적으로 들린다">정상적으로 들린다</option>
-													<option value="거의 들리지 않는다">거의 들리지 않는다</option>
+													<option value="">선택</option>
+													{H01_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">의사소통</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													의사소통
+													<span className="block text-[10px] font-normal text-blue-800/70">H02</span>
+												</label>
 												<select
 													value={communicationData.communication}
-													onChange={(e) => setCommunicationData(prev => ({ ...prev, communication: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setCommunicationData((prev) => ({ ...prev, communication: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="가끔 이해하고 의사를 표현한다">가끔 이해하고 의사를 표현한다</option>
-													<option value="정상적으로 의사소통한다">정상적으로 의사소통한다</option>
-													<option value="의사소통이 어렵다">의사소통이 어렵다</option>
+													<option value="">선택</option>
+													{H02_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">발음능력</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													발음능력
+													<span className="block text-[10px] font-normal text-blue-800/70">H03</span>
+												</label>
 												<select
 													value={communicationData.pronunciationAbility}
-													onChange={(e) => setCommunicationData(prev => ({ ...prev, pronunciationAbility: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setCommunicationData((prev) => ({ ...prev, pronunciationAbility: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="간혹 어눌한 발음이 섞인다">간혹 어눌한 발음이 섞인다</option>
-													<option value="정상적인 발음">정상적인 발음</option>
-													<option value="발음이 매우 어눌하다">발음이 매우 어눌하다</option>
+													<option value="">선택</option>
+													{H03_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 										</div>
 										<div className="flex items-start gap-2 mt-4">
-											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">판단근거</label>
+											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+												판단근거
+												<span className="block text-[10px] font-normal text-blue-800/70">H90</span>
+											</label>
 											<textarea
 												value={communicationData.judgmentBasis}
-												onChange={(e) => setCommunicationData(prev => ({ ...prev, judgmentBasis: e.target.value }))}
-												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px]"
+												onChange={(e) => setCommunicationData((prev) => ({ ...prev, judgmentBasis: e.target.value }))}
+												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px] disabled:bg-gray-50"
 												rows={6}
 											/>
 										</div>
@@ -1235,78 +1574,120 @@ export default function NeedsAssessmentRecord() {
 								{/* 영양 탭 */}
 								{activeTab === '영양' && (
 									<>
+										<div className="flex items-center justify-end mb-1">
+											<label className="flex items-center gap-2 text-sm text-blue-900">
+												<input
+													type="checkbox"
+													checked={nutritionData.inputComplete}
+													onChange={(e) =>
+														setNutritionData((prev) => ({ ...prev, inputComplete: e.target.checked }))
+													}
+													className="w-4 h-4 border-blue-300 rounded"
+												/>
+												<span className="font-medium">영양상태 입력완료 (I99)</span>
+											</label>
+										</div>
 										<div className="space-y-4">
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">치아상태</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													치아상태
+													<span className="block text-[10px] font-normal text-blue-800/70">I01</span>
+												</label>
 												<select
 													value={nutritionData.dentalCondition}
-													onChange={(e) => setNutritionData(prev => ({ ...prev, dentalCondition: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, dentalCondition: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="양호">양호</option>
-													<option value="보통">보통</option>
-													<option value="불량">불량</option>
+													<option value="">선택</option>
+													{I01_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">식사시문제점</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													식사시문제점
+													<span className="block text-[10px] font-normal text-blue-800/70">I02</span>
+												</label>
 												<select
 													value={nutritionData.eatingProblems}
-													onChange={(e) => setNutritionData(prev => ({ ...prev, eatingProblems: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, eatingProblems: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="식욕저하">식욕저하</option>
-													<option value="없음">없음</option>
-													<option value="삼킴곤란">삼킴곤란</option>
-													<option value="저작곤란">저작곤란</option>
+													<option value="">선택</option>
+													{I02_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">식사상태</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													식사형태
+													<span className="block text-[10px] font-normal text-blue-800/70">I03</span>
+												</label>
 												<select
 													value={nutritionData.eatingStatus}
-													onChange={(e) => setNutritionData(prev => ({ ...prev, eatingStatus: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, eatingStatus: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="일반식">일반식</option>
-													<option value="연식">연식</option>
-													<option value="유동식">유동식</option>
-													<option value="경관영양">경관영양</option>
+													<option value="">선택</option>
+													{I03_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">도구사용</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													도구사용
+													<span className="block text-[10px] font-normal text-blue-800/70">I04</span>
+												</label>
 												<select
 													value={nutritionData.toolUsage}
-													onChange={(e) => setNutritionData(prev => ({ ...prev, toolUsage: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, toolUsage: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="젓가락">젓가락</option>
-													<option value="숟가락">숟가락</option>
-													<option value="손">손</option>
-													<option value="도움">도움</option>
+													<option value="">선택</option>
+													{I04_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 											<div className="flex items-center gap-2">
-												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">배설양상</label>
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													배설양상
+													<span className="block text-[10px] font-normal text-blue-800/70">I05</span>
+												</label>
 												<select
 													value={nutritionData.excretionPattern}
-													onChange={(e) => setNutritionData(prev => ({ ...prev, excretionPattern: e.target.value }))}
-													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, excretionPattern: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
-													<option value="정상">정상</option>
-													<option value="변비">변비</option>
-													<option value="설사">설사</option>
-													<option value="실금">실금</option>
+													<option value="">선택</option>
+													{I05_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
 												</select>
 											</div>
 										</div>
 										<div className="flex items-start gap-2 mt-4">
-											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">판단근거</label>
+											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+												판단근거
+												<span className="block text-[10px] font-normal text-blue-800/70">I90</span>
+											</label>
 											<textarea
 												value={nutritionData.judgmentBasis}
-												onChange={(e) => setNutritionData(prev => ({ ...prev, judgmentBasis: e.target.value }))}
-												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px]"
+												onChange={(e) => setNutritionData((prev) => ({ ...prev, judgmentBasis: e.target.value }))}
+												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px] disabled:bg-gray-50"
 												rows={6}
 											/>
 										</div>
@@ -1316,121 +1697,182 @@ export default function NeedsAssessmentRecord() {
 								{/* 가족환경 탭 */}
 								{activeTab === '가족환경' && (
 									<>
+										<div className="flex items-center justify-end mb-1">
+											<label className="flex items-center gap-2 text-sm text-blue-900">
+												<input
+													type="checkbox"
+													checked={familyEnvironmentData.inputComplete}
+													onChange={(e) =>
+														setFamilyEnvironmentData((prev) => ({ ...prev, inputComplete: e.target.checked }))
+													}
+													className="w-4 h-4 border-blue-300 rounded"
+												/>
+												<span className="font-medium">가족환경 입력완료 (J99)</span>
+											</label>
+										</div>
 										<div className="grid grid-cols-2 gap-4">
 											<div className="space-y-4">
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">결혼여부</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														결혼여부
+														<span className="block text-[10px] font-normal text-blue-800/70">J01</span>
+													</label>
 													<select
 														value={familyEnvironmentData.maritalStatus}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, maritalStatus: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, maritalStatus: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 													>
-														<option value="기혼">기혼</option>
-														<option value="미혼">미혼</option>
-														<option value="이혼">이혼</option>
-														<option value="사별">사별</option>
+														<option value="">선택</option>
+														{J01_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
 													</select>
 												</div>
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">주수발자</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														배우자생존여부
+														<span className="block text-[10px] font-normal text-blue-800/70">J01_01</span>
+													</label>
+													<select
+														value={familyEnvironmentData.spouseSurvivalStatus}
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, spouseSurvivalStatus: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+													>
+														<option value="">선택</option>
+														{J01_01_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
+													</select>
+												</div>
+												<div className="flex items-center gap-2">
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														자녀수
+														<span className="block text-[10px] font-normal text-blue-800/70">J01_02</span>
+													</label>
+													<input
+														type="number"
+														min={0}
+														value={familyEnvironmentData.numberOfChildren}
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, numberOfChildren: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+													/>
+												</div>
+												<div className="flex items-center gap-2">
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														주수발자
+														<span className="block text-[10px] font-normal text-blue-800/70">J02</span>
+													</label>
 													<select
 														value={familyEnvironmentData.primaryCaregiver}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, primaryCaregiver: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, primaryCaregiver: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 													>
-														<option value="유">유</option>
-														<option value="무">무</option>
+														<option value="">선택</option>
+														{J02_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
 													</select>
 												</div>
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">주수발자 관계</label>
-													<select
-														value={familyEnvironmentData.primaryCaregiverRelationship}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, primaryCaregiverRelationship: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
-													>
-														<option value="자녀">자녀</option>
-														<option value="배우자">배우자</option>
-														<option value="형제자매">형제자매</option>
-														<option value="친척">친척</option>
-														<option value="기타">기타</option>
-													</select>
-												</div>
-												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">동거인</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														동거인
+														<span className="block text-[10px] font-normal text-blue-800/70">J03</span>
+													</label>
 													<select
 														value={familyEnvironmentData.cohabitant}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, cohabitant: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, cohabitant: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 													>
-														<option value="자녀">자녀</option>
-														<option value="배우자">배우자</option>
-														<option value="형제자매">형제자매</option>
-														<option value="친척">친척</option>
-														<option value="혼자">혼자</option>
-														<option value="기타">기타</option>
+														<option value="">선택</option>
+														{J03_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
 													</select>
 												</div>
 											</div>
 											<div className="space-y-4">
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">자녀수</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														주수발자-연령
+														<span className="block text-[10px] font-normal text-blue-800/70">J02_01</span>
+													</label>
 													<input
-														type="text"
-														value={familyEnvironmentData.numberOfChildren}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, numberOfChildren: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
-													/>
-												</div>
-												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">주수발자 연령</label>
-													<input
-														type="text"
+														type="number"
+														min={0}
 														value={familyEnvironmentData.primaryCaregiverAge}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, primaryCaregiverAge: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, primaryCaregiverAge: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 													/>
 												</div>
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">관계기타</label>
-													<input
-														type="text"
-														value={familyEnvironmentData.otherRelationship}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, otherRelationship: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
-													/>
-												</div>
-												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">배우자 생존여부</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														주수발자-관계
+														<span className="block text-[10px] font-normal text-blue-800/70">J02_02</span>
+													</label>
 													<select
-														value={familyEnvironmentData.spouseSurvivalStatus}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, spouseSurvivalStatus: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														value={familyEnvironmentData.primaryCaregiverRelationship}
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, primaryCaregiverRelationship: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 													>
-														<option value="생존">생존</option>
-														<option value="사망">사망</option>
+														<option value="">선택</option>
+														{J02_02_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
 													</select>
 												</div>
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">주수발자 경제상태</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														관계-기타
+														<span className="block text-[10px] font-normal text-blue-800/70">J02_03</span>
+													</label>
+													<input
+														type="text"
+														value={familyEnvironmentData.otherRelationship}
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, otherRelationship: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+														maxLength={100}
+														placeholder="기타 관계 입력"
+													/>
+												</div>
+												<div className="flex items-center gap-2">
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														주수발자-경제상태
+														<span className="block text-[10px] font-normal text-blue-800/70">J02_04</span>
+													</label>
 													<select
 														value={familyEnvironmentData.primaryCaregiverEconomicStatus}
-														onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, primaryCaregiverEconomicStatus: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, primaryCaregiverEconomicStatus: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 													>
-														<option value="안정">안정</option>
-														<option value="보통">보통</option>
-														<option value="불안정">불안정</option>
+														<option value="">선택</option>
+														{J02_04_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
 													</select>
 												</div>
 											</div>
 										</div>
 										<div className="flex items-start gap-2 mt-4">
-											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">판단근거</label>
+											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+												판단근거
+												<span className="block text-[10px] font-normal text-blue-800/70">J90</span>
+											</label>
 											<textarea
 												value={familyEnvironmentData.judgmentBasis}
-												onChange={(e) => setFamilyEnvironmentData(prev => ({ ...prev, judgmentBasis: e.target.value }))}
-												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px]"
+												onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, judgmentBasis: e.target.value }))}
+												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px] disabled:bg-gray-50"
 												rows={6}
 											/>
 										</div>
@@ -1440,104 +1882,169 @@ export default function NeedsAssessmentRecord() {
 								{/* 자원이용 탭 */}
 								{activeTab === '자원이용' && (
 									<>
+										<div className="flex items-center justify-end mb-1">
+											<label className="flex items-center gap-2 text-sm text-blue-900">
+												<input
+													type="checkbox"
+													checked={resourceUtilizationData.inputComplete}
+													onChange={(e) =>
+														setResourceUtilizationData((prev) => ({ ...prev, inputComplete: e.target.checked }))
+													}
+													className="w-4 h-4 border-blue-300 rounded"
+												/>
+												<span className="font-medium">자원이용 입력완료 (K99)</span>
+											</label>
+										</div>
 										<div className="grid grid-cols-2 gap-4">
 											<div className="space-y-4">
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">종교</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														종교
+														<span className="block text-[10px] font-normal text-blue-800/70">K01</span>
+													</label>
 													<select
 														value={resourceUtilizationData.religion}
-														onChange={(e) => setResourceUtilizationData(prev => ({ ...prev, religion: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) => setResourceUtilizationData((prev) => ({ ...prev, religion: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 													>
-														<option value="기독교">기독교</option>
-														<option value="불교">불교</option>
-														<option value="천주교">천주교</option>
-														<option value="기타">기타</option>
+														<option value="">선택</option>
+														{K01_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
 													</select>
 												</div>
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">주이용의료기관</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														주이용의료기관
+														<span className="block text-[10px] font-normal text-blue-800/70">K02</span>
+													</label>
 													<input
 														type="text"
 														value={resourceUtilizationData.primaryMedicalInstitution}
-														onChange={(e) => setResourceUtilizationData(prev => ({ ...prev, primaryMedicalInstitution: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) =>
+															setResourceUtilizationData((prev) => ({ ...prev, primaryMedicalInstitution: e.target.value }))
+														}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+														maxLength={100}
 													/>
 												</div>
 												<div className="flex items-start gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">지역사회</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														지역사회자원
+														<span className="block text-[10px] font-normal text-blue-800/70">K03</span>
+													</label>
 													<div className="flex-1 space-y-2">
-														{['급식 및 도시락배달', '이미용'].map((service) => {
-															const serviceKey = service as keyof typeof resourceUtilizationData.communityServices;
-															return (
-																<label key={service} className="flex items-center gap-2 cursor-pointer">
-																	<input
-																		type="checkbox"
-																		checked={resourceUtilizationData.communityServices[serviceKey] || false}
-																		onChange={(e) => setResourceUtilizationData(prev => ({
-																			...prev,
-																			communityServices: {
-																				...prev.communityServices,
-																				[serviceKey]: e.target.checked
-																			}
-																		}))}
-																		className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-																	/>
-																	<span className="text-sm text-blue-900">{service}</span>
-																</label>
-															);
-														})}
+														<label className="flex items-center gap-2 cursor-pointer">
+															<input
+																type="checkbox"
+																checked={resourceUtilizationData.communityServices['급식 및 도시락배달'] || false}
+																onChange={(e) =>
+																	setResourceUtilizationData((prev) => ({
+																		...prev,
+																		communityServices: {
+																			...prev.communityServices,
+																			'급식 및 도시락배달': e.target.checked,
+																		},
+																	}))
+																}
+																className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
+															/>
+															<span className="text-sm text-blue-900">급식 (K03_01)</span>
+														</label>
+														<label className="flex items-center gap-2 cursor-pointer">
+															<input
+																type="checkbox"
+																checked={resourceUtilizationData.communityServices['이미용'] || false}
+																onChange={(e) =>
+																	setResourceUtilizationData((prev) => ({
+																		...prev,
+																		communityServices: {
+																			...prev.communityServices,
+																			이미용: e.target.checked,
+																		},
+																	}))
+																}
+																className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
+															/>
+															<span className="text-sm text-blue-900">이미용 (K03_02)</span>
+														</label>
+														<label className="flex items-center gap-2 cursor-pointer">
+															<input
+																type="checkbox"
+																checked={resourceUtilizationData.housingImprovementProject}
+																onChange={(e) =>
+																	setResourceUtilizationData((prev) => ({
+																		...prev,
+																		housingImprovementProject: e.target.checked,
+																	}))
+																}
+																className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
+															/>
+															<span className="text-sm text-blue-900">주거 (K03_03)</span>
+														</label>
 													</div>
 												</div>
 											</div>
 											<div className="space-y-4">
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">종교 기타</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														종교-기타내역
+														<span className="block text-[10px] font-normal text-blue-800/70">K01_01</span>
+													</label>
 													<input
 														type="text"
 														value={resourceUtilizationData.religionOther}
-														onChange={(e) => setResourceUtilizationData(prev => ({ ...prev, religionOther: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) =>
+															setResourceUtilizationData((prev) => ({ ...prev, religionOther: e.target.value }))
+														}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+														maxLength={100}
+														placeholder="기타 종교 입력"
 													/>
 												</div>
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">전화번호</label>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														전화번호
+														<span className="block text-[10px] font-normal text-blue-800/70">K02_01</span>
+													</label>
 													<input
 														type="text"
 														value={resourceUtilizationData.phoneNumber}
-														onChange={(e) => setResourceUtilizationData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) =>
+															setResourceUtilizationData((prev) => ({ ...prev, phoneNumber: e.target.value }))
+														}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+														maxLength={20}
 													/>
 												</div>
 												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap"></label>
-													<label className="flex items-center gap-2 cursor-pointer">
-														<input
-															type="checkbox"
-															checked={resourceUtilizationData.housingImprovementProject}
-															onChange={(e) => setResourceUtilizationData(prev => ({ ...prev, housingImprovementProject: e.target.checked }))}
-															className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-														/>
-														<span className="text-sm text-blue-900">주거개선사업</span>
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														지역사회-기타
+														<span className="block text-[10px] font-normal text-blue-800/70">K03_04</span>
 													</label>
-												</div>
-												<div className="flex items-center gap-2">
-													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">기타</label>
 													<input
 														type="text"
 														value={resourceUtilizationData.other}
-														onChange={(e) => setResourceUtilizationData(prev => ({ ...prev, other: e.target.value }))}
-														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+														onChange={(e) => setResourceUtilizationData((prev) => ({ ...prev, other: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+														maxLength={100}
 													/>
 												</div>
 											</div>
 										</div>
 										<div className="flex items-start gap-2 mt-4">
-											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">판단근거</label>
+											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+												판단근거
+												<span className="block text-[10px] font-normal text-blue-800/70">K90</span>
+											</label>
 											<textarea
 												value={resourceUtilizationData.judgmentBasis}
-												onChange={(e) => setResourceUtilizationData(prev => ({ ...prev, judgmentBasis: e.target.value }))}
-												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px]"
+												onChange={(e) =>
+													setResourceUtilizationData((prev) => ({ ...prev, judgmentBasis: e.target.value }))
+												}
+												className="flex-1 px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[150px] disabled:bg-gray-50"
 												rows={6}
 											/>
 										</div>
@@ -1611,24 +2118,66 @@ export default function NeedsAssessmentRecord() {
 										</div>
 									</>
 								)}
+									</fieldset>
+									)}
 								</div>
+								{selectedMember && selectedDateIndex == null && !isEditMode && (
+									<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+										<p className="px-6 py-3 text-lg font-semibold text-blue-900 bg-white/90 border border-blue-200 rounded-lg shadow-sm">
+											열람 원하는 날짜를 선택해주세요
+										</p>
+									</div>
+								)}
 							</div>
 
 							{/* 오른쪽 버튼 영역 */}
 							<div className="flex flex-col gap-2 p-4 border-l border-blue-200">
-								{activeTab !== '총평' && (
-									<button
-										onClick={handleDelete}
-										className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 whitespace-nowrap"
-									>
-										삭제
-									</button>
+								{isEditMode ? (
+									<>
+										<button
+											type="button"
+											onClick={handleSave}
+											disabled={loadingDates || !selectedMember}
+											className="px-6 py-2 text-sm font-medium text-white bg-green-600 border border-green-700 rounded hover:bg-green-700 whitespace-nowrap disabled:opacity-50"
+										>
+											저장
+										</button>
+										<button
+											type="button"
+											onClick={handleCancelEdit}
+											disabled={loadingDates}
+											className="px-6 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 whitespace-nowrap disabled:opacity-50"
+										>
+											취소
+										</button>
+									</>
+								) : (
+									<>
+										<button
+											type="button"
+											onClick={handleCreateNew}
+											disabled={!selectedMember || loadingDates}
+											className="px-6 py-2 text-sm font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 whitespace-nowrap disabled:opacity-50"
+										>
+											신규생성
+										</button>
+										<button
+											type="button"
+											onClick={handleEnterEditMode}
+											disabled={!selectedMember || loadingDates || selectedDateIndex == null}
+											className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 whitespace-nowrap disabled:opacity-50"
+										>
+											수정
+										</button>
+									</>
 								)}
 								<button
-									onClick={handleSave}
-									className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 whitespace-nowrap"
+									type="button"
+									onClick={handleDelete}
+									disabled={!selectedMember || loadingDates || isEditMode || selectedDateIndex == null}
+									className="px-6 py-2 text-sm font-medium text-red-800 bg-red-50 border border-red-300 rounded hover:bg-red-100 whitespace-nowrap disabled:opacity-50"
 								>
-									저장
+									삭제
 								</button>
 							</div>
 						</div>
