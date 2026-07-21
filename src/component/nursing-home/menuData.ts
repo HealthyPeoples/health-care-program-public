@@ -213,16 +213,16 @@ export const sections3: Sections3 = {
       { name: '공지사항 조회', link: '/nursingHome/notice-inquiry' },
     ],
     '자료실': [
-      { name: '자료실(신규)', link: '/nursingHome/data-room' },
+      { name: '자료실(신규_개발중)', link: '/nursingHome/data-room' },
     ],
     '평가체크리스트': [
-      { name: '평가체크리스트(신규)', link: '/nursingHome/evaluation-checklist' },
+      { name: '평가체크리스트(신규_개발중)', link: '/nursingHome/evaluation-checklist' },
     ],
   },
   '요양원 관리시스템': {
     'UDC 관리': [
-      { name: 'UDC 관리 페이지', link: '/nursingHome/UDC-page' },
-      { name: '사용자 코드 등록', link: '/nursingHome/user-code-registration' },
+      { name: 'UDC 관리 페이지(사용자 코드 등록 페이지 병합)', link: '/nursingHome/UDC-page' },
+      // { name: '사용자 코드 등록', link: '/nursingHome/user-code-registration' },
     ],
   },
 };
