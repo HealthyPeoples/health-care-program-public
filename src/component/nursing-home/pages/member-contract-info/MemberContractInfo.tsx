@@ -447,8 +447,6 @@ export default function MemberContractInfo() {
 							String(m.ANCD) === String(resync.ancd) && String(m.PNUM) === String(resync.pnum)
 					);
 					if (updated) setSelectedMember(updated);
-				} else if (merged.length > 0 && !selectedMember) {
-					setSelectedMember(merged[0]);
 				} else if (merged.length === 0) {
 					setSelectedMember(null);
 				}
@@ -802,16 +800,14 @@ export default function MemberContractInfo() {
 		setEditedContractInfo(null);
 	}, [selectedMember]);
 
-	// 계약정보 생성 버튼 클릭
+	// 계약정보 생성 버튼 클릭 → 모달
 	const handleCreateClick = () => {
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
-		setSelectedContract(null);
 		setIsCreating(true);
-		// F10010의 P_CTDT를 초기 계약일자로 설정
-		const initialContractDate = selectedMember.P_CTDT 
+		const initialContractDate = selectedMember.P_CTDT
 			? selectedMember.P_CTDT.substring(0, 10)
 			: '';
 		setNewContractInfo({
@@ -1431,7 +1427,7 @@ export default function MemberContractInfo() {
 									{!selectedMember ? (
 										<tr>
 											<td colSpan={4} className="text-center px-2 py-6 text-blue-900/60">
-												수급자를 선택하세요
+												수급자를 선택해주세요
 											</td>
 										</tr>
 									) : contractLoading ? (
@@ -1443,7 +1439,7 @@ export default function MemberContractInfo() {
 									) : contractList.length === 0 ? (
 										<tr>
 											<td colSpan={4} className="text-center px-2 py-6 text-blue-900/60">
-												등록된 계약이 없습니다
+												계약서가 없습니다
 											</td>
 										</tr>
 									) : (
@@ -1473,7 +1469,12 @@ export default function MemberContractInfo() {
 				</div>
 
 				{/* 우측: 계약정보 상세 */}
-				<section className="flex-1 min-w-0 overflow-y-auto p-4 space-y-4 bg-white">
+				<section className="relative flex-1 min-w-0 overflow-y-auto p-4 space-y-4 bg-white">
+						<div
+							className={`space-y-4 ${
+								!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+							}`}
+						>
 						{/* 계약정보 카드 */}
 						<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
 							<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
@@ -1487,7 +1488,7 @@ export default function MemberContractInfo() {
 											수정 및 삭제
 										</button>
 									) : null}
-									{selectedMember && !isEditing && !isCreating ? (
+									{selectedMember && !isEditing ? (
 										<button
 											type="button"
 											onClick={handlePrintSingleMemberContractReport}
@@ -1497,23 +1498,6 @@ export default function MemberContractInfo() {
 											{printLoading ? '출력 준비 중...' : '계약내역 출력'}
 										</button>
 									) : null}
-									{isCreating && (
-										<>
-											<button 
-												onClick={handleCreateSave}
-												disabled={contractLoading}
-												className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 disabled:opacity-50"
-											>
-												{contractLoading ? '저장 중...' : '저장'}
-											</button>
-											<button 
-												onClick={handleCreateCancel}
-												className="px-3 py-1 text-sm border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900"
-											>
-												취소
-											</button>
-										</>
-									)}
 									{isEditing && editedContractInfo && (
 										<>
 											<button 
@@ -1547,197 +1531,6 @@ export default function MemberContractInfo() {
 									<div className="col-span-12 grid grid-cols-12 gap-3">
 										{contractLoading ? (
 											<div className="col-span-12 text-center py-4 text-blue-900/60">계약 정보 로딩 중...</div>
-										) : isCreating ? (
-											<>
-												{/* 계약정보 생성 폼 */}
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자명</label>
-													<input className="w-full border border-blue-300 rounded px-2 py-1 bg-white" value={selectedMember?.P_NM || ''} readOnly />
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입·퇴소 상태</label>
-													<div className="flex items-center min-h-[34px] px-2 border border-blue-300 rounded bg-slate-50">
-														<span
-															className={`inline-block px-2 py-0.5 rounded text-sm font-medium ${
-																selectedMember?.P_ST === '1'
-																	? 'bg-green-100 text-green-800'
-																	: selectedMember?.P_ST === '9'
-																		? 'bg-slate-200 text-slate-800'
-																		: 'bg-gray-100 text-gray-600'
-															}`}
-														>
-															{getPSTLabel(selectedMember?.P_ST)}
-														</span>
-													</div>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입소일자</label>
-													<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_SDT) || '-'} readOnly />
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">퇴소일자</label>
-													<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_EDT) || '-'} readOnly />
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">계약일자</label>
-													<input 
-														type="date" 
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.CDT || ''}
-														onChange={(e) => handleNewContractFieldChange('CDT', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 시작일</label>
-													<input 
-														type="date" 
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.SVSDT || ''}
-														onChange={(e) => handleNewContractFieldChange('SVSDT', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 종료일</label>
-													<input 
-														type="date" 
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.SVEDT || ''}
-														onChange={(e) => handleNewContractFieldChange('SVEDT', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자 부담율 구분</label>
-													<select
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
-														value={newContractInfo.USRGU || ''}
-														onChange={(e) => handleNewUsrguChange(e.target.value)}
-													>
-														<option value="">선택</option>
-														<option value="1">일반 (보험자 80% / 수급자 20%)</option>
-														<option value="2">40%경감 (보험자 88% / 수급자 12%)</option>
-														<option value="3">60%경감 (보험자 92% / 수급자 8%)</option>
-														<option value="4">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
-													</select>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
-														보험자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
-													</label>
-													<input
-														readOnly
-														tabIndex={-1}
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
-														value={
-															newContractInfo.INSPER != null && newContractInfo.INSPER !== ''
-																? `${newContractInfo.INSPER}%`
-																: '—'
-														}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
-														수급자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
-													</label>
-													<input
-														readOnly
-														tabIndex={-1}
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
-														value={
-															newContractInfo.USRPER != null && newContractInfo.USRPER !== ''
-																? `${newContractInfo.USRPER}%`
-																: '—'
-														}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
-														수급자 내용 <span className="text-blue-700/80 font-normal">(기타금액내역)</span>
-													</label>
-													<input 
-														type="text"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.USRINFO || ''}
-														onChange={(e) => handleNewContractFieldChange('USRINFO', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">식대 1회</label>
-													<input 
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.EAMT || ''}
-														onChange={(e) => handleNewContractFieldChange('EAMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">간식비 1회</label>
-													<input 
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.ETAMT || ''}
-														onChange={(e) => handleNewContractFieldChange('ETAMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">상급병실료</label>
-													<input 
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.ESAMT || ''}
-														onChange={(e) => handleNewContractFieldChange('ESAMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기타금액</label>
-													<input
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
-														value={newContractInfo.USRINFO_AMT || ''}
-														onChange={(e) => handleNewContractFieldChange('USRINFO_AMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">결제방법</label>
-													<select
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
-														value={newContractInfo.CHGU || ''}
-														onChange={(e) => handleNewContractFieldChange('CHGU', e.target.value)}
-													>
-														<option value="">선택</option>
-														<option value="1">카드</option>
-														<option value="2">현금</option>
-													</select>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원명</label>
-													<EmployeeNameSearchField
-														empName={newContractInfo.INEMPNM || ''}
-														onPatch={(p) => setNewContractInfo((prev) => ({ ...prev, ...p }))}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원번호</label>
-													<input 
-														type="text"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.INEMPNO || ''}
-														onChange={(e) => handleNewContractFieldChange('INEMPNO', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">비고</label>
-													<input 
-														type="text"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.ETC || ''}
-														onChange={(e) => handleNewContractFieldChange('ETC', e.target.value)}
-													/>
-												</div>
-											</>
 										) : isEditing && editedContractInfo ? (
 											<>
 												{/* 계약정보 수정 폼 */}
@@ -1952,7 +1745,7 @@ export default function MemberContractInfo() {
 												</div>
 											</>
 										) : !contractInfo ? (
-											<div className="col-span-12 text-center py-4 text-blue-900/60">계약 정보가 없습니다</div>
+											<div className="col-span-12 text-center py-8 text-blue-900/70 text-base font-medium">계약서가 없습니다</div>
 										) : (
 											<>
 												{/* 계약정보 조회 모드 */}
@@ -2156,8 +1949,241 @@ export default function MemberContractInfo() {
 								</div>
 							</div>
 						</div>
+						</div>
+						{!selectedMember && (
+							<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+								<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
+									수급자를 선택해주세요
+								</p>
+							</div>
+						)}
 					</section>
 			</div>
+
+			{isCreating && selectedMember && (
+				<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+					<div
+						className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg border border-blue-300 bg-white shadow-xl overflow-hidden"
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="contract-create-title"
+					>
+						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
+							<h2 id="contract-create-title" className="text-base font-semibold text-blue-900">
+								계약정보 생성
+							</h2>
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									onClick={handleCreateSave}
+									disabled={contractLoading}
+									className="px-3 py-1.5 text-sm border border-blue-500 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+								>
+									{contractLoading ? '저장 중...' : '저장'}
+								</button>
+								<button
+									type="button"
+									onClick={handleCreateCancel}
+									className="px-3 py-1.5 text-sm border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900"
+								>
+									취소
+								</button>
+							</div>
+						</div>
+						<div className="p-4 overflow-y-auto flex-1 min-h-0">
+							<div className="grid grid-cols-12 gap-3">
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자명</label>
+									<input className="w-full border border-blue-300 rounded px-2 py-1 bg-white" value={selectedMember?.P_NM || ''} readOnly />
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입·퇴소 상태</label>
+									<div className="flex items-center min-h-[34px] px-2 border border-blue-300 rounded bg-slate-50">
+										<span
+											className={`inline-block px-2 py-0.5 rounded text-sm font-medium ${
+												selectedMember?.P_ST === '1'
+													? 'bg-green-100 text-green-800'
+													: selectedMember?.P_ST === '9'
+														? 'bg-slate-200 text-slate-800'
+														: 'bg-gray-100 text-gray-600'
+											}`}
+										>
+											{getPSTLabel(selectedMember?.P_ST)}
+										</span>
+									</div>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입소일자</label>
+									<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_SDT) || '-'} readOnly />
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">퇴소일자</label>
+									<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_EDT) || '-'} readOnly />
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">계약일자</label>
+									<input
+										type="date"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.CDT || ''}
+										onChange={(e) => handleNewContractFieldChange('CDT', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 시작일</label>
+									<input
+										type="date"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.SVSDT || ''}
+										onChange={(e) => handleNewContractFieldChange('SVSDT', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 종료일</label>
+									<input
+										type="date"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.SVEDT || ''}
+										onChange={(e) => handleNewContractFieldChange('SVEDT', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자 부담율 구분</label>
+									<select
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.USRGU || ''}
+										onChange={(e) => handleNewUsrguChange(e.target.value)}
+									>
+										<option value="">선택</option>
+										<option value="1">일반 (보험자 80% / 수급자 20%)</option>
+										<option value="2">40%경감 (보험자 88% / 수급자 12%)</option>
+										<option value="3">60%경감 (보험자 92% / 수급자 8%)</option>
+										<option value="4">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+									</select>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+										보험자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
+									</label>
+									<input
+										readOnly
+										tabIndex={-1}
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
+										value={
+											newContractInfo.INSPER != null && newContractInfo.INSPER !== ''
+												? `${newContractInfo.INSPER}%`
+												: '—'
+										}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+										수급자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
+									</label>
+									<input
+										readOnly
+										tabIndex={-1}
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
+										value={
+											newContractInfo.USRPER != null && newContractInfo.USRPER !== ''
+												? `${newContractInfo.USRPER}%`
+												: '—'
+										}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+										수급자 내용 <span className="text-blue-700/80 font-normal">(기타금액내역)</span>
+									</label>
+									<input
+										type="text"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.USRINFO || ''}
+										onChange={(e) => handleNewContractFieldChange('USRINFO', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">식대 1회</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.EAMT || ''}
+										onChange={(e) => handleNewContractFieldChange('EAMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">간식비 1회</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.ETAMT || ''}
+										onChange={(e) => handleNewContractFieldChange('ETAMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">상급병실료</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.ESAMT || ''}
+										onChange={(e) => handleNewContractFieldChange('ESAMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기타금액</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.USRINFO_AMT || ''}
+										onChange={(e) => handleNewContractFieldChange('USRINFO_AMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">결제방법</label>
+									<select
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.CHGU || ''}
+										onChange={(e) => handleNewContractFieldChange('CHGU', e.target.value)}
+									>
+										<option value="">선택</option>
+										<option value="1">카드</option>
+										<option value="2">현금</option>
+									</select>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원명</label>
+									<EmployeeNameSearchField
+										empName={newContractInfo.INEMPNM || ''}
+										onPatch={(p) => setNewContractInfo((prev) => ({ ...prev, ...p }))}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원번호</label>
+									<input
+										type="text"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.INEMPNO || ''}
+										onChange={(e) => handleNewContractFieldChange('INEMPNO', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">비고</label>
+									<input
+										type="text"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.ETC || ''}
+										onChange={(e) => handleNewContractFieldChange('ETC', e.target.value)}
+									/>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
     );
 }
