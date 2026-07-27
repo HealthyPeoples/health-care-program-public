@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdEmptyParse as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE = '[돌봄시설DB].[dbo].[F14110]';
 
 const SH_GU_LABELS = {
@@ -76,10 +77,7 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -109,10 +107,7 @@ export async function GET(req) {
       const dates = (dateResult.recordset || [])
         .map((r) => normalizeYmd(r.SH_DT))
         .filter(Boolean);
-      return new Response(JSON.stringify({ success: true, data: dates, count: dates.length }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true, data: dates, count: dates.length });
     }
 
     const result = await request.query(`
@@ -127,16 +122,10 @@ export async function GET(req) {
 
     const data = (result.recordset || []).map(mapRow);
 
-    return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
     console.error('F14110 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -182,20 +171,14 @@ export async function POST(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     if (action === 'delete') {
       const shDt = normalizeYmd(body.SH_DT ?? body.shDt ?? body.planDate);
       const shSeq = parseInt(String(body.SH_SEQ ?? body.shSeq ?? ''), 10);
       if (!shDt || !Number.isFinite(shSeq)) {
-        return new Response(JSON.stringify({ success: false, error: 'SH_DT, SH_SEQ가 필요합니다.' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: 'SH_DT, SH_SEQ가 필요합니다.' }, 400);
       }
       const del = pool.request();
       del.input('ANCD', gate.sessionAncd);
@@ -207,10 +190,7 @@ export async function POST(req) {
           AND CONVERT(date, [SH_DT]) = CONVERT(date, @SH_DT)
           AND [SH_SEQ] = @SH_SEQ
       `);
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true });
     }
 
     if (action === 'copy') {
@@ -218,10 +198,7 @@ export async function POST(req) {
       const srcSeq = parseInt(String(body.SH_SEQ ?? body.shSeq ?? ''), 10);
       const targetDt = normalizeYmd(body.copyDate ?? body.targetDate ?? body.SH_DT_COPY);
       if (!srcDt || !Number.isFinite(srcSeq) || !targetDt) {
-        return new Response(JSON.stringify({ success: false, error: '원본 일자·일련번호와 복사일자가 필요합니다.' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '원본 일자·일련번호와 복사일자가 필요합니다.' }, 400);
       }
 
       const sel = pool.request();
@@ -237,10 +214,7 @@ export async function POST(req) {
       `);
       const src = srcResult.recordset?.[0];
       if (!src) {
-        return new Response(JSON.stringify({ success: false, error: '복사할 일정을 찾을 수 없습니다.' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '복사할 일정을 찾을 수 없습니다.' }, 404);
       }
 
       const newSeq = await nextSeq(pool, gate.sessionAncd, targetDt);
@@ -258,18 +232,12 @@ export async function POST(req) {
         )
       `);
 
-      return new Response(
-        JSON.stringify({ success: true, SH_DT: targetDt, SH_SEQ: newSeq }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonOk({ success: true, SH_DT: targetDt, SH_SEQ: newSeq });
     }
 
     const shDt = normalizeYmd(body.SH_DT ?? body.shDt ?? body.planDate);
     if (!shDt) {
-      return new Response(JSON.stringify({ success: false, error: '계획일자(SH_DT)가 필요합니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '계획일자(SH_DT)가 필요합니다.' }, 400);
     }
 
     const guInfo = resolveShGu(body);
@@ -277,10 +245,7 @@ export async function POST(req) {
     if (action === 'update') {
       const shSeq = parseInt(String(body.SH_SEQ ?? body.shSeq ?? ''), 10);
       if (!Number.isFinite(shSeq)) {
-        return new Response(JSON.stringify({ success: false, error: 'SH_SEQ가 필요합니다.' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: 'SH_SEQ가 필요합니다.' }, 400);
       }
 
       const upd = pool.request();
@@ -305,16 +270,10 @@ export async function POST(req) {
       `);
 
       if (!result.rowsAffected?.[0]) {
-        return new Response(JSON.stringify({ success: false, error: '수정할 일정을 찾을 수 없습니다.' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '수정할 일정을 찾을 수 없습니다.' }, 404);
       }
 
-      return new Response(JSON.stringify({ success: true, SH_DT: shDt, SH_SEQ: shSeq }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true, SH_DT: shDt, SH_SEQ: shSeq });
     }
 
     // create
@@ -333,15 +292,9 @@ export async function POST(req) {
       )
     `);
 
-    return new Response(
-      JSON.stringify({ success: true, SH_DT: shDt, SH_SEQ: newSeq }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({ success: true, SH_DT: shDt, SH_SEQ: newSeq });
   } catch (err) {
     console.error('F14110 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }

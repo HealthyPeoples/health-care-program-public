@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { jsonError } from '../../../utils/apiResponse';
 export async function POST(req) {
   try {
     const response = NextResponse.json(
@@ -14,10 +15,7 @@ export async function POST(req) {
     return response;
   } catch (err) {
     console.error('로그아웃 오류:', err);
-    return NextResponse.json(
-      { success: false, message: '로그아웃 처리 중 오류가 발생했습니다.' },
-      { status: 500 }
-    );
+    return jsonError({ success: false, message: '로그아웃 처리 중 오류가 발생했습니다.' });
   }
 }
 

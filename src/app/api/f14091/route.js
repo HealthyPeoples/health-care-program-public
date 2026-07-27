@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 // F14091 조회
 // GET /api/f14091?yyyymm=YYYYMM&pnum=PNUM
 export async function GET(req) {
@@ -15,18 +16,12 @@ export async function GET(req) {
 
     const yyyymm = String(yyyymmRaw || '').replace(/\D/g, '');
     if (!yyyymm || !/^\d{6}$/.test(String(yyyymm)) || !pnum) {
-      return new Response(JSON.stringify({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -52,16 +47,10 @@ export async function GET(req) {
     const result = await request.query(query);
     const row = (result.recordset && result.recordset[0]) ? result.recordset[0] : null;
 
-    return new Response(JSON.stringify({ success: true, data: row }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true, data: row });
   } catch (err) {
     console.error('F14091 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -80,10 +69,7 @@ export async function POST(req) {
 
     const yyyymm = String(yyyymmRaw || '').replace(/\D/g, '');
     if (!yyyymm || !/^\d{6}$/.test(String(yyyymm)) || !pnum) {
-      return new Response(JSON.stringify({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }, 400);
     }
 
     const body = await req.json().catch(() => ({}));
@@ -94,10 +80,7 @@ export async function POST(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -128,16 +111,13 @@ export async function POST(req) {
 
     await request.query(query);
 
-    return new Response(JSON.stringify({
+    return jsonOk({
       success: true,
       data: { ANCD: gate.sessionAncd, YYYYMM: String(yyyymm), PNUM: String(pnum), PH_VIEW, NS_VIEW, FN_VIEW, RG_VIEW }
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
   } catch (err) {
     console.error('F14091 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 

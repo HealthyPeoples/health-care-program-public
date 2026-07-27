@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 
 import { normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F01001]';
 
 
@@ -23,10 +24,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -60,16 +58,10 @@ export async function GET(req) {
 			URDT: normalizeYmd(r.URDT),
 		}));
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F01001 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -82,18 +74,12 @@ export async function POST(req) {
 		const body = await req.json().catch(() => ({}));
 		const code = truncStr(body?.CODE ?? body?.code, 2);
 		if (!code) {
-			return new Response(JSON.stringify({ success: false, error: 'CODE(코드구분)는 필수입니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'CODE(코드구분)는 필수입니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const dsc = truncStr(body?.DSC ?? body?.dsc, 100);
@@ -130,16 +116,10 @@ export async function POST(req) {
 				);
 		`);
 
-		return new Response(JSON.stringify({ success: true, CODE: code.toUpperCase() }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, CODE: code.toUpperCase() });
 	} catch (err) {
 		console.error('F01001 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -162,18 +142,12 @@ export async function DELETE(req) {
 		);
 
 		if (!code) {
-			return new Response(JSON.stringify({ success: false, error: 'code 파라미터가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'code 파라미터가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		if (hard) {
@@ -194,21 +168,15 @@ export async function DELETE(req) {
 
 			const groupAffected = groupRes?.rowsAffected?.[0] ?? 0;
 			if (!groupAffected) {
-				return new Response(JSON.stringify({ success: false, error: '삭제할 코드구분을 찾을 수 없습니다.' }), {
-					status: 404,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '삭제할 코드구분을 찾을 수 없습니다.' }, 404);
 			}
 
-			return new Response(
-				JSON.stringify({
+			return jsonOk({
 					success: true,
 					hard: true,
 					CODE: code,
 					deletedDetails: detailRes?.rowsAffected?.[0] ?? 0,
-				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+				});
 		}
 
 		const result = await pool
@@ -222,21 +190,12 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 코드구분을 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 코드구분을 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true, CODE: code }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, CODE: code });
 	} catch (err) {
 		console.error('F01001 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

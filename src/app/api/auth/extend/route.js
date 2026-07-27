@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { jsonError } from '../../../../utils/apiResponse';
 export async function POST(req) {
   try {
     const token = req.cookies.get('auth_token')?.value;
     const userInfo = req.cookies.get('user_info')?.value;
 
     if (!token || !userInfo) {
-      return NextResponse.json(
-        { success: false, message: '로그인 정보가 없습니다.' },
-        { status: 401 }
-      );
+      return jsonError({ success: false, message: '로그인 정보가 없습니다.' }, 401);
     }
 
     // 사용자 정보 파싱
@@ -17,10 +15,7 @@ export async function POST(req) {
     try {
       user = JSON.parse(userInfo);
     } catch (parseError) {
-      return NextResponse.json(
-        { success: false, message: '사용자 정보 파싱 오류' },
-        { status: 400 }
-      );
+      return jsonError({ success: false, message: '사용자 정보 파싱 오류' }, 400);
     }
 
     // 새로운 만료 시간 설정 (24시간)
@@ -63,10 +58,7 @@ export async function POST(req) {
     return response;
   } catch (err) {
     console.error('로그인 연장 오류:', err);
-    return NextResponse.json(
-      { success: false, message: '로그인 연장 처리 중 오류가 발생했습니다.' },
-      { status: 500 }
-    );
+    return jsonError({ success: false, message: '로그인 연장 처리 중 오류가 발생했습니다.' });
   }
 }
 

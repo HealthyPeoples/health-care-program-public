@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F71040]';
 
 
@@ -27,10 +28,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -59,16 +57,10 @@ export async function GET(req) {
 			INDT: normalizeYmd(row.INDT),
 		}));
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F71040 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -85,24 +77,15 @@ export async function POST(req) {
 		const phone = trunc(body?.P_PHONE ?? body?.pPhone ?? body?.phone, 20);
 		const name = trunc(body?.P_NM ?? body?.pNm ?? body?.name, 20);
 		if (!phone) {
-			return new Response(JSON.stringify({ success: false, error: '핸드폰번호를 입력해주세요.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '핸드폰번호를 입력해주세요.' }, 400);
 		}
 		if (!name) {
-			return new Response(JSON.stringify({ success: false, error: '이름을 입력해주세요.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '이름을 입력해주세요.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -128,10 +111,7 @@ export async function POST(req) {
 					WHERE [ANCD] = @ANCD AND [P_PHONE] = @P_PHONE
 				`);
 			if (dup.recordset?.[0]) {
-				return new Response(
-					JSON.stringify({ success: false, error: `이미 등록된 핸드폰번호입니다: ${phone}` }),
-					{ status: 409, headers: { 'Content-Type': 'application/json' } }
-				);
+				return jsonError({ success: false, error: `이미 등록된 핸드폰번호입니다: ${phone}` }, 409);
 			}
 
 			await pool
@@ -150,10 +130,7 @@ export async function POST(req) {
 					)
 				`);
 
-			return new Response(
-				JSON.stringify({ success: true, created: true, P_PHONE: phone }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, created: true, P_PHONE: phone });
 		}
 
 		// 전화 변경 시 중복 체크
@@ -167,10 +144,7 @@ export async function POST(req) {
 					WHERE [ANCD] = @ANCD AND [P_PHONE] = @P_PHONE
 				`);
 			if (dup.recordset?.[0]) {
-				return new Response(
-					JSON.stringify({ success: false, error: `이미 등록된 핸드폰번호입니다: ${phone}` }),
-					{ status: 409, headers: { 'Content-Type': 'application/json' } }
-				);
+				return jsonError({ success: false, error: `이미 등록된 핸드폰번호입니다: ${phone}` }, 409);
 			}
 		}
 
@@ -195,10 +169,7 @@ export async function POST(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '수정할 봉사자 정보를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '수정할 봉사자 정보를 찾을 수 없습니다.' }, 404);
 		}
 
 		// 전화 변경 시 실적 테이블 키도 갱신
@@ -215,16 +186,10 @@ export async function POST(req) {
 				`);
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, created: false, P_PHONE: phone }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, created: false, P_PHONE: phone });
 	} catch (err) {
 		console.error('F71040 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -241,18 +206,12 @@ export async function DELETE(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!phone) {
-			return new Response(JSON.stringify({ success: false, error: 'phone이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'phone이 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -266,13 +225,10 @@ export async function DELETE(req) {
 				WHERE [ANCD] = @ANCD AND [P_PHONE] = @P_PHONE
 			`);
 		if (child.recordset?.[0]) {
-			return new Response(
-				JSON.stringify({
+			return jsonError({
 					success: false,
 					error: '해당 봉사자에 봉사실적이 있어 삭제할 수 없습니다. 실적을 먼저 삭제해주세요.',
-				}),
-				{ status: 409, headers: { 'Content-Type': 'application/json' } }
-			);
+				}, 409);
 		}
 
 		const result = await pool
@@ -286,21 +242,12 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 봉사자 정보를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 봉사자 정보를 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true, P_PHONE: phone }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, P_PHONE: phone });
 	} catch (err) {
 		console.error('F71040 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

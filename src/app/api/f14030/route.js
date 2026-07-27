@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdStrict: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -60,24 +61,15 @@ export async function GET(req) {
     const s = normalizeYmd(startDate);
     const e = normalizeYmd(endDate);
     if (!s || !e) {
-      return new Response(JSON.stringify({ success: false, error: 'startDate, endDate(yyyy-mm-dd)가 필요합니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'startDate, endDate(yyyy-mm-dd)가 필요합니다.' }, 400);
     }
     if (s > e) {
-      return new Response(JSON.stringify({ success: false, error: '시작일이 종료일보다 클 수 없습니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '시작일이 종료일보다 클 수 없습니다.' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -99,20 +91,14 @@ export async function GET(req) {
       ORDER BY TRY_CONVERT(DATE, LTRIM(RTRIM([SVDT]))) DESC, [SVSTM] ASC, [DSEQ] ASC
     `);
 
-    return new Response(
-      JSON.stringify({
+    return jsonOk({
         success: true,
         data: result.recordset || [],
         count: result.recordset ? result.recordset.length : 0,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+      });
   } catch (err) {
     console.error('F14030 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -128,42 +114,27 @@ export async function POST(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     if (action === 'delete') {
       const dseq = parseInt(String(body.dseq ?? body.DSEQ ?? ''), 10);
       if (Number.isNaN(dseq)) {
-        return new Response(JSON.stringify({ success: false, error: '삭제할 DSEQ가 필요합니다.' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '삭제할 DSEQ가 필요합니다.' }, 400);
       }
       const rq = pool.request();
       rq.input('ANCD', gate.sessionAncd);
       rq.input('DSEQ', dseq);
       const del = await rq.query(`DELETE FROM ${TABLE} WHERE [ANCD] = @ANCD AND [DSEQ] = @DSEQ`);
       if (!del.rowsAffected?.[0]) {
-        return new Response(JSON.stringify({ success: false, error: '삭제할 데이터가 없습니다.' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '삭제할 데이터가 없습니다.' }, 404);
       }
-      return new Response(JSON.stringify({ success: true, action: 'delete' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true, action: 'delete' });
     }
 
     const SVDT = normalizeYmd(body.SVDT ?? body.svdT);
     if (!SVDT) {
-      return new Response(JSON.stringify({ success: false, error: '서비스일자(SVDT)가 필요합니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '서비스일자(SVDT)가 필요합니다.' }, 400);
     }
 
     const SVSTM = truncStr(normalizeTime5(body.SVSTM ?? body.svstm), 5);
@@ -247,18 +218,12 @@ export async function POST(req) {
         )
       `);
 
-      return new Response(JSON.stringify({ success: true, action: 'create', dseq: nextSeq }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true, action: 'create', dseq: nextSeq });
     }
 
     const dseq = parseInt(String(body.dseq ?? body.DSEQ ?? ''), 10);
     if (Number.isNaN(dseq)) {
-      return new Response(JSON.stringify({ success: false, error: '저장 시 dseq가 필요합니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '저장 시 dseq가 필요합니다.' }, 400);
     }
 
     const up = pool.request();
@@ -316,21 +281,12 @@ export async function POST(req) {
     `);
 
     if (!upd.rowsAffected?.[0]) {
-      return new Response(JSON.stringify({ success: false, error: '해당 일련번호의 데이터가 없습니다.' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '해당 일련번호의 데이터가 없습니다.' }, 404);
     }
 
-    return new Response(JSON.stringify({ success: true, action: 'save', dseq }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true, action: 'save', dseq });
   } catch (err) {
     console.error('F14030 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }

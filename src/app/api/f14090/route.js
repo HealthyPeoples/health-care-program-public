@@ -1,6 +1,7 @@
 import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 function normalizeYyyymm(raw) {
 	const yyyymm = String(raw || '').replace(/\D/g, '');
 	if (!/^\d{6}$/.test(yyyymm)) return '';
@@ -36,10 +37,7 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -48,10 +46,7 @@ export async function GET(req) {
     let yyyymm = String(yyyymmRaw || '').replace(/\D/g, '');
     if (yyyymm) {
       if (!/^\d{6}$/.test(yyyymm)) {
-        return new Response(JSON.stringify({ success: false, error: 'yyyymm(YYYYMM) 형식이 올바르지 않습니다' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonError({ success: false, error: 'yyyymm(YYYYMM) 형식이 올바르지 않습니다' }, 400);
       }
     } else {
       // 최신 YYYYMM 찾기
@@ -63,10 +58,7 @@ export async function GET(req) {
 
       const latest = latestResult?.recordset?.[0]?.LATEST_YYYYMM;
       if (latest == null) {
-        return new Response(JSON.stringify({ success: true, data: [], count: 0, yyyymm: null }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonOk({ success: true, data: [], count: 0, yyyymm: null });
       }
       yyyymm = String(latest);
     }
@@ -94,16 +86,10 @@ export async function GET(req) {
     `;
     const result = await request.query(query);
 
-    return new Response(
-      JSON.stringify({ success: true, data: result.recordset || [], count: result.recordset ? result.recordset.length : 0, yyyymm }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({ success: true, data: result.recordset || [], count: result.recordset ? result.recordset.length : 0, yyyymm });
   } catch (err) {
     console.error('F14090 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -122,20 +108,14 @@ export async function POST(req) {
 
     const yyyymm = String(yyyymmRaw || '').replace(/\D/g, '');
     if (!yyyymm || !/^\d{6}$/.test(yyyymm) || !pnum) {
-      return new Response(JSON.stringify({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }, 400);
     }
 
     const body = await req.json().catch(() => ({}));
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -183,16 +163,10 @@ export async function POST(req) {
 
     await request.query(query);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F14090 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -213,27 +187,18 @@ export async function PUT(req) {
 
 		const yyyymm = normalizeYyyymm(yyyymmRaw);
 		if (!yyyymm) {
-			return new Response(
-				JSON.stringify({ success: false, error: 'yyyymm(YYYYMM) 파라미터가 필요합니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: 'yyyymm(YYYYMM) 파라미터가 필요합니다' }, 400);
 		}
 
 		const { frdt, todt } = monthRangeFromYyyymm(yyyymm);
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = Number(gate.sessionAncd);
 		if (!Number.isFinite(ancd)) {
-			return new Response(
-				JSON.stringify({ success: false, error: '세션 기관코드(ANCD)가 올바르지 않습니다' }),
-				{ status: 401, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '세션 기관코드(ANCD)가 올바르지 않습니다' }, 401);
 		}
 
 		await pool
@@ -244,22 +209,16 @@ export async function PUT(req) {
 			.input('pv_todt', sql.Date, todt)
 			.execute('[돌봄시설DB].[dbo].[Usp_P14090]');
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				ancd,
 				yyyymm,
 				frdt,
 				todt,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('Usp_P14090 집계 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 

@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 
 import { normalizeYmdEmptyParse as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE = '[돌봄시설DB].[dbo].[F11060]';
 
 function truncStr(v, max) {
@@ -73,10 +74,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const sessionAncd = gate.sessionAncd;
@@ -124,8 +122,7 @@ export async function GET(req) {
 			const ecnt = toInt(cntRes.recordset?.[0]?.ECNT) ?? 0;
 			const scnt = toInt(useRes.recordset?.[0]?.SCNT) ?? 0;
 
-			return new Response(
-				JSON.stringify({
+			return jsonOk({
 					success: true,
 					data: {
 						JODT: date,
@@ -135,9 +132,7 @@ export async function GET(req) {
 						NCNT: ncnt,
 						ECNT: ecnt,
 					},
-				}),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+				});
 		}
 
 		const request = pool.request();
@@ -165,10 +160,7 @@ export async function GET(req) {
 				ORDER BY JODT DESC
 			`);
 			const dates = (dateResult.recordset || []).map((r) => normalizeYmd(r.JODT)).filter(Boolean);
-			return new Response(JSON.stringify({ success: true, data: dates, count: dates.length }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, data: dates, count: dates.length });
 		}
 
 		const result = await request.query(`
@@ -183,16 +175,10 @@ export async function GET(req) {
 		`);
 
 		const data = (result.recordset || []).map(mapRow);
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F11060 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -208,18 +194,12 @@ export async function POST(req) {
 
 		const jodt = normalizeYmd(body?.JODT ?? body?.jodt);
 		if (!jodt) {
-			return new Response(JSON.stringify({ success: false, error: '업무일자가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '업무일자가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -239,16 +219,10 @@ export async function POST(req) {
 		const isUpdate = action === 'update' || (action !== 'create' && exists);
 
 		if (action === 'create' && exists) {
-			return new Response(JSON.stringify({ success: false, error: '해당 업무일자 일지가 이미 존재합니다.' }), {
-				status: 409,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '해당 업무일자 일지가 이미 존재합니다.' }, 409);
 		}
 		if (action === 'update' && !exists) {
-			return new Response(JSON.stringify({ success: false, error: '수정할 업무일지를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '수정할 업무일지를 찾을 수 없습니다.' }, 404);
 		}
 
 		const fcnt = toInt(body?.FCNT ?? body?.fcnt);
@@ -335,10 +309,7 @@ export async function POST(req) {
 					WHERE [ANCD]=@ANCD AND CONVERT(date, [JODT])=CONVERT(date, @JODT)
 				`);
 
-			return new Response(JSON.stringify({ success: true, updated: true, JODT: jodt }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, updated: true, JODT: jodt });
 		}
 
 		await pool
@@ -382,16 +353,10 @@ export async function POST(req) {
 				)
 			`);
 
-		return new Response(JSON.stringify({ success: true, created: true, JODT: jodt }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, created: true, JODT: jodt });
 	} catch (err) {
 		console.error('F11060 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -408,18 +373,12 @@ export async function DELETE(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!jodt) {
-			return new Response(JSON.stringify({ success: false, error: 'jodt가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'jodt가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const result = await pool
@@ -433,21 +392,12 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 업무일지를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 업무일지를 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true, JODT: jodt }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, JODT: jodt });
 	} catch (err) {
 		console.error('F11060 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

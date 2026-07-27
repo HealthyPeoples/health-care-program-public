@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, parseUserInfoCookieValue } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F33040]';
 const DATE_COL = 'CHNG_DT';
 
@@ -86,18 +87,12 @@ export async function GET(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!pnum) {
-			return new Response(JSON.stringify({ success: false, error: 'pnum 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -117,10 +112,7 @@ export async function GET(req) {
 				CHNG_DT: toYmd(r[DATE_COL]),
 				VDT: toYmd(r[DATE_COL]),
 			}));
-			return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, data, count: data.length });
 		}
 
 		let where = `
@@ -132,10 +124,7 @@ export async function GET(req) {
 			const s = ymdToDigits(startDate);
 			const e = ymdToDigits(endDate);
 			if (!/^\d{8}$/.test(s) || !/^\d{8}$/.test(e)) {
-				return new Response(JSON.stringify({ success: false, error: 'startDate/endDate 형식이 올바르지 않습니다 (yyyy-mm-dd)' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: 'startDate/endDate 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
 			}
 			request.input('START', s);
 			request.input('END', e);
@@ -143,18 +132,12 @@ export async function GET(req) {
 		} else if (vdt) {
 			const d = ymdToDigits(vdt);
 			if (!/^\d{8}$/.test(d)) {
-				return new Response(JSON.stringify({ success: false, error: 'vdt 형식이 올바르지 않습니다 (yyyy-mm-dd)' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: 'vdt 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
 			}
 			request.input('CHNG_DT', d);
 			where += ` AND CONVERT(char(8), t.[${DATE_COL}], 112) = @CHNG_DT`;
 		} else {
-			return new Response(JSON.stringify({ success: false, error: 'vdt 또는 startDate/endDate 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'vdt 또는 startDate/endDate 파라미터가 필요합니다' }, 400);
 		}
 
 		const query = `
@@ -178,16 +161,10 @@ export async function GET(req) {
 		const result = await request.query(query);
 		const data = (result.recordset || []).map(mapRow);
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F33040 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -205,34 +182,22 @@ export async function POST(req) {
 		const chngGu = body?.CHNG_GU ?? body?.chngGu;
 
 		if (!pnum || !vdt || !chngGu) {
-			return new Response(JSON.stringify({ success: false, error: 'PNUM, CHNG_DT, CHNG_GU는 필수입니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'PNUM, CHNG_DT, CHNG_GU는 필수입니다' }, 400);
 		}
 
 		const vdtDigits = ymdToDigits(vdt);
 		if (!/^\d{8}$/.test(vdtDigits)) {
-			return new Response(JSON.stringify({ success: false, error: 'CHNG_DT 형식이 올바르지 않습니다 (yyyy-mm-dd)' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'CHNG_DT 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
 		}
 
 		const chng = normalizeChngGu(chngGu);
 		if (!chng) {
-			return new Response(JSON.stringify({ success: false, error: 'CHNG_GU 형식이 올바르지 않습니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'CHNG_GU 형식이 올바르지 않습니다' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const chngEmpno = await resolveChngEmpno(pool, gate.sessionAncd, req, body);
@@ -271,16 +236,10 @@ export async function POST(req) {
 
 		await request.query(query);
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F33040 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -296,27 +255,18 @@ export async function DELETE(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!pnum || !vdt || !chngGu) {
-			return new Response(JSON.stringify({ success: false, error: 'pnum, vdt, chngGu 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'pnum, vdt, chngGu 파라미터가 필요합니다' }, 400);
 		}
 
 		const vdtDigits = ymdToDigits(vdt);
 		const chng = normalizeChngGu(chngGu);
 		if (!/^\d{8}$/.test(vdtDigits) || !chng) {
-			return new Response(JSON.stringify({ success: false, error: '파라미터 형식이 올바르지 않습니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '파라미터 형식이 올바르지 않습니다' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -335,15 +285,9 @@ export async function DELETE(req) {
 
 		await request.query(query);
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F33040 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

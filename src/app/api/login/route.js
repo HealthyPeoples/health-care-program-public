@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 async function fetchAnnmForAncd(pool, ancd) {
   if (!pool || ancd == null || ancd === '') return '';
   try {
@@ -36,10 +37,7 @@ export async function POST(req) {
       
       // 입력값 검증
       if (!ancd || !uid) {
-        return NextResponse.json(
-          { success: false, message: 'ANCD, 아이디를 모두 입력해주세요.' },
-          { status: 400 }
-        );
+        return jsonError({ success: false, message: 'ANCD, 아이디를 모두 입력해주세요.' }, 400);
       }
       
       // 임의의 토큰 생성
@@ -135,25 +133,19 @@ export async function POST(req) {
       
       // 허용된 IP가 아닌 경우 특별한 응답 반환 (클라이언트에서 쿠키 설정하도록)
       if (!isAllowedIp) {
-        return NextResponse.json(
-          { 
+        return jsonOk({ 
             success: true, 
             message: 'IP접근제한으로 데이터 확인불가',
             ipRestricted: true,
             allowMockLogin: true // 클라이언트에서 쿠키 설정하도록 플래그
-          },
-          { status: 200 }
-        );
+          });
       }
     }
 
     // TESTMODE가 비활성화되었거나 허용된 IP인 경우에만 DB 접근
     const pool = await connPool;
     if (!pool) {
-      return NextResponse.json(
-        { success: false, message: '데이터베이스 연결 실패' },
-        { status: 500 }
-      );
+      return jsonError({ success: false, message: '데이터베이스 연결 실패' });
     }
 
     const body = await req.json();
@@ -161,10 +153,7 @@ export async function POST(req) {
 
     // 입력값 검증
     if (!ancd || !uid || !upw) {
-      return NextResponse.json(
-        { success: false, message: 'ANCD, 아이디, 비밀번호를 모두 입력해주세요.' },
-        { status: 400 }
-      );
+      return jsonError({ success: false, message: 'ANCD, 아이디, 비밀번호를 모두 입력해주세요.' }, 400);
     }
 
     // 정상 로그인 처리 (TESTMODE가 비활성화되었거나 허용된 IP인 경우)
@@ -183,19 +172,13 @@ export async function POST(req) {
 
     // 고객코드 또는 사용자ID가 존재하지 않는 경우
     if (userCheckResult.recordset.length === 0) {
-      return NextResponse.json(
-        { success: false, message: '존재하지 않는 계정입니다.' },
-        { status: 401 }
-      );
+      return jsonError({ success: false, message: '존재하지 않는 계정입니다.' }, 401);
     }
 
     // 2단계: 비밀번호 확인
     const storedPassword = userCheckResult.recordset[0].UPW;
     if (storedPassword !== upw) {
-      return NextResponse.json(
-        { success: false, message: '비밀번호가 틀렸습니다.' },
-        { status: 401 }
-      );
+      return jsonError({ success: false, message: '비밀번호가 틀렸습니다.' }, 401);
     }
 
     // 인증 성공
@@ -262,14 +245,11 @@ export async function POST(req) {
       stack: err?.stack,
       name: err?.name
     });
-    return NextResponse.json(
-      { 
+    return jsonError({ 
         success: false, 
         message: '로그인 처리 중 오류가 발생했습니다.',
         error: process.env.NODE_ENV === 'development' ? err?.message : undefined
-      },
-      { status: 500 }
-    );
+      });
   }
 }
 

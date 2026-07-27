@@ -1,6 +1,7 @@
 import { connPool } from '../../../../config/server';
 import { assertAnCdMatchesSession } from '../../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../../utils/apiResponse';
 /**
  * F00120 사용자정보에서 사원명(EMPNM) 부분 검색.
  * 로그인 세션의 ANCD로만 조회합니다. URL의 ancd는 세션과 일치할 때만 허용됩니다.
@@ -16,29 +17,20 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(
-				JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }),
-				{ status: 500, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const q = (searchParams.get('q') || '').trim();
 		const activeOnly = searchParams.get('activeOnly') === '1';
 
 		if (!q) {
-			return new Response(JSON.stringify({ success: true, data: [], count: 0 }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, data: [], count: 0 });
 		}
 
 		const sa = gate.sessionAncd;
 		const ancdNum = typeof sa === 'number' ? sa : parseInt(String(sa), 10);
 		if (Number.isNaN(ancdNum)) {
-			return new Response(
-				JSON.stringify({ success: false, error: 'ancd가 올바르지 않습니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: 'ancd가 올바르지 않습니다' }, 400);
 		}
 
 		let query;
@@ -82,15 +74,9 @@ export async function GET(req) {
 		const result = await request.query(query);
 		const recordset = result.recordset || [];
 
-		return new Response(
-			JSON.stringify({ success: true, data: recordset, count: recordset.length }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, data: recordset, count: recordset.length });
 	} catch (err) {
 		console.error('F00120 검색 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

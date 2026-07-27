@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F71031]';
 
 
@@ -67,18 +68,12 @@ export async function GET(req) {
 
 		const gSeq = gSeqRaw != null && gSeqRaw !== '' ? Number(gSeqRaw) : null;
 		if (gSeq == null || !Number.isFinite(gSeq)) {
-			return new Response(JSON.stringify({ success: false, error: 'gSeq가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'gSeq가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -108,16 +103,10 @@ export async function GET(req) {
 
 		const data = (result.recordset || []).map(mapRow);
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F71031 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -134,24 +123,15 @@ export async function POST(req) {
 		const gSeq = Number(body?.G_SEQ ?? body?.gSeq);
 		const gSdt = normalizeYmd(body?.G_SDT ?? body?.gSdt ?? body?.date);
 		if (!Number.isFinite(gSeq)) {
-			return new Response(JSON.stringify({ success: false, error: 'G_SEQ(단체)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'G_SEQ(단체)가 필요합니다.' }, 400);
 		}
 		if (!gSdt) {
-			return new Response(JSON.stringify({ success: false, error: '봉사일자를 입력해주세요.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '봉사일자를 입력해주세요.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -184,10 +164,7 @@ export async function POST(req) {
 				WHERE [ANCD] = @ANCD AND [G_SEQ] = @G_SEQ
 			`);
 		if (!groupCheck.recordset?.[0]) {
-			return new Response(JSON.stringify({ success: false, error: '선택한 단체 정보를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '선택한 단체 정보를 찾을 수 없습니다.' }, 404);
 		}
 
 		// 동일 단체·일자 기존 건 조회 (복합키에 G_SDT가 없을 수 있어 날짜로 매칭)
@@ -239,10 +216,7 @@ export async function POST(req) {
 						AND CONVERT(date, [G_SDT]) = CONVERT(date, @G_SDT)
 				`);
 
-			return new Response(
-				JSON.stringify({ success: true, created: false, G_SEQ: gSeq, G_SDT: gSdt }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, created: false, G_SEQ: gSeq, G_SDT: gSdt });
 		}
 
 		// 신규: PK가 (ANCD, G_SEQ)만이면 단체당 1건만 가능 → 동일 G_SEQ로 INSERT 시도
@@ -276,33 +250,24 @@ export async function POST(req) {
 					)
 				`);
 
-			return new Response(
-				JSON.stringify({ success: true, created: true, G_SEQ: gSeq, G_SDT: gSdt }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, created: true, G_SEQ: gSeq, G_SDT: gSdt });
 		} catch (insertErr) {
 			// PK 충돌: 동일 G_SEQ에 이미 다른 일자 실적이 있는 경우 → 해당 행 UPDATE로 전환하지 않고
 			// 단체 FK 유지가 불가하면 에러 메시지
 			const msg = String(insertErr?.message || insertErr || '');
 			if (/PRIMARY KEY|duplicate|UNIQUE|위반/i.test(msg)) {
-				return new Response(
-					JSON.stringify({
+				return jsonError({
 						success: false,
 						error:
 							'동일 단체(G_SEQ)로 추가 실적을 저장할 수 없습니다. DB 키가 (ANCD, G_SEQ)만인 경우 단체당 실적 1건만 가능합니다. (ANCD, G_SEQ, G_SDT) 복합키로 변경이 필요할 수 있습니다.',
 						details: msg,
-					}),
-					{ status: 409, headers: { 'Content-Type': 'application/json' } }
-				);
+					}, 409);
 			}
 			throw insertErr;
 		}
 	} catch (err) {
 		console.error('F71031 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -320,18 +285,12 @@ export async function DELETE(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!Number.isFinite(gSeq) || !gSdt) {
-			return new Response(JSON.stringify({ success: false, error: 'gSeq, gSdt가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'gSeq, gSdt가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -349,21 +308,12 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 봉사실적을 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 봉사실적을 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true, G_SEQ: gSeq, G_SDT: gSdt }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, G_SEQ: gSeq, G_SDT: gSdt });
 	} catch (err) {
 		console.error('F71031 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

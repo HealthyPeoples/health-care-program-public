@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdShort as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F32010]';
 
 
@@ -29,18 +30,12 @@ export async function GET(req) {
     if (!gate.ok) return gate.response;
 
     if (!pnum) {
-      return new Response(JSON.stringify({ success: false, error: 'pnum 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -51,10 +46,7 @@ export async function GET(req) {
     const edt = normalizeYmd(edtRaw);
     if (sdt && edt) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(sdt) || !/^\d{4}-\d{2}-\d{2}$/.test(edt)) {
-        return new Response(JSON.stringify({ success: false, error: 'sdt/edt는 YYYY-MM-DD 형식이어야 합니다' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonError({ success: false, error: 'sdt/edt는 YYYY-MM-DD 형식이어야 합니다' }, 400);
       }
       request.input('SDT', sdt);
       request.input('EDT', edt);
@@ -72,10 +64,7 @@ export async function GET(req) {
       const data = row
         ? { ...row, SDT: normalizeYmd(row.SDT), EDT: normalizeYmd(row.EDT), INDT: normalizeYmd(row.INDT) }
         : null;
-      return new Response(JSON.stringify({ success: true, data }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonOk({ success: true, data });
     }
 
     const result = await request.query(`
@@ -93,16 +82,10 @@ export async function GET(req) {
       INDT: normalizeYmd(r.INDT),
     }));
 
-    return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
     console.error('F32010 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -123,27 +106,18 @@ export async function POST(req) {
     const edtRaw = pickBody(body, 'EDT', null);
 
     if (!pnum || !sdtRaw || !edtRaw) {
-      return new Response(JSON.stringify({ success: false, error: 'PNUM, SDT, EDT는 필수입니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'PNUM, SDT, EDT는 필수입니다' }, 400);
     }
 
     const sdt = normalizeYmd(sdtRaw);
     const edt = normalizeYmd(edtRaw);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(sdt) || !/^\d{4}-\d{2}-\d{2}$/.test(edt)) {
-      return new Response(JSON.stringify({ success: false, error: 'SDT/EDT는 YYYY-MM-DD 형식이어야 합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'SDT/EDT는 YYYY-MM-DD 형식이어야 합니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -205,16 +179,10 @@ export async function POST(req) {
 
     await request.query(query);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F32010 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -232,27 +200,18 @@ export async function DELETE(req) {
     if (!gate.ok) return gate.response;
 
     if (!pnum || !sdtRaw || !edtRaw) {
-      return new Response(JSON.stringify({ success: false, error: 'pnum, sdt, edt 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'pnum, sdt, edt 파라미터가 필요합니다' }, 400);
     }
 
     const sdt = normalizeYmd(sdtRaw);
     const edt = normalizeYmd(edtRaw);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(sdt) || !/^\d{4}-\d{2}-\d{2}$/.test(edt)) {
-      return new Response(JSON.stringify({ success: false, error: 'sdt/edt는 YYYY-MM-DD 형식이어야 합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'sdt/edt는 YYYY-MM-DD 형식이어야 합니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -269,16 +228,10 @@ export async function DELETE(req) {
         AND CONVERT(date, [EDT]) = CONVERT(date, @EDT)
     `);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F32010 삭제 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 

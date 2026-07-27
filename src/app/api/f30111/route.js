@@ -1,16 +1,10 @@
 import { connPool } from "../../../config/server";
 import { getSessionAncd, ancdEquals } from "../../../config/sessionServer";
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 function requireSession(req) {
   const sessionAncd = getSessionAncd(req);
-  if (sessionAncd == null) return { error: json({ success: false, error: "로그인이 필요합니다." }, 401) };
+  if (sessionAncd == null) return { error: jsonError({ success: false, error: "로그인이 필요합니다." }, 401) };
   return { sessionAncd };
 }
 
@@ -79,14 +73,14 @@ export async function GET(req) {
     if (error) return error;
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: "데이터베이스 연결 실패" }, 500);
+    if (!pool) return jsonError({ success: false, error: "데이터베이스 연결 실패" });
 
     const sp = req.nextUrl.searchParams;
     const mode = (sp.get("mode") || "detail").trim();
     const pnum = (sp.get("pnum") || "").trim();
     const eadt = normalizeDateString(sp.get("eadt") || "");
 
-    if (!pnum) return json({ success: false, error: "pnum이 필요합니다" }, 400);
+    if (!pnum) return jsonError({ success: false, error: "pnum이 필요합니다" }, 400);
 
     if (mode === "dates") {
       const result = await pool
@@ -99,10 +93,10 @@ export async function GET(req) {
           WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
           ORDER BY EADT DESC
         `);
-      return json({ success: true, data: result.recordset || [] });
+      return jsonOk({ success: true, data: result.recordset || [] });
     }
 
-    if (!eadt) return json({ success: false, error: "eadt가 필요합니다" }, 400);
+    if (!eadt) return jsonError({ success: false, error: "eadt가 필요합니다" }, 400);
 
     const result = await pool
       .request()
@@ -117,7 +111,7 @@ export async function GET(req) {
       `);
 
     const row = (result.recordset || [])[0] || null;
-    if (!row) return json({ success: true, data: null });
+    if (!row) return jsonOk({ success: true, data: null });
 
     const data = {
       ANCD: row.ANCD,
@@ -138,10 +132,10 @@ export async function GET(req) {
       },
     };
 
-    return json({ success: true, data });
+    return jsonOk({ success: true, data });
   } catch (err) {
     console.error("F30111 GET 오류:", err);
-    return json({ success: false, error: err?.message || "서버 오류", details: String(err) }, 500);
+    return jsonError({ success: false, error: err?.message || "서버 오류", details: String(err) });
   }
 }
 
@@ -151,18 +145,18 @@ export async function POST(req) {
     if (error) return error;
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: "데이터베이스 연결 실패" }, 500);
+    if (!pool) return jsonError({ success: false, error: "데이터베이스 연결 실패" });
 
     const body = await req.json();
     const { ANCD, PNUM, EADT, EADES, ETC, CONF_DATE, CONF_NAME, times } = body || {};
 
     if (ANCD != null && ANCD !== "" && !ancdEquals(ANCD, sessionAncd)) {
-      return json({ success: false, error: "해당 기관에 대한 접근 권한이 없습니다." }, 403);
+      return jsonError({ success: false, error: "해당 기관에 대한 접근 권한이 없습니다." }, 403);
     }
-    if (!PNUM) return json({ success: false, error: "PNUM이 필요합니다" }, 400);
+    if (!PNUM) return jsonError({ success: false, error: "PNUM이 필요합니다" }, 400);
 
     const eadtNorm = normalizeDateString(EADT);
-    if (!eadtNorm) return json({ success: false, error: "EADT가 필요합니다" }, 400);
+    if (!eadtNorm) return jsonError({ success: false, error: "EADT가 필요합니다" }, 400);
 
     const confDateNorm = normalizeDateString(CONF_DATE) || normalizeDateString(new Date().toISOString());
 
@@ -260,10 +254,10 @@ export async function POST(req) {
       END
     `);
 
-    return json({ success: true });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error("F30111 POST 오류:", err);
-    return json({ success: false, error: err?.message || "서버 오류", details: String(err) }, 500);
+    return jsonError({ success: false, error: err?.message || "서버 오류", details: String(err) });
   }
 }
 
@@ -273,13 +267,13 @@ export async function DELETE(req) {
     if (error) return error;
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: "데이터베이스 연결 실패" }, 500);
+    if (!pool) return jsonError({ success: false, error: "데이터베이스 연결 실패" });
 
     const sp = req.nextUrl.searchParams;
     const pnum = (sp.get("pnum") || "").trim();
     const eadt = normalizeDateString(sp.get("eadt") || "");
 
-    if (!pnum || !eadt) return json({ success: false, error: "pnum, eadt가 필요합니다" }, 400);
+    if (!pnum || !eadt) return jsonError({ success: false, error: "pnum, eadt가 필요합니다" }, 400);
 
     await pool
       .request()
@@ -291,10 +285,10 @@ export async function DELETE(req) {
         WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND CONVERT(varchar(10), [EADT], 120) = @EADT
       `);
 
-    return json({ success: true });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error("F30111 DELETE 오류:", err);
-    return json({ success: false, error: err?.message || "서버 오류", details: String(err) }, 500);
+    return jsonError({ success: false, error: err?.message || "서버 오류", details: String(err) });
   }
 }
 

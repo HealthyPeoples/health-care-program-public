@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F33010]';
 
 function toYmd(v) {
@@ -49,13 +50,6 @@ function normalizePnumParam(p) {
   return s;
 }
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
-}
-
 /** 단일 행을 API 응답 형태로 */
 function mapRow(r) {
   const n = normalizeSqlRow(r);
@@ -83,11 +77,11 @@ export async function GET(req) {
     if (!gate.ok) return gate.response;
 
     if (!pnum) {
-      return json({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
+      return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
     }
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: '데이터베이스 연결 실패' }, 500);
+    if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 
     const request = pool.request();
     request.input('ANCD', gate.sessionAncd);
@@ -103,13 +97,13 @@ export async function GET(req) {
       `;
       const result = await request.query(q);
       const rows = (result.recordset || []).map((r) => ({ VDT: toYmd(r.VDT) }));
-      return json({ success: true, data: rows });
+      return jsonOk({ success: true, data: rows });
     }
 
     if (vdt) {
       const d = ymdToDigits(vdt);
       if (!/^\d{8}$/.test(d)) {
-        return json({ success: false, error: 'vdt 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
+        return jsonError({ success: false, error: 'vdt 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
       }
       request.input('VDT', d);
       const q = `
@@ -124,8 +118,8 @@ export async function GET(req) {
       `;
       const result = await request.query(q);
       const row = (result.recordset || [])[0];
-      if (!row) return json({ success: true, data: null });
-      return json({ success: true, data: mapRow(row) });
+      if (!row) return jsonOk({ success: true, data: null });
+      return jsonOk({ success: true, data: mapRow(row) });
     }
 
     const q = `
@@ -139,10 +133,10 @@ export async function GET(req) {
     `;
     const result = await request.query(q);
     const data = (result.recordset || []).map(mapRow);
-    return json({ success: true, data, count: data.length });
+    return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
     console.error('F33010 조회 오류:', err);
-    return json({ success: false, error: err.message, details: String(err) }, 500);
+    return jsonError({ success: false, error: err.message, details: String(err) });
   }
 }
 
@@ -159,16 +153,16 @@ export async function POST(req) {
     const vdt = body?.VDT ?? body?.vdt;
 
     if (!pnum || !vdt) {
-      return json({ success: false, error: 'PNUM, VDT는 필수입니다' }, 400);
+      return jsonError({ success: false, error: 'PNUM, VDT는 필수입니다' }, 400);
     }
 
     const vdtDigits = ymdToDigits(vdt);
     if (!/^\d{8}$/.test(vdtDigits)) {
-      return json({ success: false, error: 'VDT 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
+      return jsonError({ success: false, error: 'VDT 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
     }
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: '데이터베이스 연결 실패' }, 500);
+    if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 
     const pick = (k, def = '') =>
       Object.prototype.hasOwnProperty.call(body || {}, k) ? body[k] : def;
@@ -211,10 +205,10 @@ export async function POST(req) {
 
     await request.query(query);
 
-    return json({ success: true });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F33010 저장 오류:', err);
-    return json({ success: false, error: err.message, details: String(err) }, 500);
+    return jsonError({ success: false, error: err.message, details: String(err) });
   }
 }
 
@@ -229,16 +223,16 @@ export async function DELETE(req) {
     if (!gate.ok) return gate.response;
 
     if (!pnum || !vdt) {
-      return json({ success: false, error: 'pnum, vdt 파라미터가 필요합니다' }, 400);
+      return jsonError({ success: false, error: 'pnum, vdt 파라미터가 필요합니다' }, 400);
     }
 
     const vdtDigits = ymdToDigits(vdt);
     if (!/^\d{8}$/.test(vdtDigits)) {
-      return json({ success: false, error: 'vdt 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
+      return jsonError({ success: false, error: 'vdt 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
     }
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: '데이터베이스 연결 실패' }, 500);
+    if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 
     const request = pool.request();
     request.input('ANCD', gate.sessionAncd);
@@ -254,9 +248,9 @@ export async function DELETE(req) {
 
     await request.query(query);
 
-    return json({ success: true });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F33010 삭제 오류:', err);
-    return json({ success: false, error: err.message, details: String(err) }, 500);
+    return jsonError({ success: false, error: err.message, details: String(err) });
   }
 }

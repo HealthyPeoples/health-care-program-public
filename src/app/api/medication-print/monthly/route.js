@@ -1,14 +1,8 @@
 import { connPool } from "../../../../config/server";
 import { assertAnCdMatchesSession } from "../../../../config/sessionServer";
 
+import { jsonOk, jsonError } from '../../../../utils/apiResponse';
 export const dynamic = "force-dynamic";
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 function monthStartEnd(month) {
   const m = String(month || "").trim();
@@ -42,10 +36,10 @@ export async function GET(req) {
     if (!gate.ok) return gate.response;
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: "데이터베이스 연결 실패" }, 500);
+    if (!pool) return jsonError({ success: false, error: "데이터베이스 연결 실패" });
 
     const monthRange = monthStartEnd(month);
-    if (!monthRange) return json({ success: false, error: "month(YYYY-MM)가 필요합니다" }, 400);
+    if (!monthRange) return jsonError({ success: false, error: "month(YYYY-MM)가 필요합니다" }, 400);
 
     const baseReq = pool.request();
     baseReq.input("ANCD", gate.sessionAncd);
@@ -175,7 +169,7 @@ export async function GET(req) {
       });
     }
 
-    return json({
+    return jsonOk({
       success: true,
       data: {
         month,
@@ -185,7 +179,7 @@ export async function GET(req) {
     });
   } catch (err) {
     console.error("medication-print monthly 오류:", err);
-    return json({ success: false, error: err?.message || "서버 오류", details: String(err) }, 500);
+    return jsonError({ success: false, error: err?.message || "서버 오류", details: String(err) });
   }
 }
 

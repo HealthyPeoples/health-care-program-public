@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { jsonOk, jsonError } from '../../../../utils/apiResponse';
 export async function GET(req) {
   try {
     const token = req.cookies.get('auth_token')?.value;
     const userInfo = req.cookies.get('user_info')?.value;
 
     if (!token || !userInfo) {
-      return NextResponse.json(
-        { authenticated: false },
-        { status: 401 }
-      );
+      return jsonError({ authenticated: false }, 401);
     }
 
     // 토큰 유효성 검사 (만료 시간 확인)
@@ -28,22 +26,13 @@ export async function GET(req) {
         return response;
       }
 
-      return NextResponse.json(
-        { authenticated: true, user: { ancd: user.ancd, uid: user.uid } },
-        { status: 200 }
-      );
+      return jsonOk({ authenticated: true, user: { ancd: user.ancd, uid: user.uid } });
     } catch (parseError) {
-      return NextResponse.json(
-        { authenticated: false, message: '인증 정보가 올바르지 않습니다.' },
-        { status: 401 }
-      );
+      return jsonError({ authenticated: false, message: '인증 정보가 올바르지 않습니다.' }, 401);
     }
   } catch (err) {
     console.error('인증 체크 오류:', err);
-    return NextResponse.json(
-      { authenticated: false, message: '인증 확인 중 오류가 발생했습니다.' },
-      { status: 500 }
-    );
+    return jsonError({ authenticated: false, message: '인증 확인 중 오류가 발생했습니다.' });
   }
 }
 

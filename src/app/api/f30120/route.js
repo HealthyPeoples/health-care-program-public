@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { NextRequest } from 'next/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 export async function GET(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
@@ -14,12 +15,9 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: '데이터베이스 연결 실패' 
-      }), { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
     const startDate = searchParams.get('startDate'); // 시작일 (yyyy-mm-dd 형식, 선택)
@@ -82,13 +80,10 @@ export async function GET(req) {
     // 날짜 범위 조회 (startDate, endDate가 있는 경우)
     if (startDate && endDate) {
       if (!validateDate(startDate) || !validateDate(endDate)) {
-        return new Response(JSON.stringify({ 
+        return jsonError({ 
           success: false, 
           error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.' 
-        }), { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        }, 400);
       }
       const startFormatted = formatDateForDB(startDate);
       const endFormatted = formatDateForDB(endDate);
@@ -99,25 +94,19 @@ export async function GET(req) {
     // 단일 날짜 조회 (rsdt만 있는 경우)
     else if (rsdt) {
       if (!validateDate(rsdt)) {
-        return new Response(JSON.stringify({ 
+        return jsonError({ 
           success: false, 
           error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.' 
-        }), { 
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        }, 400);
       }
       const rsdtFormatted = formatDateForDB(rsdt);
       query += ` AND f30120.[RSDT] = @rsdt`;
       request.input('rsdt', rsdtFormatted);
     } else {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: 'RSDT 또는 startDate/endDate 파라미터가 필요합니다' 
-      }), { 
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 400);
     }
 
     // PNUM 필터 (수급자별 조회)
@@ -138,24 +127,18 @@ export async function GET(req) {
 
     const result = await request.query(query);
     
-    return new Response(JSON.stringify({ 
+    return jsonOk({ 
       success: true, 
       data: result.recordset || [],
       count: result.recordset ? result.recordset.length : 0
-    }), { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('F30120 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({ 
+    return jsonError({ 
       success: false, 
       error: err.message,
       details: err.toString()
-    }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
@@ -170,28 +153,19 @@ export async function POST(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const body = await req.json();
     const { rsdt, pnums } = body || {};
 
     if (!rsdt || !Array.isArray(pnums)) {
-      return new Response(JSON.stringify({ success: false, error: 'rsdt와 pnums 배열이 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'rsdt와 pnums 배열이 필요합니다' }, 400);
     }
 
     const rsdtDigits = String(rsdt).includes('-') ? String(rsdt).replace(/-/g, '') : String(rsdt);
     if (!/^\d{8}$/.test(rsdtDigits)) {
-      return new Response(JSON.stringify({ success: false, error: 'rsdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'rsdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }, 400);
     }
 
     const now = new Date();
@@ -232,16 +206,10 @@ export async function POST(req) {
       results.push({ index: i, pnum: String(pnum).trim(), ok: true, rowsAffected: result.rowsAffected || [] });
     }
 
-    return new Response(JSON.stringify({ success: true, data: results, count: results.length }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true, data: results, count: results.length });
   } catch (err) {
     console.error('F30120 저장(공란 생성) 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 

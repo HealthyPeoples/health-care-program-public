@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdStrictPrefix: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -278,18 +279,12 @@ export async function GET(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!pnum || String(pnum).trim() === '') {
-			return new Response(JSON.stringify({ success: false, error: 'pnum이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'pnum이 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -299,10 +294,7 @@ export async function GET(req) {
 		if (rqdt) {
 			const ymd = normalizeYmd(rqdt);
 			if (!ymd) {
-				return new Response(JSON.stringify({ success: false, error: 'rqdt(yyyy-mm-dd) 형식이 올바르지 않습니다.' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: 'rqdt(yyyy-mm-dd) 형식이 올바르지 않습니다.' }, 400);
 			}
 			// 문자열 날짜 비교 — Date 객체 timezone 이슈로 단건 누락 방지
 			request.input('rqdt', sql.VarChar(10), ymd);
@@ -319,10 +311,7 @@ export async function GET(req) {
           AND CONVERT(varchar(10), CAST(t.[RQDT] AS DATE), 23) = @rqdt
       `);
 			const row = serializeRow(result.recordset?.[0] || null);
-			return new Response(JSON.stringify({ success: true, data: row }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, data: row });
 		}
 
 		const result = await request.query(`
@@ -333,16 +322,10 @@ export async function GET(req) {
       ORDER BY rqdt DESC
     `);
 		const dates = (result.recordset || []).map((r) => r.rqdt || r.RQDT).filter(Boolean);
-		return new Response(JSON.stringify({ success: true, data: dates, count: dates.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data: dates, count: dates.length });
 	} catch (err) {
 		console.error('F51012 GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -354,26 +337,17 @@ export async function POST(req) {
 		const body = await req.json();
 		const row = body?.row;
 		if (!row || typeof row !== 'object') {
-			return new Response(JSON.stringify({ success: false, error: 'row 객체가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'row 객체가 필요합니다.' }, 400);
 		}
 
 		const ymd = normalizeYmd(row.RQDT);
 		if (!ymd) {
-			return new Response(JSON.stringify({ success: false, error: 'RQDT(작성일자)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'RQDT(작성일자)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -403,16 +377,10 @@ export async function POST(req) {
 
 		await request.query(mergeSql);
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F51012 POST 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -427,18 +395,12 @@ export async function DELETE(req) {
 		const ymd = normalizeYmd(rqdt);
 
 		if (!pnum || !ymd) {
-			return new Response(JSON.stringify({ success: false, error: 'pnum, rqdt가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'pnum, rqdt가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -453,15 +415,9 @@ export async function DELETE(req) {
         AND CONVERT(varchar(10), CAST([RQDT] AS DATE), 23) = @rqdt
     `);
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F51012 DELETE 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }

@@ -2,24 +2,19 @@ import { connPool } from '../../../config/server';
 import { NextRequest } from 'next/server';
 import { getSessionAncd, ancdEquals } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 export async function GET(req) {
   try {
     const sessionAncd = getSessionAncd(req);
     if (sessionAncd == null) {
-      return new Response(
-        JSON.stringify({ success: false, error: '로그인이 필요합니다.' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: '데이터베이스 연결 실패'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -71,35 +66,26 @@ export async function GET(req) {
       WHERE f02010.[WDT] = @workDate AND f02010.[ANCD] = @sessionAncd
       ORDER BY f01010.[EMPNM]`;
     } else {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: '근무일자(workDate) 또는 기간(startDate, endDate) 파라미터가 필요합니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 400);
     }
 
     const result = await request.query(query);
 
-    return new Response(JSON.stringify({
+    return jsonOk({
       success: true,
       data: result.recordset || [],
       count: result.recordset ? result.recordset.length : 0
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('F02010 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({
+    return jsonError({
       success: false,
       error: err.message,
       details: err.toString()
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
@@ -108,20 +94,14 @@ export async function POST(req) {
   try {
     const sessionAncd = getSessionAncd(req);
     if (sessionAncd == null) {
-      return new Response(
-        JSON.stringify({ success: false, error: '로그인이 필요합니다.' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: '데이터베이스 연결 실패'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -131,13 +111,10 @@ export async function POST(req) {
     if (body.action === 'bulkCreate') {
       const workDate = String(body.workDate || body.WDT || '').trim();
       if (!workDate) {
-        return new Response(JSON.stringify({
+        return jsonError({
           success: false,
           error: '근무일자(workDate)가 필요합니다'
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        }, 400);
       }
 
       const empResult = await pool.request()
@@ -196,39 +173,30 @@ export async function POST(req) {
         created += 1;
       }
 
-      return new Response(JSON.stringify({
+      return jsonOk({
         success: true,
         action: 'bulkCreate',
         workDate,
         created,
         skipped,
         total: employees.length
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
     const { ANCD, EMPNO, WDT, JOBADD, JOBSH, WGU, HODES, STM, ETM } = body;
 
     if (!ancdEquals(ANCD, sessionAncd)) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: '해당 기관에 대한 접근 권한이 없습니다.'
-      }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 403);
     }
 
     if (!ANCD || !EMPNO || !WDT) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: 'ANCD, EMPNO, WDT는 필수입니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 400);
     }
 
     // INSERT 또는 UPDATE (MERGE 사용)
@@ -265,23 +233,17 @@ export async function POST(req) {
 
     await request.query(query);
 
-    return new Response(JSON.stringify({
+    return jsonOk({
       success: true,
       message: '근태 데이터가 저장되었습니다'
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('F02010 테이블 저장 오류:', err);
-    return new Response(JSON.stringify({
+    return jsonError({
       success: false,
       error: err.message,
       details: err.toString()
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
@@ -290,20 +252,14 @@ export async function DELETE(req) {
   try {
     const sessionAncd = getSessionAncd(req);
     if (sessionAncd == null) {
-      return new Response(
-        JSON.stringify({ success: false, error: '로그인이 필요합니다.' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: '데이터베이스 연결 실패'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -313,23 +269,17 @@ export async function DELETE(req) {
     const wdt = searchParams.get('wdt');
 
     if (!ancdEquals(ancd, sessionAncd)) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: '해당 기관에 대한 접근 권한이 없습니다.'
-      }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 403);
     }
 
     if (!ancd || !empno || !wdt) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: 'ANCD, EMPNO, WDT 파라미터가 필요합니다'
-      }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 400);
     }
 
     let query = `
@@ -344,23 +294,17 @@ export async function DELETE(req) {
 
     await request.query(query);
 
-    return new Response(JSON.stringify({
+    return jsonOk({
       success: true,
       message: '근태 데이터가 삭제되었습니다'
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('F02010 테이블 삭제 오류:', err);
-    return new Response(JSON.stringify({
+    return jsonError({
       success: false,
       error: err.message,
       details: err.toString()
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }

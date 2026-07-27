@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { getSessionAncd, parseUserInfoCookieValue } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE = '[돌봄시설DB].[dbo].[ANNUAL_SCHEDULE]';
 
 /** 프로세스당 1회 — 테이블 없으면 자동 생성 + 종료일 컬럼 마이그레이션 */
@@ -234,18 +235,12 @@ export async function GET(req) {
 	try {
 		const sessionAncd = getSessionAncd(req);
 		if (sessionAncd == null) {
-			return new Response(JSON.stringify({ success: false, error: '로그인이 필요합니다.' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		await ensureTable(pool);
@@ -281,13 +276,10 @@ export async function GET(req) {
 				where += overlapWhere();
 			}
 		} else {
-			return new Response(
-				JSON.stringify({
+			return jsonError({
 					success: false,
 					error: 'year 또는 startDate+endDate 파라미터가 필요합니다',
-				}),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+				}, 400);
 		}
 
 		const result = await request.query(`
@@ -303,16 +295,10 @@ export async function GET(req) {
     `);
 
 		const data = (result.recordset || []).map(mapRow);
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('ANNUAL_SCHEDULE 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -320,18 +306,12 @@ export async function POST(req) {
 	try {
 		const sessionAncd = getSessionAncd(req);
 		if (sessionAncd == null) {
-			return new Response(JSON.stringify({ success: false, error: '로그인이 필요합니다.' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		await ensureTable(pool);
@@ -368,47 +348,29 @@ export async function POST(req) {
 		const userName = await resolveUserName(req, pool, sessionAncd);
 
 		if (!schDate) {
-			return new Response(JSON.stringify({ success: false, error: '시작일(SCH_DATE)은 필수입니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '시작일(SCH_DATE)은 필수입니다' }, 400);
 		}
 		if (!schEndDate) schEndDate = schDate;
 		if (schEndDate < schDate) {
-			return new Response(
-				JSON.stringify({ success: false, error: '종료일은 시작일보다 빠를 수 없습니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '종료일은 시작일보다 빠를 수 없습니다' }, 400);
 		}
 		if (!title.trim()) {
-			return new Response(JSON.stringify({ success: false, error: '제목(TITLE)은 필수입니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '제목(TITLE)은 필수입니다' }, 400);
 		}
 
 		const validRepeat = ['none', 'once', 'weekly', 'monthly', 'yearly'].includes(repeatType);
 		if (!validRepeat) {
-			return new Response(
-				JSON.stringify({ success: false, error: '반복 유형이 올바르지 않습니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '반복 유형이 올바르지 않습니다' }, 400);
 		}
 		if (
 			!Number.isFinite(asSeq) &&
 			(repeatType === 'weekly' || repeatType === 'monthly' || repeatType === 'yearly')
 		) {
 			if (!repeatUntil) {
-				return new Response(
-					JSON.stringify({ success: false, error: '반복 종료일(REPEAT_UNTIL)은 필수입니다' }),
-					{ status: 400, headers: { 'Content-Type': 'application/json' } }
-				);
+				return jsonError({ success: false, error: '반복 종료일(REPEAT_UNTIL)은 필수입니다' }, 400);
 			}
 			if (repeatUntil < schDate) {
-				return new Response(
-					JSON.stringify({ success: false, error: '반복 종료일은 시작일보다 빠를 수 없습니다' }),
-					{ status: 400, headers: { 'Content-Type': 'application/json' } }
-				);
+				return jsonError({ success: false, error: '반복 종료일은 시작일보다 빠를 수 없습니다' }, 400);
 			}
 		}
 
@@ -440,10 +402,7 @@ export async function POST(req) {
         SELECT @AS_SEQ AS [AS_SEQ];
       `);
 			if (!upd.rowsAffected?.[0]) {
-				return new Response(JSON.stringify({ success: false, error: '수정할 일정을 찾을 수 없습니다' }), {
-					status: 404,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '수정할 일정을 찾을 수 없습니다' }, 404);
 			}
 			asSeqOut = asSeq;
 			createdCount = 1;
@@ -476,19 +435,10 @@ export async function POST(req) {
 			createdCount = insertedSeqs.length;
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, asSeq: asSeqOut, count: createdCount }),
-			{
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			}
-		);
+		return jsonOk({ success: true, asSeq: asSeqOut, count: createdCount });
 	} catch (err) {
 		console.error('ANNUAL_SCHEDULE 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -496,18 +446,12 @@ export async function DELETE(req) {
 	try {
 		const sessionAncd = getSessionAncd(req);
 		if (sessionAncd == null) {
-			return new Response(JSON.stringify({ success: false, error: '로그인이 필요합니다.' }), {
-				status: 401,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		await ensureTable(pool);
@@ -517,10 +461,7 @@ export async function DELETE(req) {
 		const asSeq = parseInt(String(asSeqRaw ?? ''), 10);
 
 		if (!Number.isFinite(asSeq)) {
-			return new Response(JSON.stringify({ success: false, error: 'asSeq 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'asSeq 파라미터가 필요합니다' }, 400);
 		}
 
 		const result = await pool
@@ -533,21 +474,12 @@ export async function DELETE(req) {
       `);
 
 		if (result.rowsAffected[0] === 0) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 일정이 없습니다' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 일정이 없습니다' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('ANNUAL_SCHEDULE 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

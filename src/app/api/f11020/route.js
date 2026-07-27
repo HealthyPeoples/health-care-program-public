@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { NextRequest } from 'next/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 export async function GET(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
@@ -12,23 +13,17 @@ export async function GET(req) {
     if (!gate.ok) return gate.response;
 
     if (!ancd || !pnum) {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: 'ANCD와 PNUM 파라미터가 필요합니다' 
-      }), { 
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: '데이터베이스 연결 실패' 
-      }), { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -62,24 +57,18 @@ export async function GET(req) {
 
     const result = await request.query(query);
     
-    return new Response(JSON.stringify({ 
+    return jsonOk({ 
       success: true, 
       data: result.recordset || [],
       count: result.recordset ? result.recordset.length : 0
-    }), { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('F11020 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({ 
+    return jsonError({ 
       success: false, 
       error: err.message,
       details: err.toString()
-    }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }

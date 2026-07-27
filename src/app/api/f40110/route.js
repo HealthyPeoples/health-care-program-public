@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdOrNullLoose: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -42,24 +43,15 @@ export async function GET(req) {
 
 		const salmm = normalizeSalmm(salmmRaw);
 		if (!salmm) {
-			return new Response(JSON.stringify({ success: false, error: 'salmm(YYYYMM) 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'salmm(YYYYMM) 파라미터가 필요합니다' }, 400);
 		}
 		if (!pnum || String(pnum).trim() === '') {
-			return new Response(JSON.stringify({ success: false, error: 'pnum 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -87,15 +79,9 @@ export async function GET(req) {
     `);
 
 		const data = (result.recordset || []).map(mapRow);
-		return new Response(
-			JSON.stringify({ success: true, data, count: data.length, salmm, pnum: String(pnum).trim() }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, data, count: data.length, salmm, pnum: String(pnum).trim() });
 	} catch (err) {
 		console.error('F40110 GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }

@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 /** 급여 HEAD — 스키마: ANCD, SALMM(YYYYMM), PNUM 복합키 */
@@ -172,18 +173,12 @@ export async function GET(req) {
 
 		const salmm = normalizeSalmm(salmmRaw);
 		if (!salmm) {
-			return new Response(JSON.stringify({ success: false, error: 'salmm(YYYYMM 또는 급여년월)이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'salmm(YYYYMM 또는 급여년월)이 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -199,10 +194,7 @@ export async function GET(req) {
           AND LTRIM(RTRIM([SALMM])) = LTRIM(RTRIM(@salmm))
           AND CAST([PNUM] AS VARCHAR(30)) = @pnum
       `);
-			return new Response(JSON.stringify({ success: true, data: result.recordset?.[0] || null }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, data: result.recordset?.[0] || null });
 		}
 
 		const result = await request.query(`
@@ -213,21 +205,15 @@ export async function GET(req) {
       ORDER BY [P_NM] ASC, CAST([PNUM] AS VARCHAR(30)) ASC
     `);
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				data: result.recordset || [],
 				count: result.recordset ? result.recordset.length : 0,
 				salmm,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('F40100 GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -239,26 +225,17 @@ export async function POST(req) {
 		const body = await req.json();
 		const row = body?.row;
 		if (!row || typeof row !== 'object') {
-			return new Response(JSON.stringify({ success: false, error: 'row 객체가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'row 객체가 필요합니다.' }, 400);
 		}
 
 		const salmm = normalizeSalmm(row.SALMM);
 		if (!salmm || !row.PNUM) {
-			return new Response(JSON.stringify({ success: false, error: 'SALMM, PNUM이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'SALMM, PNUM이 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const merged = {
@@ -293,16 +270,10 @@ export async function POST(req) {
 
 		await request.query(mergeSql);
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F40100 POST 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -320,32 +291,20 @@ export async function PATCH(req) {
 		const fields = body?.fields && typeof body.fields === 'object' ? body.fields : body?.row;
 
 		if (!salmm || pnum == null || String(pnum).trim() === '') {
-			return new Response(JSON.stringify({ success: false, error: 'salmm, pnum이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'salmm, pnum이 필요합니다.' }, 400);
 		}
 		if (!fields || typeof fields !== 'object') {
-			return new Response(JSON.stringify({ success: false, error: 'fields 객체가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'fields 객체가 필요합니다.' }, 400);
 		}
 
 		const provided = LEDGER_PATCH_COLUMNS.filter((c) => Object.prototype.hasOwnProperty.call(fields, c));
 		if (provided.length === 0) {
-			return new Response(
-				JSON.stringify({ success: false, error: '수정할 필드(SNM, S_GU, ENM, RDES)가 없습니다.' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '수정할 필드(SNM, S_GU, ENM, RDES)가 없습니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -377,20 +336,14 @@ export async function PATCH(req) {
         AND CAST([PNUM] AS VARCHAR(30)) = @PNUM
     `);
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				rowsAffected: result.rowsAffected?.[0] ?? 0,
 				updated: provided,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('F40100 PATCH 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -427,25 +380,16 @@ export async function PUT(req) {
 
 		const salmm = normalizeSalmm(salmmRaw);
 		if (!salmm) {
-			return new Response(
-				JSON.stringify({ success: false, error: 'salmm(YYYYMM) 파라미터가 필요합니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: 'salmm(YYYYMM) 파라미터가 필요합니다' }, 400);
 		}
 
 		if (pnumRaw == null || String(pnumRaw).trim() === '') {
-			return new Response(
-				JSON.stringify({ success: false, error: 'pnum 파라미터가 필요합니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
 		}
 
 		const pnum = Number(String(pnumRaw).trim());
 		if (!Number.isFinite(pnum)) {
-			return new Response(
-				JSON.stringify({ success: false, error: 'pnum 형식이 올바르지 않습니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: 'pnum 형식이 올바르지 않습니다' }, 400);
 		}
 
 		let wonflag = 0;
@@ -456,18 +400,12 @@ export async function PUT(req) {
 		const { frdt, todt } = monthRangeFromSalmm(salmm);
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = Number(gate.sessionAncd);
 		if (!Number.isFinite(ancd)) {
-			return new Response(
-				JSON.stringify({ success: false, error: '세션 기관코드(ANCD)가 올바르지 않습니다' }),
-				{ status: 401, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '세션 기관코드(ANCD)가 올바르지 않습니다' }, 401);
 		}
 
 		await pool
@@ -480,8 +418,7 @@ export async function PUT(req) {
 			.input('pv_pnum', sql.Int, pnum)
 			.execute('[돌봄시설DB].[dbo].[Usp_P40100]');
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				ancd,
 				salmm,
@@ -489,14 +426,9 @@ export async function PUT(req) {
 				todt,
 				wonflag,
 				pnum,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('Usp_P40100 급여계산 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: String(err) }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
