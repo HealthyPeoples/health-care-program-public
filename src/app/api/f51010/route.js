@@ -1,17 +1,11 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { normalizeYmdShort as normalizeYmd } from '../../../utils/normalizeYmd';
 const DB_NAME = '돌봄시설DB';
 const TABLE_NAME = 'F51010';
 const TABLE_FULL = `[${DB_NAME}].[dbo].[${TABLE_NAME}]`;
 
-function normalizeYmd(v) {
-  if (!v) return '';
-  const s = String(v);
-  if (s.includes('T')) return s.split('T')[0];
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  return s.slice(0, 10);
-}
 
 function ymdOrThrow(v, fieldName) {
   const ymd = normalizeYmd(v);

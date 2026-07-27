@@ -3,24 +3,9 @@ import { assertAnCdAccess, assertAnCdMatchesSession } from '../../../config/sess
 
 const sql = require('mssql');
 
+const { normalizeYmdOrNull: normalizeYmd } = require('../../../utils/normalizeYmd');
 const TABLE = '[돌봄시설DB].[dbo].[F01010]';
 
-function normalizeYmd(v) {
-	if (v == null || v === '') return null;
-	if (v instanceof Date && !Number.isNaN(v.getTime())) {
-		const y = v.getFullYear();
-		const m = String(v.getMonth() + 1).padStart(2, '0');
-		const d = String(v.getDate()).padStart(2, '0');
-		return `${y}-${m}-${d}`;
-	}
-	const s = String(v).trim();
-	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-	if (s.includes('T')) return s.split('T')[0];
-	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-	const head = s.slice(0, 10);
-	if (/^\d{4}-\d{2}-\d{2}$/.test(head)) return head;
-	return null;
-}
 
 function inputDate(request, name, ymd) {
 	const n = normalizeYmd(ymd);
