@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 
+import { normalizeYmdEmptyYmd8 as normalizeYmd } from '../../../utils/normalizeYmd';
 const TABLE = '[돌봄시설DB].[dbo].[F11061]';
 const LOG_TABLE = '[돌봄시설DB].[dbo].[F11060]';
 
@@ -11,21 +12,6 @@ function truncStr(v, max) {
 	return s.length <= max ? s : s.slice(0, max);
 }
 
-function normalizeYmd(v) {
-	if (v == null || v === '') return '';
-	if (v instanceof Date && !Number.isNaN(v.getTime())) {
-		const y = v.getFullYear();
-		const m = String(v.getMonth() + 1).padStart(2, '0');
-		const d = String(v.getDate()).padStart(2, '0');
-		return `${y}-${m}-${d}`;
-	}
-	const s = String(v).trim();
-	if (!s) return '';
-	if (s.includes('T')) return s.split('T')[0].slice(0, 10);
-	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-	return s.slice(0, 10);
-}
 
 function toInt(v) {
 	if (v == null || v === '') return null;

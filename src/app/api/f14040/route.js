@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { normalizeYmdStrict as normalizeYmd } from '../../../utils/normalizeYmd';
 const TABLE = '[돌봄시설DB].[dbo].[F14040]';
 
 // F14040 치료프로그램 목록 (로그인 기관 ANCD만)
@@ -77,13 +78,6 @@ function truncStr(v, max) {
   return s.length <= max ? s : s.slice(0, max);
 }
 
-function normalizeYmd(d) {
-  if (d == null || d === '') return null;
-  const s = String(d).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  return null;
-}
 
 function parseSchedule(scheduleText) {
   const t = String(scheduleText || '').trim();

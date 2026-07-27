@@ -3,6 +3,7 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 const sql = require('mssql');
 
+const { normalizeYmdStrict: normalizeYmd } = require('../../../utils/normalizeYmd');
 const TABLE = '[돌봄시설DB].[dbo].[F14050]';
 
 function truncText(v, max) {
@@ -19,13 +20,6 @@ function truncName(v, max) {
 }
 
 /** yyyy-mm-dd 또는 yyyymmdd → yyyy-mm-dd, 불가 시 null */
-function normalizeYmd(v) {
-  if (v == null || v === '') return null;
-  const s = String(v).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  return null;
-}
 
 function inputDate(request, name, ymd) {
   const n = normalizeYmd(ymd);

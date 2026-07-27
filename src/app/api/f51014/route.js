@@ -3,19 +3,12 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 const sql = require('mssql');
 
+const { normalizeYmdStrictPrefix: normalizeYmd } = require('../../../utils/normalizeYmd');
 const TABLE = '[돌봄시설DB].[dbo].[F51014_1]';
 
 /** MERGE에 포함할 컬럼(키 ANCD,PNUM,RQDT 및 INDT 제외) */
 const DATA_COLUMNS = ['RQEMP', 'B01', 'B02', 'B03', 'B04', 'B05', 'B06', 'B07', 'B80', 'B81', 'B90'];
 
-function normalizeYmd(v) {
-	if (v == null || v === '') return null;
-	const s = String(v).trim();
-	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-	return null;
-}
 
 function serializeRow(row) {
 	if (!row || typeof row !== 'object') return null;

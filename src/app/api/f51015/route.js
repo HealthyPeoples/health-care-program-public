@@ -3,19 +3,12 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 const sql = require('mssql');
 
+const { normalizeYmdStrictPrefix: normalizeYmd } = require('../../../utils/normalizeYmd');
 const TABLE = '[돌봄시설DB].[dbo].[F51015]';
 
 /** MERGE에 포함할 컬럼(키 ANCD,PNUM,RQDT 및 INDT 제외) */
 const DATA_COLUMNS = ['RQEMP', 'E01', 'E02', 'E03', 'E04', 'E05', 'E06', 'E07', 'E08', 'E09', 'E10', 'E11', 'E12', 'E13', 'E14', 'E15', 'E16', 'E17', 'E18', 'E19', 'E20', 'E21', 'E22', 'E23', 'E24', 'E25', 'E26', 'E27', 'E28', 'E29', 'E30', 'E80', 'E81', 'E90', 'E91', 'E99'];
 
-function normalizeYmd(v) {
-	if (v == null || v === '') return null;
-	const s = String(v).trim();
-	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-	return null;
-}
 
 function serializeRow(row) {
 	if (!row || typeof row !== 'object') return null;
