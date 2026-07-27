@@ -9,6 +9,7 @@ import {
 	applyNursingFieldsToDay,
 	formatVitalSignsFromRow
 } from '../../utils/nursingFields';
+import { mapF14070ToFormState } from './mapF14070';
 
 interface MemberData {
 	[key: string]: any;
@@ -21,10 +22,12 @@ function toYmd(d: Date) {
 	return `${yyyy}-${mm}-${dd}`;
 }
 
-function startOfWeekSunday(base: Date) {
+function startOfWeekMonday(base: Date) {
 	const d = new Date(base);
 	d.setHours(0, 0, 0, 0);
-	d.setDate(d.getDate() - d.getDay());
+	const day = d.getDay(); // 0=일 … 6=토
+	const diff = day === 0 ? -6 : 1 - day;
+	d.setDate(d.getDate() + diff);
 	return d;
 }
 
@@ -126,11 +129,13 @@ const createEmptyDailyRecords = () => ({
 	cognitivePreparer: empty7(),
 	vitalSigns: empty7(),
 	healthManagement: empty7Bool(),
+	healthTime: empty7(),
 	nursingManagement: empty7Bool(),
+	nursingTime: empty7(),
 	emergencyService: empty7Bool(),
 	healthNotes: empty7(),
 	healthPreparer: empty7(),
-	trainingProgram: empty7(),
+	trainingProgram: empty7Bool(),
 	physicalFunctionTraining: empty7Bool(),
 	cognitiveTraining: empty7Bool(),
 	physicalTherapy: empty7Bool(),
@@ -204,13 +209,16 @@ const mapNursingFromRow = (row: any, idx: number, records: DailyRecords, merge =
 };
 
 const mapTrainingFromRow = (row: any, idx: number, records: DailyRecords) => {
-	records.trainingProgram[idx] = ynChecked(row?.FN_COGN_HELP) ? '실시' : '';
+	records.trainingProgram[idx] = ynChecked(row?.FN_COGN_HELP);
 	records.physicalFunctionTraining[idx] = ynChecked(row?.FN_MOVE_HELP);
 	records.cognitiveTraining[idx] = ynChecked(row?.FN_MIND_TRAIN ?? row?.FN_MIND_HELP);
 	records.physicalTherapy[idx] = ynChecked(row?.FN_PHY_HELP);
 	records.trainingNotes[idx] = String(row?.FN_VIEW ?? '').trim();
 	records.trainingPreparer[idx] = String(row?.FN_WRITE_NAME ?? '').trim();
 };
+
+/** 서식 날짜 표기: "7 / 13" */
+const formatSheetDate = (date: Date) => `${date.getMonth() + 1} / ${date.getDate()}`;
 
 const applyBaselineToAllDays = (baselineRow: any, records: DailyRecords) => {
 	for (let i = 0; i < 7; i++) {
@@ -298,8 +306,18 @@ export default function LongtermRecordFormat() {
 
 	const [year, setYear] = useState(new Date().getFullYear().toString());
 	const [weekDates, setWeekDates] = useState<string[]>([]);
-	const [weekStart, setWeekStart] = useState<Date>(() => startOfWeekSunday(new Date()));
+	const [weekStart, setWeekStart] = useState<Date>(() => startOfWeekMonday(new Date()));
 	const [loading, setLoading] = useState(false);
+
+	const [headerInfo, setHeaderInfo] = useState({
+		name: '',
+		birthDate: '',
+		gradeLabel: '',
+		certNo: '',
+		institutionName: '너싱홈 해원',
+		institutionCode: '14161000067',
+		roomNo: ''
+	});
 
 	const [status, setStatus] = useState<'와상' | '준와상' | '자립'>('준와상');
 	const [dementia, setDementia] = useState(false);
@@ -326,19 +344,27 @@ export default function LongtermRecordFormat() {
 	const [dailyRecords, setDailyRecords] = useState(createEmptyDailyRecords);
 
 	const calculateWeekDates = (start: Date) => {
+		const monday = startOfWeekMonday(start);
 		const dates: string[] = [];
-		const startOfWeek = new Date(start);
-		startOfWeek.setHours(0, 0, 0, 0);
-
 		for (let i = 0; i < 7; i++) {
-			const date = new Date(startOfWeek);
-			date.setDate(startOfWeek.getDate() + i);
-			const month = String(date.getMonth() + 1).padStart(2, '0');
-			const day = String(date.getDate()).padStart(2, '0');
-			dates.push(`${month}/${day}`);
+			const date = new Date(monday);
+			date.setDate(monday.getDate() + i);
+			dates.push(formatSheetDate(date));
 		}
 		setWeekDates(dates);
-		setYear(String(startOfWeek.getFullYear()));
+		setYear(String(monday.getFullYear()));
+	};
+
+	const weekDatesFromMonday = (monday: Date) => {
+		const dates: string[] = [];
+		const start = new Date(monday);
+		start.setHours(0, 0, 0, 0);
+		for (let i = 0; i < 7; i++) {
+			const date = new Date(start);
+			date.setDate(start.getDate() + i);
+			dates.push(formatSheetDate(date));
+		}
+		return dates;
 	};
 
 	const applyLegacyBeneficiaryJson = (raw: unknown) => {
@@ -441,8 +467,18 @@ export default function LongtermRecordFormat() {
 		setPressureSorePrevention(false);
 		setPressureSorePreventionTool('');
 		setRoomNo('');
+		setHeaderInfo({
+			name: '',
+			birthDate: '',
+			gradeLabel: '',
+			certNo: '',
+			institutionName: '너싱홈 해원',
+			institutionCode: '14161000067',
+			roomNo: ''
+		});
 	};
 
+	/** 조회: Usp_P14070로 F14070 갱신 후, 해당 수급자 F14070 행으로 화면/출력 데이터 구성 */
 	const loadRecordData = async (pnum: string, start: Date) => {
 		if (!pnum) {
 			resetBeneficiaryDefaults();
@@ -453,33 +489,60 @@ export default function LongtermRecordFormat() {
 		resetBeneficiaryDefaults();
 		setDailyRecords(createEmptyDailyRecords());
 		try {
-			const from = toYmd(start);
-			const toD = new Date(start);
-			toD.setDate(toD.getDate() + 6);
-			const to = toYmd(toD);
+			const monday = startOfWeekMonday(start);
+			const frDt = toYmd(monday);
 
-			const [baselineRes, rangeRes] = await Promise.all([
-				fetch(`/api/f30112?pnum=${encodeURIComponent(pnum)}`),
-				fetch(`/api/f30112?pnum=${encodeURIComponent(pnum)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
-			]);
-			const baselineJson = await baselineRes.json().catch(() => ({}));
-			const rangeJson = await rangeRes.json().catch(() => ({}));
-
-			const baselineRow = baselineJson?.success && Array.isArray(baselineJson.data) ? baselineJson.data[0] : null;
-			const rangeRows = rangeJson?.success && Array.isArray(rangeJson.data) ? rangeJson.data : [];
-
-			const beneficiary = baselineRow
-				? applyBeneficiaryFromRow(baselineRow, applyLegacyBeneficiaryJson)
-				: null;
-			if (beneficiary) {
-				applyBeneficiaryState(beneficiary);
-			} else if (baselineRow?.ROOM_NO != null) {
-				setRoomNo(String(baselineRow.ROOM_NO).trim());
+			const genRes = await fetch('/api/f14070', {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ frDt })
+			});
+			const genJson = await genRes.json().catch(() => ({}));
+			if (!genJson?.success) {
+				alert(genJson?.error || 'F14070(Usp_P14070) 생성에 실패했습니다.');
+				return;
 			}
 
-			setDailyRecords(buildDailyRecords(baselineRow, rangeRows, start));
+			const getRes = await fetch(`/api/f14070?pnum=${encodeURIComponent(pnum)}`);
+			const getJson = await getRes.json().catch(() => ({}));
+			if (!getJson?.success) {
+				alert(getJson?.error || 'F14070 조회에 실패했습니다.');
+				return;
+			}
+
+			const row =
+				Array.isArray(getJson.data) && getJson.data.length > 0 ? getJson.data[0] : null;
+			if (!row) {
+				alert('선택한 수급자의 F14070 데이터가 없습니다. 기준일을 확인해 주세요.');
+				return;
+			}
+
+			const mapped = mapF14070ToFormState(row);
+			const fallbackDates = weekDatesFromMonday(monday);
+			const dates = mapped.header.weekDates.some((d) => d)
+				? mapped.header.weekDates.map((d, i) => d || fallbackDates[i] || '')
+				: fallbackDates;
+
+			setYear(mapped.header.year || String(monday.getFullYear()));
+			setWeekDates(dates);
+			setHeaderInfo({
+				name: mapped.header.name || String(selectedMember?.P_NM ?? '').trim(),
+				birthDate:
+					mapped.header.birthDate ||
+					(selectedMember?.P_BRDT ? String(selectedMember.P_BRDT).substring(0, 10) : ''),
+				gradeLabel:
+					mapped.header.gradeLabel || formatCareGradeLabel(selectedMember?.P_GRD, ''),
+				certNo:
+					mapped.header.certNo ||
+					String(selectedMember?.P_CERTNO ?? selectedMember?.P_YYNO ?? '').trim(),
+				institutionName: mapped.header.institutionName,
+				institutionCode: mapped.header.institutionCode,
+				roomNo: mapped.header.roomNo
+			});
+			applyBeneficiaryState(mapped.beneficiary);
+			setDailyRecords(mapped.daily);
 		} catch (e) {
-			console.error('F30112 기간 조회 오류:', e);
+			console.error('F14070 조회/생성 오류:', e);
 			alert('기록양식 정보를 불러오는 중 오류가 발생했습니다.');
 		} finally {
 			setLoading(false);
@@ -487,10 +550,16 @@ export default function LongtermRecordFormat() {
 	};
 
 	const ltFormCss = `
+		.lt-sheet.lt-form {
+			font-family: "Malgun Gothic", "맑은 고딕", Dotum, "돋움", sans-serif;
+			font-size: 8pt;
+			color: #000;
+			line-height: 1.28;
+		}
 		.lt-sheet.lt-form table { width: 100%; border-collapse: collapse; border-spacing: 0; table-layout: fixed; }
 		.lt-sheet.lt-form td, .lt-sheet.lt-form th {
 			border: 1px solid #000;
-			padding: 2px 4px;
+			padding: 4px 2px;
 			vertical-align: middle;
 			font-weight: normal;
 			color: #000;
@@ -498,27 +567,43 @@ export default function LongtermRecordFormat() {
 			-webkit-print-color-adjust: exact;
 			print-color-adjust: exact;
 		}
+		.lt-sheet.lt-form .lt-info { border: 2px solid #000; }
+		.lt-sheet.lt-form .lt-info td { border: 1px solid #000; }
+		.lt-sheet.lt-form .lt-status { border: 2px solid #000; margin-top: 3px; }
+		.lt-sheet.lt-form .lt-status td { border: 1px solid #000; }
+		.lt-sheet.lt-form .rec { border: 2px solid #000; margin-top: 3px; }
+		.lt-sheet.lt-form .rec td, .lt-sheet.lt-form .rec th { border: 1px solid #000; }
 		.lt-sheet.lt-form .lt-right { text-align: right; }
 		.lt-sheet.lt-form .lt-center { text-align: center; }
 		.lt-sheet.lt-form .lt-left { text-align: left; }
 		.lt-sheet.lt-form .lt-bold { font-weight: 700; }
+		.lt-sheet.lt-form .lt-head-top {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			gap: 8px;
+			margin-bottom: 1px;
+		}
 		.lt-sheet.lt-form .lt-title {
 			font-size: 15pt;
 			font-weight: 800;
 			text-align: center;
-			margin: 4px 0 8px 0;
+			margin: 2px 0 6px 0;
+			letter-spacing: -0.02em;
 		}
 		.lt-sheet.lt-form .lt-law {
-			font-size: 8.5pt;
-			margin-bottom: 2px;
+			font-size: 8pt;
+			margin: 0;
+			flex: 1;
 		}
 		.lt-sheet.lt-form .lt-front {
-			font-size: 8.5pt;
+			font-size: 8pt;
 			text-align: right;
-			margin-bottom: 4px;
+			margin: 0;
+			white-space: nowrap;
 		}
-		.lt-sheet.lt-form .lbl { font-weight: 700; text-align: center; }
-		.lt-sheet.lt-form .tight { padding: 3px 4px; }
+		.lt-sheet.lt-form .lbl { font-weight: 700; text-align: center; font-size: 8pt; }
+		.lt-sheet.lt-form .tight { padding: 2px 3px; }
 		.lt-sheet.lt-form .val-bold { font-weight: 700; }
 		.lt-sheet.lt-form .cb {
 			display: inline-block;
@@ -526,37 +611,50 @@ export default function LongtermRecordFormat() {
 			height: 10px;
 			border: 1px solid #000;
 			vertical-align: middle;
-			margin-right: 3px;
+			margin-right: 2px;
 			box-sizing: border-box;
+			position: relative;
+			background: #fff;
 		}
-		.lt-sheet.lt-form .cb.checked { background: #000; }
-		.lt-sheet.lt-form .cb-group { display: inline-block; margin-right: 10px; white-space: nowrap; }
+		.lt-sheet.lt-form .cb.checked { background: #fff; }
+		.lt-sheet.lt-form .cb.checked::after {
+			content: "√";
+			position: absolute;
+			left: 50%;
+			top: 42%;
+			transform: translate(-50%, -50%);
+			font-size: 11px;
+			font-weight: 700;
+			line-height: 1;
+			color: #000;
+		}
+		.lt-sheet.lt-form .cb-group { display: inline-block; margin-right: 8px; white-space: nowrap; }
 		.lt-sheet.lt-form .split-top { display: flex; align-items: center; min-height: 26px; }
-		.lt-sheet.lt-form .split-left { flex: 1; padding-right: 6px; border-right: 1px solid #000; margin-right: 6px; }
+		.lt-sheet.lt-form .split-left { flex: 0 0 38%; padding-right: 4px; border-right: 1px solid #000; margin-right: 4px; }
 		.lt-sheet.lt-form .split-right { flex: 1; }
 		.lt-sheet.lt-form .rec .cat {
-			width: 22px;
+			width: 20px;
 			writing-mode: vertical-rl;
-			text-orientation: upright;
-			vertical-align: top;
+			text-orientation: mixed;
+			vertical-align: middle;
 			text-align: center;
 			font-weight: 700;
 			font-size: 8.5pt;
-			line-height: 1.35;
-			letter-spacing: 0.06em;
-			padding-top: 2px;
+			line-height: 1.25;
+			letter-spacing: 0.12em;
+			padding: 4px 1px;
 		}
-		.lt-sheet.lt-form .rec .cat .cat-label {
-			display: inline-block;
-		}
-		.lt-sheet.lt-form .rec .grp { width: 34px; text-align: center; font-weight: 700; font-size: 8pt; vertical-align: middle; }
-		.lt-sheet.lt-form .rec .sub { font-size: 8pt; text-align: left; line-height: 1.15; }
-		.lt-sheet.lt-form .rec .day { font-size: 8pt; text-align: center; }
-		.lt-sheet.lt-form .rec .tiny { font-size: 7.5pt; line-height: 1.1; }
+		.lt-sheet.lt-form .rec .cat .cat-label { display: inline-block; }
+		.lt-sheet.lt-form .rec .grp { width: 28px; text-align: center; font-weight: 700; font-size: 8pt; vertical-align: middle; }
+		.lt-sheet.lt-form .rec .sub { font-size: 7.5pt; text-align: left; line-height: 1.22; padding: 4px 2px 4px 3px; }
+		.lt-sheet.lt-form .rec .day { font-size: 8pt; text-align: center; font-weight: 700; }
+		.lt-sheet.lt-form .rec .hdr { font-size: 8pt; font-weight: 700; padding: 5px 1px; }
+		.lt-sheet.lt-form .rec .tiny { font-size: 7pt; line-height: 1.22; }
 		.lt-sheet.lt-form .rec .optcol { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
-		.lt-sheet.lt-form .rec .sig { font-size: 8pt; text-align: center; }
-		.lt-sheet.lt-form .rec .sig-r { font-size: 8pt; text-align: right; }
-		.lt-sheet.lt-form .lt-footer { margin-top: 4px; font-size: 8pt; text-align: right; }
+		.lt-sheet.lt-form .rec .sig { font-size: 7.5pt; text-align: center; line-height: 1.28; padding: 4px 1px; }
+		.lt-sheet.lt-form .rec .sig-r { font-size: 7.5pt; text-align: center; line-height: 1.28; padding: 4px 1px; }
+		.lt-sheet.lt-form .rec .time-cell { font-size: 7pt; white-space: nowrap; }
+		.lt-sheet.lt-form .lt-footer { margin-top: 3px; font-size: 7.5pt; text-align: right; }
 	`;
 
 	/** 화면과 동일하게 보이도록 같은 문서에서 인쇄 (별도 창은 Tailwind 미적용·스타일 불일치 발생) */
@@ -564,7 +662,7 @@ export default function LongtermRecordFormat() {
 		@media print {
 			@page {
 				size: A4 portrait;
-				margin: 10mm;
+				margin: 7mm 8mm;
 			}
 			html, body {
 				background: #fff !important;
@@ -594,11 +692,32 @@ export default function LongtermRecordFormat() {
 			}
 			.lt-sheet.lt-form {
 				max-width: 210mm !important;
+				width: 100% !important;
 				margin-left: auto !important;
 				margin-right: auto !important;
+				font-size: 7.5pt !important;
+			}
+			.lt-sheet.lt-form .lt-title {
+				font-size: 14pt !important;
+				margin: 1px 0 4px 0 !important;
+			}
+			.lt-sheet.lt-form td,
+			.lt-sheet.lt-form th {
+				padding: 3.5px 1.5px !important;
+			}
+			.lt-sheet.lt-form .rec .hdr {
+				padding: 4px 1px !important;
+			}
+			.lt-sheet.lt-form .rec .sig,
+			.lt-sheet.lt-form .rec .sig-r {
+				padding: 4px 1px !important;
 			}
 			.lt-sheet.lt-form .cb,
 			.lt-sheet.lt-form .cb.checked {
+				-webkit-print-color-adjust: exact !important;
+				print-color-adjust: exact !important;
+			}
+			.lt-sheet.lt-form .cb.checked::after {
 				-webkit-print-color-adjust: exact !important;
 				print-color-adjust: exact !important;
 			}
@@ -642,7 +761,7 @@ return (
 						<div className="lt-longterm-card bg-white border border-blue-300 rounded-lg shadow-sm">
 							<div className="lt-no-print flex justify-end px-4 py-3 bg-blue-100 border-b border-blue-200">
 								<div className="mr-auto flex items-center gap-2 text-sm text-blue-900">
-									<span className="font-semibold">기준일(주 시작)</span>
+									<span className="font-semibold">기준일(주 시작·월)</span>
 									<input
 										type="date"
 										value={toYmd(weekStart)}
@@ -650,7 +769,7 @@ return (
 											const v = e.target.value;
 											if (!v) return;
 											const d = new Date(`${v}T00:00:00`);
-											setWeekStart(startOfWeekSunday(d));
+											setWeekStart(startOfWeekMonday(d));
 										}}
 										className="rounded border border-blue-300 bg-white px-2 py-1"
 									/>
@@ -680,42 +799,59 @@ return (
 								}`}
 							>
 								<div className="lt-sheet lt-form max-w-[210mm] mx-auto bg-white">
-									<div className="lt-law">■ 노인장기요양보험법 시행규칙 [별지 제16호서식] &lt;개정 2019. 9. 27.&gt;</div>
-									<div className="lt-front">(앞쪽)</div>
+									<div className="lt-head-top">
+										<div className="lt-law">■ 노인장기요양보험법 시행규칙 [별지 제16호서식] &lt;개정 2019. 9. 27.&gt;</div>
+										<div className="lt-front">(앞쪽)</div>
+									</div>
 									<div className="lt-title">장기요양급여 제공기록지(시설급여/단기보호)</div>
 
 									<table className="lt-info">
 										<tbody>
 											<tr>
 												<td className="lbl tight" style={{ width: '11%' }}>수급자 성명</td>
-												<td className="lt-left val-bold" style={{ width: '14%' }}>{String(selectedMember?.P_NM ?? '').trim()}</td>
+												<td className="lt-left val-bold" style={{ width: '14%' }}>
+													{headerInfo.name || String(selectedMember?.P_NM ?? '').trim()}
+												</td>
 												<td className="lbl tight" style={{ width: '11%' }}>생년월일</td>
 												<td className="lt-center val-bold" style={{ width: '14%' }}>
-													{selectedMember?.P_BRDT ? String(selectedMember.P_BRDT).substring(0, 10) : ''}
+													{headerInfo.birthDate ||
+														(selectedMember?.P_BRDT
+															? String(selectedMember.P_BRDT).substring(0, 10)
+															: '')}
 												</td>
 												<td className="lbl tight" style={{ width: '11%' }}>장기요양등급</td>
 												<td className="lt-center val-bold" style={{ width: '10%' }}>
-													{formatCareGradeLabel(selectedMember?.P_GRD, '')}
+													{headerInfo.gradeLabel ||
+														formatCareGradeLabel(selectedMember?.P_GRD, '')}
 												</td>
 												<td className="lbl tight" style={{ width: '13%' }}>장기요양인정번호</td>
 												<td className="lt-center val-bold" style={{ width: '16%' }}>
-													{String(selectedMember?.P_CERTNO ?? '').trim()}
+													{headerInfo.certNo ||
+														String(
+															selectedMember?.P_CERTNO ?? selectedMember?.P_YYNO ?? ''
+														).trim()}
 												</td>
 											</tr>
 											<tr>
 												<td className="lbl tight">장기요양기관명</td>
 												<td className="lt-left val-bold" colSpan={3}>
-													너싱홈 해원
+													{headerInfo.institutionName || '너싱홈 해원'}
 												</td>
 												<td className="lbl tight">장기요양기관기호</td>
-												<td className="lt-center val-bold">14161000067</td>
+												<td className="lt-center val-bold">
+													{headerInfo.institutionCode || '14161000067'}
+												</td>
 												<td className="lbl tight">침실</td>
-												<td className="lt-center val-bold">{roomNo || String(selectedMember?.P_ROOM ?? '').trim()}</td>
+												<td className="lt-center val-bold">
+													{roomNo ||
+														headerInfo.roomNo ||
+														String(selectedMember?.P_ROOM ?? '').trim()}
+												</td>
 											</tr>
 										</tbody>
 									</table>
 
-									<table style={{ marginTop: '6px' }}>
+									<table className="lt-status" style={{ marginTop: '3px' }}>
 										<tbody>
 											<tr>
 												<td className="lbl lt-center" rowSpan={4} style={{ width: '28px' }}>
@@ -823,15 +959,15 @@ return (
 										</tbody>
 									</table>
 
-									<table className="rec" style={{ marginTop: '6px' }}>
+									<table className="rec" style={{ marginTop: '3px' }}>
 										<thead>
 											<tr>
-												<th className="lt-center" style={{ width: '22px' }} rowSpan={2} />
+												<th className="lt-center" style={{ width: '20px' }} rowSpan={2} />
 												<th className="lt-center lbl" colSpan={2} rowSpan={2} style={{ width: 'auto' }}>
 													구분
 												</th>
 												<th className="lt-center lbl" colSpan={7}>
-													({year})년&nbsp;&nbsp;월/일
+													( {year} )년&nbsp;&nbsp;월/일
 												</th>
 											</tr>
 											<tr>
@@ -862,7 +998,7 @@ return (
 												</td>
 												<td className="sub">소요시간</td>
 												{weekDates.map((_, i) => (
-													<td key={i} className="lt-center tiny">
+													<td key={i} className="lt-center tiny time-cell">
 														{dailyRecords.bathTime[i] ? `${dailyRecords.bathTime[i]} 분` : '분'}
 													</td>
 												))}
@@ -879,10 +1015,6 @@ return (
 															<div>
 																<span className={`cb ${dailyRecords.bathMethod[i] === '2' ? 'checked' : ''}`} />
 																샤워식
-															</div>
-															<div>
-																<span className={`cb ${dailyRecords.bathMethod[i] === '3' ? 'checked' : ''}`} />
-																침상목욕
 															</div>
 														</div>
 													</td>
@@ -948,14 +1080,14 @@ return (
 													화장실이용하기 (기저귀 교환)
 												</td>
 												{weekDates.map((_, i) => (
-													<td key={i} className="lt-center tiny">
+													<td key={i} className="lt-center tiny time-cell">
 														{dailyRecords.toiletUsage[i] ? `${dailyRecords.toiletUsage[i]} 회` : '회'}
 													</td>
 												))}
 											</tr>
 											<tr>
 												<td className="sub" colSpan={2}>
-													이동도움 및 신체 기능유지 · 증진
+													이동도움 및 신체 기능유지·증진
 												</td>
 												{weekDates.map((_, i) => (
 													<td key={i} className="lt-center">
@@ -987,7 +1119,7 @@ return (
 													특이사항
 												</td>
 												{weekDates.map((_, i) => (
-													<td key={i} className="tiny lt-left" style={{ minHeight: '22px' }}>
+													<td key={i} className="tiny lt-left" style={{ minHeight: '18px' }}>
 														{dailyRecords.physicalActivityNotes[i] || ''}
 													</td>
 												))}
@@ -1000,14 +1132,14 @@ return (
 													<td key={i} className="sig">
 														<span className="tiny">{dailyRecords.physicalActivityPreparer[i] || '\u00a0'}</span>
 														<br />
-														<span className="tiny">(서명)</span>
+														<span className="tiny">(싸인)</span>
 													</td>
 												))}
 											</tr>
 
 											<tr>
 												<td className="cat" rowSpan={4}>
-													인지 관리 및 의사 소통
+													인지관리 및 의사소통
 												</td>
 												<td className="sub" colSpan={2}>
 													인지관리지원
@@ -1046,14 +1178,14 @@ return (
 													<td key={i} className="sig">
 														<span className="tiny">{dailyRecords.cognitivePreparer[i] || '\u00a0'}</span>
 														<br />
-														<span className="tiny">(서명)</span>
+														<span className="tiny">(싸인)</span>
 													</td>
 												))}
 											</tr>
 
 											<tr>
 												<td className="cat" rowSpan={6}>
-													<span className="cat-label">건강 및 간호 관리</span>
+													<span className="cat-label">건강 및 간호관리</span>
 												</td>
 												<td className="sub" colSpan={2}>
 													혈압/체온
@@ -1069,8 +1201,9 @@ return (
 													건강관리( 분)
 												</td>
 												{weekDates.map((_, i) => (
-													<td key={i} className="lt-center">
+													<td key={i} className="lt-center tiny time-cell">
 														<span className={`cb ${dailyRecords.healthManagement[i] ? 'checked' : ''}`} />
+														{dailyRecords.healthTime[i] ? ` ${dailyRecords.healthTime[i]}` : ''}
 													</td>
 												))}
 											</tr>
@@ -1079,8 +1212,9 @@ return (
 													간호관리( 분)
 												</td>
 												{weekDates.map((_, i) => (
-													<td key={i} className="lt-center">
+													<td key={i} className="lt-center tiny time-cell">
 														<span className={`cb ${dailyRecords.nursingManagement[i] ? 'checked' : ''}`} />
+														{dailyRecords.nursingTime[i] ? ` ${dailyRecords.nursingTime[i]}` : ''}
 													</td>
 												))}
 											</tr>
@@ -1109,9 +1243,10 @@ return (
 													작성자 성명
 												</td>
 												{weekDates.map((_, i) => (
-													<td key={i} className="sig-r">
-														<span className="tiny">{dailyRecords.healthPreparer[i] || '\u00a0'}</span>{' '}
-														<span className="tiny">(서명)</span>
+													<td key={i} className="sig">
+														<span className="tiny">{dailyRecords.healthPreparer[i] || '\u00a0'}</span>
+														<br />
+														<span className="tiny">(싸인)</span>
 													</td>
 												))}
 											</tr>
@@ -1121,17 +1256,17 @@ return (
 													기능회복훈련
 												</td>
 												<td className="sub" colSpan={2}>
-													신체 · 인지기능 향상 프로그램
+													신체·인지기능 향상 프로그램
 												</td>
 												{weekDates.map((_, i) => (
-													<td key={i} className="tiny lt-left">
-														{dailyRecords.trainingProgram[i] || ''}
+													<td key={i} className="lt-center">
+														<span className={`cb ${dailyRecords.trainingProgram[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
 											<tr>
 												<td className="sub" colSpan={2}>
-													신체기능 · 기본동작, 일상생활동작훈련
+													신체기능·기본동작, 일상생활동작훈련
 												</td>
 												{weekDates.map((_, i) => (
 													<td key={i} className="lt-center">
@@ -1177,7 +1312,7 @@ return (
 													<td key={i} className="sig">
 														<span className="tiny">{dailyRecords.trainingPreparer[i] || '\u00a0'}</span>
 														<br />
-														<span className="tiny">(서명)</span>
+														<span className="tiny">(싸인)</span>
 													</td>
 												))}
 											</tr>
@@ -1197,7 +1332,7 @@ return (
 										</tbody>
 									</table>
 
-									<div className="lt-footer">210mm X 297mm [백상지 80g/㎡]</div>
+									<div className="lt-footer">210mm×297mm[백상지 80g/㎡]</div>
 								</div>
 							</div>
 							{!selectedMember && (

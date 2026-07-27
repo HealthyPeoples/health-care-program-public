@@ -1700,6 +1700,23 @@ export default function DailyBeneficiaryPerformance() {
 					</div>
 				</div>
 			)}
+			{bulkAdding && (
+				<div
+					className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40"
+					role="status"
+					aria-live="polite"
+					aria-busy="true"
+				>
+					<div className="flex flex-col items-center gap-4 rounded-lg border border-blue-300 bg-white px-10 py-8 shadow-xl">
+						<div
+							className="h-12 w-12 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600"
+							aria-hidden="true"
+						/>
+						<p className="text-sm font-semibold text-blue-900">전체추가 진행 중...</p>
+						<p className="text-xs text-blue-900/60">완료될 때까지 잠시만 기다려 주세요</p>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

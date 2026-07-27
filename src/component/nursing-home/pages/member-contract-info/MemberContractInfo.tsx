@@ -143,46 +143,33 @@ function formatYmd(d: string | null | undefined): string {
 	return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-/** USRGU: 1=일반, 2=40%경감, 3=60%경감, 4=국민기초 (구 DB에서 3만 쓰이던 기초수급은 USRPER≈0·INSPER≈100이면 국민기초로 표시) */
+/** USRGU(F10110): 1=일반, 2=50%경감대상자, 3=국민기초생활수급권자, 4=60%경감대상자, 5=40%경감대상자 */
 function burdenRatesFromUsrgu(code: string): { ins: number; usr: number } | null {
 	const c = String(code);
 	if (c === '1') return { ins: 80, usr: 20 };
-	if (c === '2') return { ins: 88, usr: 12 };
-	if (c === '3') return { ins: 92, usr: 8 };
-	if (c === '4') return { ins: 100, usr: 0 };
+	if (c === '2') return { ins: 90, usr: 10 };
+	if (c === '3') return { ins: 100, usr: 0 };
+	if (c === '4') return { ins: 92, usr: 8 };
+	if (c === '5') return { ins: 88, usr: 12 };
 	return null;
 }
 
-/** 편집 폼: 구(기초)=코드3+100/0 인 경우 선택값을 4로 맞춤 */
 function normalizeUsrguForSelect(row: MemberData | null | undefined): string {
 	if (!row) return '';
-	const gu = String(row.USRGU ?? '');
-	const ur = Number(row.USRPER);
-	const ins = Number(row.INSPER);
-	if (gu === '3' && !Number.isNaN(ur) && ur < 1 && !Number.isNaN(ins) && ins >= 99) return '4';
-	return gu;
+	return String(row.USRGU ?? '').trim();
 }
 
-function formatUsrguLabel(v: string | number | null | undefined, row?: MemberData | null): string {
+function formatUsrguLabel(v: string | number | null | undefined, _row?: MemberData | null): string {
 	if (v == null || v === '') return '-';
-	const x = String(v);
+	const x = String(v).trim();
 	if (x === '1') return '일반';
-	if (x === '2') return '40%경감';
-	if (x === '3') {
-		const ur = Number(row?.USRPER);
-		const ins = Number(row?.INSPER);
-		if (!Number.isNaN(ur) && ur < 1 && !Number.isNaN(ins) && ins >= 99) return '국민기초생활수급권자';
-		return '60%경감';
-	}
-	if (x === '4') return '국민기초생활수급권자';
+	if (x === '2') return '50%경감대상자';
+	if (x === '3') return '국민기초생활수급권자';
+	if (x === '4') return '60%경감대상자';
+	if (x === '5') return '40%경감대상자';
 	return x;
 }
 
-function usrguLabel(v: string | number | null | undefined, row?: MemberData | null): string {
-	return formatUsrguLabel(v, row);
-}
-
-/** 식대·간식·상급병실 + 기타금액(USRINFO_AMT) */
 function careBenefitTotalWon(row: MemberData | null | undefined): number {
 	if (!row) return 0;
 	return (
@@ -201,46 +188,81 @@ function recipientBurdenAmountWon(row: MemberData | null | undefined): number | 
 	return Math.round(total * (ur / 100));
 }
 
+interface V10010BPrintRow {
+	seq: number | null;
+	ANCD: number | string;
+	PNUM: string;
+	name: string;
+	birthday: string;
+	contractDate: string;
+	recognitionNo: string;
+	grade: string;
+	validPeriod: string;
+	benefitType: string;
+	contractorName: string;
+	relation: string;
+	homePhone: string;
+	mobilePhone: string;
+	contractPeriod: string;
+	serviceType: string;
+}
+
 function buildContractPrintHtml(
 	basisDate: string,
 	printDate: string,
-	groups: Array<{ member: MemberData; contracts: MemberData[]; contractor: string; rel: string }>
+	rows: V10010BPrintRow[]
 ): string {
 	const title = '수급자 계약정보';
-	const rowsHtml = groups
-		.map((g) => {
-			const m = g.member;
-			const birth = formatYmd(m.P_BRDT);
-			const yyno = escapeHtml(m.P_YYNO || '');
-			const grade = escapeHtml(formatCareGradeLabel(m.P_GRD, '-'));
-			const vs = formatYmd(m.P_YYSDT);
-			const ve = formatYmd(m.P_YYEDT);
-			const valid = vs || ve ? `${vs || '-'}~${ve || '-'}` : '-';
-			const tel = escapeHtml(m.P_TEL || '');
-			const hp = escapeHtml(m.P_HP || '');
-			const list = g.contracts.length > 0 ? g.contracts : [null];
-			const n = list.length;
-			return list
-				.map((ct, i) => {
-					const period =
-						ct && (ct as MemberData).SVSDT
-							? `${formatYmd((ct as MemberData).SVSDT)}~${formatYmd((ct as MemberData).SVEDT)}`
-							: '-';
-					const benefit = ct ? usrguLabel((ct as MemberData).USRGU, ct as MemberData) : '-';
-					return `
+
+	// PNUM 기준 그룹 (동일 수급자 연속 행 → 성명/생일 rowspan)
+	type Group = { pnum: string; name: string; birthday: string; items: V10010BPrintRow[] };
+	const groups: Group[] = [];
+	for (const row of rows) {
+		const key = String(row.PNUM || '').trim() || `__${row.name}`;
+		const last = groups[groups.length - 1];
+		if (last && last.pnum === key) {
+			last.items.push(row);
+		} else {
+			groups.push({
+				pnum: key,
+				name: row.name,
+				birthday: row.birthday,
+				items: [row],
+			});
+		}
+	}
+
+	const rowsHtml =
+		groups.length === 0
+			? `<tr><td class="c" colspan="7">출력할 데이터가 없습니다.</td></tr>`
+			: groups
+					.map((g) => {
+						const n = g.items.length;
+						return g.items
+							.map((ct, i) => {
+								const yyno = escapeHtml(ct.recognitionNo || '');
+								const grade = escapeHtml(ct.grade || '');
+								const valid = escapeHtml(ct.validPeriod || '');
+								const benefit = escapeHtml(ct.benefitType || '');
+								const contractor = escapeHtml(ct.contractorName || '');
+								const rel = escapeHtml(ct.relation || '');
+								const tel = escapeHtml(ct.homePhone || '');
+								const hp = escapeHtml(ct.mobilePhone || '');
+								const period = escapeHtml(ct.contractPeriod || '-');
+								return `
 						<tr>
-							${i === 0 ? `<td rowspan="${n}" class="c">${escapeHtml(m.P_NM || '')}</td>` : ''}
-							${i === 0 ? `<td rowspan="${n}" class="c">${escapeHtml(birth)}</td>` : ''}
-							<td class="dual"><div>${yyno}</div><div>${escapeHtml(g.contractor)}</div></td>
-							<td class="dual"><div>${grade}</div><div>${escapeHtml(g.rel)}</div></td>
-							<td class="dual"><div>${escapeHtml(valid)}</div><div>${tel}</div></td>
-							<td class="dual"><div>${escapeHtml(benefit)}</div><div>${hp}</div></td>
-							<td class="c">${escapeHtml(period)}</td>
+							${i === 0 ? `<td rowspan="${n}" class="c name">${escapeHtml(g.name || '')}</td>` : ''}
+							${i === 0 ? `<td rowspan="${n}" class="c">${escapeHtml(g.birthday || '')}</td>` : ''}
+							<td class="dual"><div>${yyno || '&nbsp;'}</div><div>${contractor || '&nbsp;'}</div></td>
+							<td class="dual"><div>${grade || '&nbsp;'}</div><div>${rel || '&nbsp;'}</div></td>
+							<td class="dual"><div>${valid || '&nbsp;'}</div><div>${tel || '&nbsp;'}</div></td>
+							<td class="dual"><div>${benefit || '&nbsp;'}</div><div>${hp || '&nbsp;'}</div></td>
+							<td class="c">${period}</td>
 						</tr>`;
-				})
-				.join('');
-		})
-		.join('');
+							})
+							.join('');
+					})
+					.join('');
 
 	return `<!DOCTYPE html>
 <html lang="ko">
@@ -248,105 +270,127 @@ function buildContractPrintHtml(
 <meta charset="utf-8"/>
 <title>${title}</title>
 <style>
-	body { font-family: 'Malgun Gothic', sans-serif; font-size: 11px; color: #000; margin: 16px; }
-	h1 { text-align: center; font-size: 18px; text-decoration: underline; margin: 0 0 12px; }
-	.meta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-	.sign { border-collapse: collapse; }
-	.sign th, .sign td { border: 1px solid #333; width: 72px; height: 28px; text-align: center; font-size: 10px; }
-	.basis { font-size: 11px; }
-	table.data { width: 100%; border-collapse: collapse; margin-top: 8px; }
-	table.data th, table.data td { border: 1px solid #333; padding: 4px 6px; vertical-align: middle; }
-	table.data th { background: #f0f0f0; font-weight: bold; text-align: center; font-size: 10px; }
-	td.dual div { line-height: 1.35; }
-	td.dual div:first-child { border-bottom: 1px dashed #ccc; padding-bottom: 2px; margin-bottom: 2px; }
-	td.c { text-align: center; }
-	.footer { margin-top: 12px; display: flex; justify-content: space-between; font-size: 10px; }
-	.hdr2 { line-height: 1.2; }
+@page { size: A4 landscape; margin: 10mm 10mm 14mm 10mm; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10pt; color: #000; background: #fff; }
+.head {
+	position: relative;
+	min-height: 52px;
+	margin-bottom: 8px;
+	page-break-after: avoid;
+}
+.title {
+	text-align: center;
+	font-size: 18pt;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	padding: 2px 12px 4px;
+	border-bottom: 3px double #000;
+	display: inline-block;
+	min-width: 220px;
+}
+.head-title-wrap { text-align: center; padding-right: 100px; }
+.basis {
+	font-size: 10.5pt;
+	margin-top: 6px;
+}
+.sign {
+	position: absolute;
+	top: 0;
+	right: 0;
+	border-collapse: collapse;
+	font-size: 9pt;
+}
+.sign th, .sign td {
+	border: 1px solid #000;
+	width: 48px;
+	text-align: center;
+	vertical-align: middle;
+	padding: 2px 1px;
+}
+.sign th { font-weight: 700; background: #f2f2f2; height: 18px; }
+.sign td { height: 28px; }
+table.data {
+	width: 100%;
+	border-collapse: collapse;
+	table-layout: fixed;
+	border: 1px solid #000;
+	margin-top: 4px;
+}
+table.data thead { display: table-header-group; }
+table.data tr { page-break-inside: avoid; break-inside: avoid; }
+table.data th, table.data td {
+	border: 1px solid #000;
+	padding: 4px 5px;
+	vertical-align: middle;
+	word-break: break-word;
+}
+table.data th {
+	background: #e8e8e8;
+	font-weight: 700;
+	text-align: center;
+	font-size: 9pt;
+	line-height: 1.25;
+}
+td.dual { text-align: left; font-size: 9pt; }
+td.dual div { line-height: 1.35; min-height: 1.2em; }
+td.dual div:first-child {
+	border-bottom: 1px dashed #999;
+	padding-bottom: 3px;
+	margin-bottom: 3px;
+}
+td.c { text-align: center; }
+td.name { font-weight: 600; }
+.footer {
+	margin-top: 10px;
+	display: flex;
+	justify-content: space-between;
+	font-size: 9.5pt;
+}
+.footer .pg::after { content: counter(page); }
+@media print {
+	body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
 </style>
 </head>
 <body>
-	<div class="meta">
-		<div class="basis">기준일자: ${escapeHtml(basisDate)}</div>
-		<table class="sign">
+	<div class="head">
+		<table class="sign" aria-label="결재">
 			<tr><th>담당</th><th>검토</th><th>결재</th></tr>
 			<tr><td></td><td></td><td></td></tr>
 		</table>
+		<div class="head-title-wrap"><h1 class="title">${title}</h1></div>
+		<div class="basis">기준일자: ${escapeHtml(basisDate)}</div>
 	</div>
-	<h1>${title}</h1>
 	<table class="data">
+		<colgroup>
+			<col style="width:9%"/>
+			<col style="width:10%"/>
+			<col style="width:14%"/>
+			<col style="width:12%"/>
+			<col style="width:20%"/>
+			<col style="width:16%"/>
+			<col style="width:19%"/>
+		</colgroup>
 		<thead>
 			<tr>
-				<th class="hdr2">수급자</th>
-				<th class="hdr2">생일</th>
-				<th class="hdr2">인정번호<br/>계약자성명</th>
-				<th class="hdr2">인정등급<br/>수급자와관계</th>
-				<th class="hdr2">인정유효기간<br/>자택전화번호</th>
-				<th class="hdr2">급여종류<br/>핸드폰번호</th>
-				<th class="hdr2">계약기간</th>
+				<th>수급자</th>
+				<th>생일</th>
+				<th>인정번호<br/>계약자성명</th>
+				<th>인정등급<br/>수급자와관계</th>
+				<th>인정유효기간<br/>자택전화번호</th>
+				<th>급여종류<br/>핸드폰번호</th>
+				<th>계약기간</th>
 			</tr>
 		</thead>
 		<tbody>${rowsHtml}</tbody>
 	</table>
 	<div class="footer">
 		<span>R10010B</span>
-		<span>출력일자: ${escapeHtml(printDate)} &nbsp; 페이지: 1</span>
+		<span>출력일자: ${escapeHtml(printDate)} &nbsp; 페이지: <span class="pg"></span></span>
 	</div>
 </body>
 </html>`;
-}
-
-/** 인쇄 1행분: 수급자 1명 + F10110 계약 목록 + 보호자(계약자) */
-async function fetchContractPrintGroupForMember(m: MemberData): Promise<{
-	member: MemberData;
-	contracts: MemberData[];
-	contractor: string;
-	rel: string;
-}> {
-	const [cRes, gRes] = await Promise.all([
-		fetch('/api/f10010', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				query: `
-					SELECT [ANCD],[PNUM],[CDT],[SVSDT],[SVEDT],[USRGU]
-					FROM [돌봄시설DB].[dbo].[F10110]
-					WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
-					ORDER BY [CDT] DESC
-				`,
-				params: { ANCD: String(m.ANCD), PNUM: String(m.PNUM) }
-			})
-		}),
-		fetch(
-			`/api/f10020?ancd=${encodeURIComponent(String(m.ANCD))}&pnum=${encodeURIComponent(String(m.PNUM))}`
-		)
-	]);
-	const cj = await cRes.json();
-	const gj = await gRes.json();
-	const contracts = cj.success && Array.isArray(cj.data) ? cj.data : [];
-	const guardians = gj.success && Array.isArray(gj.data) ? gj.data : [];
-	const g0 = guardians.find((g: MemberData) => String(g.CONGU) === '1') ?? guardians[0];
-	const contractor = g0?.BHNM != null ? String(g0.BHNM) : '';
-	const rel =
-		g0?.BHREL === '10'
-			? '남편'
-			: g0?.BHREL === '11'
-				? '부인'
-				: g0?.BHREL === '20'
-					? '아들'
-					: g0?.BHREL === '21'
-						? '딸'
-						: g0?.BHREL === '22'
-							? '며느리'
-							: g0?.BHREL === '23'
-								? '사위'
-								: g0?.BHREL === '31'
-									? '손주'
-									: g0?.BHETC && String(g0.BHETC).trim() !== ''
-										? String(g0.BHETC)
-										: g0?.BHREL != null && String(g0.BHREL) !== ''
-											? String(g0.BHREL)
-											: '';
-	return { member: m, contracts, contractor, rel };
 }
 
 export default function MemberContractInfo() {
@@ -395,8 +439,6 @@ export default function MemberContractInfo() {
 							String(m.ANCD) === String(resync.ancd) && String(m.PNUM) === String(resync.pnum)
 					);
 					if (updated) setSelectedMember(updated);
-				} else if (merged.length > 0 && !selectedMember) {
-					setSelectedMember(merged[0]);
 				} else if (merged.length === 0) {
 					setSelectedMember(null);
 				}
@@ -646,11 +688,27 @@ export default function MemberContractInfo() {
 		setPrintLoading(true);
 		try {
 			const basis = new Date().toISOString().slice(0, 10);
-			const printDate = basis;
-			const groups = await Promise.all(
-				filteredMembers.map((m) => fetchContractPrintGroupForMember(m))
+			const pnums = Array.from(
+				new Set(
+					filteredMembers
+						.map((m) => String(m.PNUM ?? '').trim())
+						.filter(Boolean)
+				)
 			);
-			const html = buildContractPrintHtml(basis, printDate, groups);
+			if (pnums.length === 0) {
+				alert('출력할 수급자 번호가 없습니다.');
+				return;
+			}
+			const res = await fetch(`/api/v10010b?pnums=${encodeURIComponent(pnums.join(','))}`);
+			const json = await res.json();
+			if (!json.success) {
+				alert(json.error || 'V10010B(계약정보) 조회에 실패했습니다.');
+				return;
+			}
+			const rows: V10010BPrintRow[] = Array.isArray(json.data) ? json.data : [];
+			const pnumSet = new Set(pnums);
+			const filtered = rows.filter((r) => pnumSet.has(String(r.PNUM ?? '').trim()));
+			const html = buildContractPrintHtml(basis, basis, filtered);
 			openPrintWindow(html);
 		} catch (e) {
 			console.error(e);
@@ -668,8 +726,19 @@ export default function MemberContractInfo() {
 		setPrintLoading(true);
 		try {
 			const basis = new Date().toISOString().slice(0, 10);
-			const group = await fetchContractPrintGroupForMember(selectedMember);
-			const html = buildContractPrintHtml(basis, basis, [group]);
+			const pnum = String(selectedMember.PNUM).trim();
+			const res = await fetch(`/api/v10010b?pnum=${encodeURIComponent(pnum)}`);
+			const json = await res.json();
+			if (!json.success) {
+				alert(json.error || 'V10010B(계약정보) 조회에 실패했습니다.');
+				return;
+			}
+			const rows: V10010BPrintRow[] = Array.isArray(json.data) ? json.data : [];
+			if (rows.length === 0) {
+				alert('선택한 수급자의 계약 내역이 없습니다.');
+				return;
+			}
+			const html = buildContractPrintHtml(basis, basis, rows);
 			openPrintWindow(html);
 		} catch (e) {
 			console.error(e);
@@ -723,16 +792,14 @@ export default function MemberContractInfo() {
 		setEditedContractInfo(null);
 	}, [selectedMember]);
 
-	// 계약정보 생성 버튼 클릭
+	// 계약정보 생성 버튼 클릭 → 모달
 	const handleCreateClick = () => {
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
-		setSelectedContract(null);
 		setIsCreating(true);
-		// F10010의 P_CTDT를 초기 계약일자로 설정
-		const initialContractDate = selectedMember.P_CTDT 
+		const initialContractDate = selectedMember.P_CTDT
 			? selectedMember.P_CTDT.substring(0, 10)
 			: '';
 		setNewContractInfo({
@@ -1352,7 +1419,7 @@ export default function MemberContractInfo() {
 									{!selectedMember ? (
 										<tr>
 											<td colSpan={4} className="text-center px-2 py-6 text-blue-900/60">
-												수급자를 선택하세요
+												수급자를 선택해주세요
 											</td>
 										</tr>
 									) : contractLoading ? (
@@ -1364,7 +1431,7 @@ export default function MemberContractInfo() {
 									) : contractList.length === 0 ? (
 										<tr>
 											<td colSpan={4} className="text-center px-2 py-6 text-blue-900/60">
-												등록된 계약이 없습니다
+												계약서가 없습니다
 											</td>
 										</tr>
 									) : (
@@ -1394,7 +1461,12 @@ export default function MemberContractInfo() {
 				</div>
 
 				{/* 우측: 계약정보 상세 */}
-				<section className="flex-1 min-w-0 overflow-y-auto p-4 space-y-4 bg-white">
+				<section className="relative flex-1 min-w-0 overflow-y-auto p-4 space-y-4 bg-white">
+						<div
+							className={`space-y-4 ${
+								!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+							}`}
+						>
 						{/* 계약정보 카드 */}
 						<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
 							<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
@@ -1408,7 +1480,7 @@ export default function MemberContractInfo() {
 											수정 및 삭제
 										</button>
 									) : null}
-									{selectedMember && !isEditing && !isCreating ? (
+									{selectedMember && !isEditing ? (
 										<button
 											type="button"
 											onClick={handlePrintSingleMemberContractReport}
@@ -1418,23 +1490,6 @@ export default function MemberContractInfo() {
 											{printLoading ? '출력 준비 중...' : '계약내역 출력'}
 										</button>
 									) : null}
-									{isCreating && (
-										<>
-											<button 
-												onClick={handleCreateSave}
-												disabled={contractLoading}
-												className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 disabled:opacity-50"
-											>
-												{contractLoading ? '저장 중...' : '저장'}
-											</button>
-											<button 
-												onClick={handleCreateCancel}
-												className="px-3 py-1 text-sm border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900"
-											>
-												취소
-											</button>
-										</>
-									)}
 									{isEditing && editedContractInfo && (
 										<>
 											<button 
@@ -1468,197 +1523,6 @@ export default function MemberContractInfo() {
 									<div className="col-span-12 grid grid-cols-12 gap-3">
 										{contractLoading ? (
 											<div className="col-span-12 text-center py-4 text-blue-900/60">계약 정보 로딩 중...</div>
-										) : isCreating ? (
-											<>
-												{/* 계약정보 생성 폼 */}
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자명</label>
-													<input className="w-full border border-blue-300 rounded px-2 py-1 bg-white" value={selectedMember?.P_NM || ''} readOnly />
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입·퇴소 상태</label>
-													<div className="flex items-center min-h-[34px] px-2 border border-blue-300 rounded bg-slate-50">
-														<span
-															className={`inline-block px-2 py-0.5 rounded text-sm font-medium ${
-																selectedMember?.P_ST === '1'
-																	? 'bg-green-100 text-green-800'
-																	: selectedMember?.P_ST === '9'
-																		? 'bg-slate-200 text-slate-800'
-																		: 'bg-gray-100 text-gray-600'
-															}`}
-														>
-															{getPSTLabel(selectedMember?.P_ST)}
-														</span>
-													</div>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입소일자</label>
-													<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_SDT) || '-'} readOnly />
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">퇴소일자</label>
-													<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_EDT) || '-'} readOnly />
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">계약일자</label>
-													<input 
-														type="date" 
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.CDT || ''}
-														onChange={(e) => handleNewContractFieldChange('CDT', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 시작일</label>
-													<input 
-														type="date" 
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.SVSDT || ''}
-														onChange={(e) => handleNewContractFieldChange('SVSDT', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 종료일</label>
-													<input 
-														type="date" 
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.SVEDT || ''}
-														onChange={(e) => handleNewContractFieldChange('SVEDT', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자 부담율 구분</label>
-													<select
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
-														value={newContractInfo.USRGU || ''}
-														onChange={(e) => handleNewUsrguChange(e.target.value)}
-													>
-														<option value="">선택</option>
-														<option value="1">일반 (보험자 80% / 수급자 20%)</option>
-														<option value="2">40%경감 (보험자 88% / 수급자 12%)</option>
-														<option value="3">60%경감 (보험자 92% / 수급자 8%)</option>
-														<option value="4">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
-													</select>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
-														보험자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
-													</label>
-													<input
-														readOnly
-														tabIndex={-1}
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
-														value={
-															newContractInfo.INSPER != null && newContractInfo.INSPER !== ''
-																? `${newContractInfo.INSPER}%`
-																: '—'
-														}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
-														수급자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
-													</label>
-													<input
-														readOnly
-														tabIndex={-1}
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
-														value={
-															newContractInfo.USRPER != null && newContractInfo.USRPER !== ''
-																? `${newContractInfo.USRPER}%`
-																: '—'
-														}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
-														수급자 내용 <span className="text-blue-700/80 font-normal">(기타금액내역)</span>
-													</label>
-													<input 
-														type="text"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.USRINFO || ''}
-														onChange={(e) => handleNewContractFieldChange('USRINFO', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">식대 1회</label>
-													<input 
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.EAMT || ''}
-														onChange={(e) => handleNewContractFieldChange('EAMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">간식비 1회</label>
-													<input 
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.ETAMT || ''}
-														onChange={(e) => handleNewContractFieldChange('ETAMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">상급병실료</label>
-													<input 
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.ESAMT || ''}
-														onChange={(e) => handleNewContractFieldChange('ESAMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기타금액</label>
-													<input
-														type="number"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
-														value={newContractInfo.USRINFO_AMT || ''}
-														onChange={(e) => handleNewContractFieldChange('USRINFO_AMT', e.target.value)}
-														placeholder="원"
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">결제방법</label>
-													<select
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
-														value={newContractInfo.CHGU || ''}
-														onChange={(e) => handleNewContractFieldChange('CHGU', e.target.value)}
-													>
-														<option value="">선택</option>
-														<option value="1">카드</option>
-														<option value="2">현금</option>
-													</select>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원명</label>
-													<EmployeeNameSearchField
-														empName={newContractInfo.INEMPNM || ''}
-														onPatch={(p) => setNewContractInfo((prev) => ({ ...prev, ...p }))}
-													/>
-												</div>
-												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원번호</label>
-													<input 
-														type="text"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.INEMPNO || ''}
-														onChange={(e) => handleNewContractFieldChange('INEMPNO', e.target.value)}
-													/>
-												</div>
-												<div className="col-span-12 flex flex-col gap-1">
-													<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">비고</label>
-													<input 
-														type="text"
-														className="w-full border border-blue-300 rounded px-2 py-1 bg-white" 
-														value={newContractInfo.ETC || ''}
-														onChange={(e) => handleNewContractFieldChange('ETC', e.target.value)}
-													/>
-												</div>
-											</>
 										) : isEditing && editedContractInfo ? (
 											<>
 												{/* 계약정보 수정 폼 */}
@@ -1749,9 +1613,10 @@ export default function MemberContractInfo() {
 													>
 														<option value="">선택</option>
 														<option value="1">일반 (보험자 80% / 수급자 20%)</option>
-														<option value="2">40%경감 (보험자 88% / 수급자 12%)</option>
-														<option value="3">60%경감 (보험자 92% / 수급자 8%)</option>
-														<option value="4">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+														<option value="2">50%경감대상자 (보험자 90% / 수급자 10%)</option>
+														<option value="3">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+														<option value="4">60%경감대상자 (보험자 92% / 수급자 8%)</option>
+														<option value="5">40%경감대상자 (보험자 88% / 수급자 12%)</option>
 													</select>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
@@ -1873,7 +1738,7 @@ export default function MemberContractInfo() {
 												</div>
 											</>
 										) : !contractInfo ? (
-											<div className="col-span-12 text-center py-4 text-blue-900/60">계약 정보가 없습니다</div>
+											<div className="col-span-12 text-center py-8 text-blue-900/70 text-base font-medium">계약서가 없습니다</div>
 										) : (
 											<>
 												{/* 계약정보 조회 모드 */}
@@ -2077,8 +1942,242 @@ export default function MemberContractInfo() {
 								</div>
 							</div>
 						</div>
+						</div>
+						{!selectedMember && (
+							<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+								<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
+									수급자를 선택해주세요
+								</p>
+							</div>
+						)}
 					</section>
 			</div>
+
+			{isCreating && selectedMember && (
+				<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+					<div
+						className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-lg border border-blue-300 bg-white shadow-xl overflow-hidden"
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="contract-create-title"
+					>
+						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
+							<h2 id="contract-create-title" className="text-base font-semibold text-blue-900">
+								계약정보 생성
+							</h2>
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									onClick={handleCreateSave}
+									disabled={contractLoading}
+									className="px-3 py-1.5 text-sm border border-blue-500 rounded bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+								>
+									{contractLoading ? '저장 중...' : '저장'}
+								</button>
+								<button
+									type="button"
+									onClick={handleCreateCancel}
+									className="px-3 py-1.5 text-sm border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900"
+								>
+									취소
+								</button>
+							</div>
+						</div>
+						<div className="p-4 overflow-y-auto flex-1 min-h-0">
+							<div className="grid grid-cols-12 gap-3">
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자명</label>
+									<input className="w-full border border-blue-300 rounded px-2 py-1 bg-white" value={selectedMember?.P_NM || ''} readOnly />
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입·퇴소 상태</label>
+									<div className="flex items-center min-h-[34px] px-2 border border-blue-300 rounded bg-slate-50">
+										<span
+											className={`inline-block px-2 py-0.5 rounded text-sm font-medium ${
+												selectedMember?.P_ST === '1'
+													? 'bg-green-100 text-green-800'
+													: selectedMember?.P_ST === '9'
+														? 'bg-slate-200 text-slate-800'
+														: 'bg-gray-100 text-gray-600'
+											}`}
+										>
+											{getPSTLabel(selectedMember?.P_ST)}
+										</span>
+									</div>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">입소일자</label>
+									<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_SDT) || '-'} readOnly />
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">퇴소일자</label>
+									<input className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50" value={formatMemberDate(selectedMember?.P_EDT) || '-'} readOnly />
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">계약일자</label>
+									<input
+										type="date"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.CDT || ''}
+										onChange={(e) => handleNewContractFieldChange('CDT', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 시작일</label>
+									<input
+										type="date"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.SVSDT || ''}
+										onChange={(e) => handleNewContractFieldChange('SVSDT', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">서비스 종료일</label>
+									<input
+										type="date"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.SVEDT || ''}
+										onChange={(e) => handleNewContractFieldChange('SVEDT', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">수급자 부담율 구분</label>
+									<select
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.USRGU || ''}
+										onChange={(e) => handleNewUsrguChange(e.target.value)}
+									>
+										<option value="">선택</option>
+										<option value="1">일반 (보험자 80% / 수급자 20%)</option>
+										<option value="2">50%경감대상자 (보험자 90% / 수급자 10%)</option>
+										<option value="3">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+										<option value="4">60%경감대상자 (보험자 92% / 수급자 8%)</option>
+										<option value="5">40%경감대상자 (보험자 88% / 수급자 12%)</option>
+									</select>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+										보험자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
+									</label>
+									<input
+										readOnly
+										tabIndex={-1}
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
+										value={
+											newContractInfo.INSPER != null && newContractInfo.INSPER !== ''
+												? `${newContractInfo.INSPER}%`
+												: '—'
+										}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+										수급자 부담율 (%) <span className="text-blue-700/80 font-normal">· 구분 자동</span>
+									</label>
+									<input
+										readOnly
+										tabIndex={-1}
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-slate-50 cursor-default"
+										value={
+											newContractInfo.USRPER != null && newContractInfo.USRPER !== ''
+												? `${newContractInfo.USRPER}%`
+												: '—'
+										}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">
+										수급자 내용 <span className="text-blue-700/80 font-normal">(기타금액내역)</span>
+									</label>
+									<input
+										type="text"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.USRINFO || ''}
+										onChange={(e) => handleNewContractFieldChange('USRINFO', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">식대 1회</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.EAMT || ''}
+										onChange={(e) => handleNewContractFieldChange('EAMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">간식비 1회</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.ETAMT || ''}
+										onChange={(e) => handleNewContractFieldChange('ETAMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">상급병실료</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.ESAMT || ''}
+										onChange={(e) => handleNewContractFieldChange('ESAMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">기타금액</label>
+									<input
+										type="number"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.USRINFO_AMT || ''}
+										onChange={(e) => handleNewContractFieldChange('USRINFO_AMT', e.target.value)}
+										placeholder="원"
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">결제방법</label>
+									<select
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.CHGU || ''}
+										onChange={(e) => handleNewContractFieldChange('CHGU', e.target.value)}
+									>
+										<option value="">선택</option>
+										<option value="1">카드</option>
+										<option value="2">현금</option>
+									</select>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원명</label>
+									<EmployeeNameSearchField
+										empName={newContractInfo.INEMPNM || ''}
+										onPatch={(p) => setNewContractInfo((prev) => ({ ...prev, ...p }))}
+									/>
+								</div>
+								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">등록 사원번호</label>
+									<input
+										type="text"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.INEMPNO || ''}
+										onChange={(e) => handleNewContractFieldChange('INEMPNO', e.target.value)}
+									/>
+								</div>
+								<div className="col-span-12 flex flex-col gap-1">
+									<label className="px-2 py-1 text-sm bg-blue-100 border border-blue-300 rounded text-blue-900">비고</label>
+									<input
+										type="text"
+										className="w-full border border-blue-300 rounded px-2 py-1 bg-white"
+										value={newContractInfo.ETC || ''}
+										onChange={(e) => handleNewContractFieldChange('ETC', e.target.value)}
+									/>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
     );
 }

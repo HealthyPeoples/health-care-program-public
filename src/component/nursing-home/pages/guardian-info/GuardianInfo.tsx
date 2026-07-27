@@ -915,7 +915,12 @@ export default function GuardianInfo() {
 				</div>
 
 				{/* 우측 패널: 보호자 정보 */}
-				<div className="flex-1 overflow-y-auto p-4 bg-white">
+				<div className="relative flex-1 overflow-y-auto p-4 bg-white">
+					<div
+						className={
+							!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+						}
+					>
 					<div className="mb-4">
 						<div className="flex items-center justify-between mb-4">
 							<h2 className="text-lg font-semibold text-blue-900">보호자 정보</h2>
@@ -1162,6 +1167,14 @@ export default function GuardianInfo() {
 							/>
 						</div>
 					</div>
+					</div>
+					{!selectedMember && (
+						<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+							<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
+								수급자를 선택해주세요
+							</p>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>
