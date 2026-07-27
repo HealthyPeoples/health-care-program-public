@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
-import { matchesSelectedFloorByRoomNo } from '../../utils/roomNoFloorFilter';
+import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
 	ymdToYm,
 	openPrintWindowNow,
@@ -250,7 +250,7 @@ export default function MedicationRegistration() {
 		}
 		
 		if (selectedFloor) {
-			if (!matchesSelectedFloorByRoomNo(member.ROOM_NO, selectedFloor)) {
+			if (!matchesSelectedFloor(member, selectedFloor)) {
 				return false;
 			}
 		}

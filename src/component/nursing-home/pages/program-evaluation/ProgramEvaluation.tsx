@@ -1,18 +1,12 @@
 "use client";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
-
-const NO_ROOM_VALUE = '__NO_ROOM__';
-
-function extractFloorFromRoomNo(roomNo: unknown): number | null {
-	const s = String(roomNo ?? '').trim();
-	if (!s) return null;
-	const digits = s.replace(/\D/g, '');
-	if (!digits) return null;
-	const n = parseInt(digits, 10);
-	if (!Number.isFinite(n) || Number.isNaN(n) || n < 0) return null;
-	return Math.floor(n / 100);
-}
+import {
+	NO_ROOM_VALUE,
+	availableFloorsFromMembers,
+	extractMemberFloor,
+	normalizeRoomNo,
+} from '../../utils/roomNoFloor';
 
 interface MemberData {
 	ANCD: string;
@@ -173,10 +167,9 @@ export default function ProgramEvaluation() {
 
 				if (selectedFloor) {
 					if (selectedFloor === NO_ROOM_VALUE) {
-						const roomNo = String(member?.ROOM_NO ?? '').trim();
-						if (roomNo !== '') return false;
+						if (normalizeRoomNo(member?.ROOM_NO) !== '') return false;
 					} else {
-						const memberFloor = extractFloorFromRoomNo(member.ROOM_NO);
+						const memberFloor = extractMemberFloor(member);
 						const selectedFloorNum = Number(String(selectedFloor).trim());
 						if (!Number.isFinite(selectedFloorNum) || memberFloor !== selectedFloorNum) {
 							return false;
@@ -237,15 +230,7 @@ export default function ProgramEvaluation() {
 		setCurrentPage(1);
 	}, [selectedStatus, selectedGrade, selectedFloor, searchTerm]);
 
-	const floorOptions = useMemo(() => {
-		return Array.from(
-			new Set(
-				memberList
-					.map((m) => extractFloorFromRoomNo(m.ROOM_NO))
-					.filter((f): f is number => f !== null && f !== undefined)
-			)
-		).sort((a, b) => a - b);
-	}, [memberList]);
+	const floorOptions = useMemo(() => availableFloorsFromMembers(memberList), [memberList]);
 
 	const applyRowToForm = useCallback((row: F14050Row | null, memberName: string) => {
 		if (!row) {
@@ -548,8 +533,8 @@ export default function ProgramEvaluation() {
 													{formatCareGradeLabel(member.P_GRD)}
 												</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">
-													{extractFloorFromRoomNo(member.ROOM_NO) !== null
-														? `${extractFloorFromRoomNo(member.ROOM_NO)}층`
+													{extractMemberFloor(member) !== null
+														? `${extractMemberFloor(member)}층`
 														: '-'}
 												</td>
 												<td className="px-2 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>

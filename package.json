@@ -13,7 +13,7 @@
     "start": "node .next/standalone/server.js",
     "lint": "next lint",
     "clean": "rimraf .next .turbo node_modules/.cache",
-    "test": "node --test src/utils/normalizeYmd.test.js src/utils/apiResponse.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementGrid.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementToolbar.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementFilter.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementForm.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementPrint.test.js src/component/nursing-home/pages/monthly-salary-statement/useMonthlySalaryStatement.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementUtils.test.js",
+    "test": "node --test src/utils/normalizeYmd.test.js src/utils/apiResponse.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementGrid.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementToolbar.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementFilter.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementForm.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementPrint.test.js src/component/nursing-home/pages/monthly-salary-statement/useMonthlySalaryStatement.test.js src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementUtils.test.js src/component/nursing-home/utils/roomNoFloor.test.js",
     "test:normalize-ymd": "node --test src/utils/normalizeYmd.test.js",
     "test:api-response": "node --test src/utils/apiResponse.test.js",
     "test:salary-statement-grid": "node --test src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementGrid.test.js",
@@ -22,7 +22,8 @@
     "test:salary-statement-form": "node --test src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementForm.test.js",
     "test:salary-statement-print": "node --test src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementPrint.test.js",
     "test:salary-statement-hook": "node --test src/component/nursing-home/pages/monthly-salary-statement/useMonthlySalaryStatement.test.js",
-    "test:salary-statement-utils": "node --test src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementUtils.test.js"
+    "test:salary-statement-utils": "node --test src/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementUtils.test.js",
+    "test:room-no-floor": "node --test src/component/nursing-home/utils/roomNoFloor.test.js"
   },
   "dependencies": {
     "@types/node": "^22.0.0",

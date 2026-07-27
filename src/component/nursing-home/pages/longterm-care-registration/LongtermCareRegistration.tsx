@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum, normalizeRoomNo } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
-import { matchesSelectedFloorByRoomNo } from '../../utils/roomNoFloorFilter';
+import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import { BATH_METH_TO_LABEL, resolveBathMethodFromRow } from '../../utils/physicalActivityFields';
 
 interface MemberData {
@@ -201,7 +201,7 @@ export default function LongtermCareRegistration() {
 				if (String(member.P_GRD || '').trim() !== String(selectedGrade).trim()) return false;
 			}
 			if (selectedFloor) {
-				if (!matchesSelectedFloorByRoomNo((member as any).ROOM_NO, selectedFloor)) return false;
+				if (!matchesSelectedFloor(member, selectedFloor)) return false;
 			}
 			if (searchTerm && searchTerm.trim() !== '') {
 				if (!member.P_NM?.toLowerCase().includes(searchTerm.toLowerCase().trim())) return false;

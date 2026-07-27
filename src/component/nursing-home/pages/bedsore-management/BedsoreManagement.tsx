@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
-import { matchesSelectedFloorByRoomNo } from '../../utils/roomNoFloorFilter';
+import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 
 interface MemberData {
 	ANCD: string;
@@ -188,7 +188,7 @@ export default function BedsoreManagement() {
 				if (memberGrade !== String(selectedGrade).trim()) return false;
 			}
 			if (selectedFloor) {
-				if (!matchesSelectedFloorByRoomNo(member.ROOM_NO, selectedFloor)) return false;
+				if (!matchesSelectedFloor(member, selectedFloor)) return false;
 			}
 			if (searchTerm.trim()) {
 				const searchLower = searchTerm.toLowerCase().trim();

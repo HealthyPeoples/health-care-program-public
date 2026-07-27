@@ -6,7 +6,7 @@ import {
 	attachLatestRoomNoByPnum,
 	availableFloorsFromMembers,
 	countNoRoom,
-	extractFloorFromRoomNo,
+	extractMemberFloor,
 	normalizeRoomNo
 } from '../../utils/roomNoFloor';
 
@@ -155,7 +155,7 @@ export default function BeneficiaryStatusInquiry() {
 			if (selectedFloor === NO_ROOM_VALUE) {
 				if (normalizeRoomNo((member as any).ROOM_NO) !== '') return false;
 			} else {
-				const memberFloor = extractFloorFromRoomNo((member as any).ROOM_NO);
+				const memberFloor = extractMemberFloor(member as any);
 				const selectedFloorNum = Number(String(selectedFloor).trim());
 				if (!Number.isFinite(selectedFloorNum) || memberFloor !== selectedFloorNum) return false;
 			}

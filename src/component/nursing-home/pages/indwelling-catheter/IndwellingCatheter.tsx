@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
-import { matchesSelectedFloorByRoomNo } from '../../utils/roomNoFloorFilter';
+import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
 	CATHETER_TIME_SLOTS,
 	catheterFormToPayload,
@@ -116,7 +116,7 @@ export default function IndwellingCatheter() {
 		}
 		
 		if (selectedFloor) {
-			if (!matchesSelectedFloorByRoomNo((member as any).ROOM_NO, selectedFloor)) return false;
+			if (!matchesSelectedFloor(member, selectedFloor)) return false;
 		}
 		
 		if (searchTerm && searchTerm.trim() !== '') {

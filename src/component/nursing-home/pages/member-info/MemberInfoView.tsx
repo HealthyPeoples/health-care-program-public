@@ -1,6 +1,13 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { formatCareGradeLabel, normalizePGrdForSelect } from '../../utils/careGrade';
+import {
+	NO_ROOM_VALUE,
+	attachLatestRoomNoByPnum,
+	availableFloorsFromMembers,
+	extractMemberFloor,
+	normalizeRoomNo,
+} from '../../utils/roomNoFloor';
 
 interface MemberData {
   [key: string]: any;
@@ -33,17 +40,6 @@ function fmtSex(v: unknown): string {
 	if (s === '1') return '남';
 	if (s === '2') return '여';
 	return s || '';
-}
-
-function extractFloorFromRoomNo(roomNo: unknown): number | null {
-	const s = String(roomNo ?? '').trim();
-	if (!s) return null;
-	const digits = s.replace(/\D/g, '');
-	if (!digits) return null;
-	const n = Number(digits);
-	if (!Number.isFinite(n) || n < 0) return null;
-	// 104 => 1층, 1203 => 12층
-	return Math.floor(n / 100);
 }
 
 function todayYYYYMMDD(): string {
@@ -221,32 +217,8 @@ export default function MemberInfoView() {
 			const result = await response.json();
 			
 			if (result.success) {
-				// F14090(월 집계)에서 ROOM_NO를 가져와 (ANCD, PNUM) 기준으로 병합
-				let mergedMembers: MemberData[] = Array.isArray(result.data) ? result.data : [];
-				try {
-					const f14090Res = await fetch(`/api/f14090`);
-					const f14090Json = await f14090Res.json();
-					if (f14090Json?.success && Array.isArray(f14090Json.data)) {
-						const roomByPnum = new Map<string, any>();
-						f14090Json.data.forEach((row: any) => {
-							const pnumKey = String(row?.PNUM ?? '').trim();
-							if (!pnumKey) return;
-							// ANCD는 세션 기준으로 이미 필터링되어 오지만, 혹시 몰라서 row.ANCD도 확인
-							roomByPnum.set(pnumKey, row?.ROOM_NO ?? null);
-						});
-
-						mergedMembers = mergedMembers.map((m) => {
-							const pnumKey = String(m?.PNUM ?? '').trim();
-							const roomNo = roomByPnum.get(pnumKey);
-							return {
-								...m,
-								ROOM_NO: roomNo ?? m.ROOM_NO ?? null
-							};
-						});
-					}
-				} catch (e) {
-					// ROOM_NO는 부가 정보이므로 실패해도 기본 목록은 유지
-				}
+				const list = Array.isArray(result.data) ? result.data : [];
+				const mergedMembers = await attachLatestRoomNoByPnum(list);
 
 				setMembers(mergedMembers);
 				setSelectedMember((prev) => {
@@ -691,16 +663,9 @@ export default function MemberInfoView() {
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 10;
 
-	const NO_ROOM_VALUE = '__NO_ROOM__';
+	const availableFloors = availableFloorsFromMembers(members);
 
-	const availableFloors = Array.from(
-		new Set(members.map((m) => extractFloorFromRoomNo(m.ROOM_NO)).filter((f): f is number => f !== null))
-	).sort((a, b) => a - b);
-
-	const noRoomCount = members.filter((m) => {
-		const s = String(m?.ROOM_NO ?? '').trim();
-		return s === '';
-	}).length;
+	const noRoomCount = members.filter((m) => normalizeRoomNo(m?.ROOM_NO) === '').length;
 
 	// 클라이언트 측 추가 필터링 (서버에서 이미 이름으로 필터링됨)
 	// 모든 필터 조건을 AND로 결합하여 적용
@@ -728,10 +693,9 @@ export default function MemberInfoView() {
 		// 층수 필터링
 		if (selectedFloor) {
 			if (selectedFloor === NO_ROOM_VALUE) {
-				const roomNo = String(member?.ROOM_NO ?? '').trim();
-				if (roomNo !== '') return false;
+				if (normalizeRoomNo(member?.ROOM_NO) !== '') return false;
 			} else {
-				const memberFloor = extractFloorFromRoomNo(member.ROOM_NO);
+				const memberFloor = extractMemberFloor(member);
 				const selectedFloorNum = Number(String(selectedFloor).trim());
 				if (!Number.isFinite(selectedFloorNum) || memberFloor !== selectedFloorNum) {
 					return false;
@@ -1436,7 +1400,7 @@ export default function MemberInfoView() {
 																: '-'}
 													</td>
 													<td className="px-2 py-2">
-														{String(member?.ROOM_NO ?? '').trim() !== '' ? String(member.ROOM_NO) : '없음'}
+														{normalizeRoomNo(member?.ROOM_NO) !== '' ? String(member.ROOM_NO) : '없음'}
 													</td>
 												</tr>
 											))
