@@ -13,8 +13,9 @@
     "start": "node .next/standalone/server.js",
     "lint": "next lint",
     "clean": "rimraf .next .turbo node_modules/.cache",
-    "test": "node --test src/utils/normalizeYmd.test.js",
-    "test:normalize-ymd": "node --test src/utils/normalizeYmd.test.js"
+    "test": "node --test src/utils/normalizeYmd.test.js src/utils/apiResponse.test.js",
+    "test:normalize-ymd": "node --test src/utils/normalizeYmd.test.js",
+    "test:api-response": "node --test src/utils/apiResponse.test.js"
   },
   "dependencies": {
     "@types/node": "^22.0.0",

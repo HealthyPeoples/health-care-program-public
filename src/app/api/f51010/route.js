@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdShort as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const DB_NAME = '돌봄시설DB';
 const TABLE_NAME = 'F51010';
 const TABLE_FULL = `[${DB_NAME}].[dbo].[${TABLE_NAME}]`;
@@ -49,18 +50,12 @@ export async function GET(req) {
     if (!gate.ok) return gate.response;
 
     if (!pnum) {
-      return new Response(JSON.stringify({ success: false, error: 'pnum 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -70,10 +65,7 @@ export async function GET(req) {
     const evaldt = normalizeYmd(evaldtRaw);
     if (evaldt) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(evaldt)) {
-        return new Response(JSON.stringify({ success: false, error: 'evaldt는 YYYY-MM-DD 형식이어야 합니다' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonError({ success: false, error: 'evaldt는 YYYY-MM-DD 형식이어야 합니다' }, 400);
       }
       request.input('EVALDT', evaldt);
       const result = await request.query(`
@@ -85,10 +77,7 @@ export async function GET(req) {
       `);
       const row = result?.recordset?.[0] || null;
       const data = row ? { ...row, EVALDT: normalizeYmd(row.EVALDT), INDT: normalizeYmd(row.INDT) } : null;
-      return new Response(JSON.stringify({ success: true, data }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonOk({ success: true, data });
     }
 
     const result = await request.query(`
@@ -103,16 +92,10 @@ export async function GET(req) {
       EVALDT: normalizeYmd(r.EVALDT),
       INDT: normalizeYmd(r.INDT),
     }));
-    return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
     console.error('F51010 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -131,18 +114,12 @@ export async function POST(req) {
     const evaldtRaw = pickBody(body, 'EVALDT', null);
 
     if (!pnum || !evaldtRaw) {
-      return new Response(JSON.stringify({ success: false, error: 'PNUM, EVALDT는 필수입니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'PNUM, EVALDT는 필수입니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const columnSet = await getColumnNameSet(pool);
@@ -150,10 +127,7 @@ export async function POST(req) {
     // 키 컬럼(테이블에 존재한다고 가정)
     const keyCols = ['ANCD', 'PNUM', 'EVALDT'].filter((c) => columnSet.has(c));
     if (keyCols.length < 2) {
-      return new Response(JSON.stringify({ success: false, error: 'F51010 키 컬럼(ANCD/PNUM/EVALDT)을 확인할 수 없습니다' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'F51010 키 컬럼(ANCD/PNUM/EVALDT)을 확인할 수 없습니다' });
     }
 
     const request = pool.request();
@@ -213,16 +187,10 @@ export async function POST(req) {
 
     await request.query(query);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F51010 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -238,20 +206,14 @@ export async function DELETE(req) {
     if (!gate.ok) return gate.response;
 
     if (!pnum || !evaldtRaw) {
-      return new Response(JSON.stringify({ success: false, error: 'pnum, evaldt 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'pnum, evaldt 파라미터가 필요합니다' }, 400);
     }
 
     const evaldt = ymdOrThrow(evaldtRaw, 'evaldt');
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -266,16 +228,10 @@ export async function DELETE(req) {
         AND CONVERT(date, [EVALDT]) = CONVERT(date, @EVALDT)
     `);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F51010 삭제 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 

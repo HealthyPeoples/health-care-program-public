@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const VIEW = '[돌봄시설DB].[dbo].[V10010A]';
@@ -37,10 +38,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const status = String(sp.get('status') || '').trim();
@@ -67,19 +65,13 @@ export async function GET(req) {
 		}
 
 		const data = (result.recordset || []).map(mapRow);
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				data,
 				count: data.length,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('V10010A GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }

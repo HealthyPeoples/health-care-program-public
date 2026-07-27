@@ -1,23 +1,18 @@
 import { connPool } from '../../../../config/server';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getSessionAncd } from '../../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../../utils/apiResponse';
 export async function GET(req) {
   try {
     const sessionAncd = getSessionAncd(req);
     if (sessionAncd == null) {
-      return NextResponse.json(
-        { success: false, error: '로그인이 필요합니다.' },
-        { status: 401 }
-      );
+      return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return NextResponse.json(
-        { success: false, error: '데이터베이스 연결 실패' },
-        { status: 500 }
-      );
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const { searchParams } = new URL(req.url);
@@ -49,7 +44,7 @@ export async function GET(req) {
 
     const result = await request.query(query);
 
-    return NextResponse.json({
+    return jsonOk({
       success: true,
       data: result.recordset,
       count: result.recordset.length
@@ -57,9 +52,6 @@ export async function GET(req) {
 
   } catch (err) {
     console.error('F10010 검색 오류:', err);
-    return NextResponse.json(
-      { success: false, error: err.message },
-      { status: 500 }
-    );
+    return jsonError({ success: false, error: err.message });
   }
 }

@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdEmptyTz as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F60030]';
 const VIEWER_TABLE = '[돌봄시설DB].[dbo].[F60031]';
 
@@ -53,10 +54,7 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -84,10 +82,7 @@ export async function GET(req) {
       `);
       const row = detail.recordset?.[0];
       if (!row) {
-        return new Response(JSON.stringify({ success: false, error: '공지를 찾을 수 없습니다.' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '공지를 찾을 수 없습니다.' }, 404);
       }
 
       const viewersRes = await pool
@@ -107,10 +102,7 @@ export async function GET(req) {
         viewers: viewersRes.recordset || [],
       };
 
-      return new Response(JSON.stringify({ success: true, data }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true, data });
     }
 
     let where = 'WHERE N.[ANCD] = @ANCD';
@@ -165,16 +157,10 @@ export async function GET(req) {
       EDT: normalizeYmd(r.EDT),
     }));
 
-    return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
     console.error('F60030 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -192,18 +178,12 @@ export async function POST(req) {
     const edt = body?.EDT;
 
     if (!sdt || !edt) {
-      return new Response(JSON.stringify({ success: false, error: 'SDT, EDT는 필수입니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'SDT, EDT는 필수입니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const pick = (k) => (Object.prototype.hasOwnProperty.call(body || {}, k) ? body[k] : null);
@@ -247,16 +227,10 @@ export async function POST(req) {
     const viewers = Array.isArray(body?.viewers) ? body.viewers : [];
     await syncF60031(pool, newSeq, mgu, ancd, viewers);
 
-    return new Response(JSON.stringify({ success: true, seq: newSeq }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true, seq: newSeq });
   } catch (err) {
     console.error('F60030 등록 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -274,18 +248,12 @@ export async function PUT(req) {
     const seq = body?.SEQ ?? seqParam;
 
     if (seq == null || seq === '') {
-      return new Response(JSON.stringify({ success: false, error: 'SEQ는 필수입니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'SEQ는 필수입니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const pick = (k) => (Object.prototype.hasOwnProperty.call(body || {}, k) ? body[k] : undefined);
@@ -324,10 +292,7 @@ export async function PUT(req) {
     }
 
     if (setParts.length === 0 && !Array.isArray(body?.viewers) && mgu === undefined) {
-      return new Response(JSON.stringify({ success: false, error: '수정할 항목이 없습니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '수정할 항목이 없습니다.' }, 400);
     }
 
     if (setParts.length > 0) {
@@ -338,10 +303,7 @@ export async function PUT(req) {
       `);
       const affected = updateResult.rowsAffected?.[0] ?? 0;
       if (affected === 0) {
-        return new Response(JSON.stringify({ success: false, error: '수정할 공지를 찾을 수 없습니다.' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '수정할 공지를 찾을 수 없습니다.' }, 404);
       }
     }
 
@@ -360,16 +322,10 @@ export async function PUT(req) {
       await syncF60031(pool, parseInt(String(seq), 10), finalMgu, ancd, viewers);
     }
 
-    return new Response(JSON.stringify({ success: true, seq: parseInt(String(seq), 10) }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true, seq: parseInt(String(seq), 10) });
   } catch (err) {
     console.error('F60030 수정 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -385,18 +341,12 @@ export async function DELETE(req) {
     const ancd = ancdParam ?? gate.sessionAncd;
 
     if (seq == null || seq === '') {
-      return new Response(JSON.stringify({ success: false, error: 'seq 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'seq 파라미터가 필요합니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const seqNum = parseInt(String(seq), 10);
@@ -411,15 +361,9 @@ export async function DELETE(req) {
       WHERE [SEQ] = @SEQ AND [ANCD] = @ANCD
     `);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F60030 삭제 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }

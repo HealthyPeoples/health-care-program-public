@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdAccess, assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdOrNull: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -54,12 +55,9 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({
+      return jsonError({
         success: false,
         error: '데이터베이스 연결 실패'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -140,24 +138,18 @@ export async function GET(req) {
 
     const result = await request.query(query);
 
-    return new Response(JSON.stringify({
+    return jsonOk({
       success: true,
       data: result.recordset,
       count: result.recordset.length
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('F01010 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({
+    return jsonError({
       success: false,
       error: err.message,
       details: err.toString()
-    }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
@@ -198,29 +190,20 @@ export async function POST(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		if (isUpdate) {
 			const empno = parseInt(String(body.EMPNO ?? body.empno ?? ''), 10);
 			if (Number.isNaN(empno)) {
-				return new Response(JSON.stringify({ success: false, error: '사원번호(EMPNO)가 필요합니다.' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '사원번호(EMPNO)가 필요합니다.' }, 400);
 			}
 			const rq = pool.request();
 			rq.input('ANCD', gate.sessionAncd);
 			rq.input('EMPNO', sql.Int, empno);
 			const boundName = bindEmployeeInputs(rq, body);
 			if (!boundName) {
-				return new Response(JSON.stringify({ success: false, error: '사원명을 입력해 주세요.' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '사원명을 입력해 주세요.' }, 400);
 			}
 			const upd = await rq.query(`
         UPDATE ${TABLE} SET
@@ -247,23 +230,14 @@ export async function POST(req) {
         WHERE [ANCD] = @ANCD AND [EMPNO] = @EMPNO
       `);
 			if (!upd.rowsAffected?.[0]) {
-				return new Response(JSON.stringify({ success: false, error: '수정할 사원 정보가 없습니다.' }), {
-					status: 404,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '수정할 사원 정보가 없습니다.' }, 404);
 			}
-			return new Response(
-				JSON.stringify({ success: true, action: 'update', ancd: gate.sessionAncd, empno, EMPNM: boundName }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, action: 'update', ancd: gate.sessionAncd, empno, EMPNM: boundName });
 		}
 
 		const empNm = truncNullable(body.EMPNM ?? body.empNm ?? body.name, 100);
 		if (!empNm) {
-			return new Response(JSON.stringify({ success: false, error: '사원명을 입력해 주세요.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '사원명을 입력해 주세요.' }, 400);
 		}
 
 		const maxR = await pool
@@ -272,10 +246,7 @@ export async function POST(req) {
 			.query(`SELECT ISNULL(MAX([EMPNO]), 0) + 1 AS NEXTEMPNO FROM ${TABLE} WHERE [ANCD] = @ANCD`);
 		const empno = maxR.recordset?.[0]?.NEXTEMPNO;
 		if (empno == null) {
-			return new Response(JSON.stringify({ success: false, error: '사원번호 채번에 실패했습니다.' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '사원번호 채번에 실패했습니다.' });
 		}
 
 		let inempno = body.INEMPNO ?? body.inempno;
@@ -310,21 +281,15 @@ export async function POST(req) {
       )
     `);
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				ancd: gate.sessionAncd,
 				empno,
 				EMPNM: empNm,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('F01010 사원 등록 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -344,18 +309,12 @@ export async function DELETE(req) {
 
 		const empno = parseInt(String(empnoRaw ?? ''), 10);
 		if (Number.isNaN(empno)) {
-			return new Response(JSON.stringify({ success: false, error: '사원번호(empno)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '사원번호(empno)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -411,28 +370,19 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 사원 정보가 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 사원 정보가 없습니다.' }, 404);
 		}
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				message: '사원정보가 삭제되었습니다.',
 				ancd,
 				empno,
 				deletedAccounts,
 				linkedUids,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('F01010 사원 삭제 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

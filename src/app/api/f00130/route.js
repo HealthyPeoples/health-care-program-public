@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F00130]';
 
 
@@ -23,10 +24,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const mappableOnly = req.nextUrl.searchParams.get('mappableOnly') === '1';
@@ -62,15 +60,9 @@ export async function GET(req) {
 			};
 		});
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F00130 조회 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

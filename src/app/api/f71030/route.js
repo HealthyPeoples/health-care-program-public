@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F71030]';
 
 
@@ -27,10 +28,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -69,16 +67,10 @@ export async function GET(req) {
 			INDT: normalizeYmd(row.INDT),
 		}));
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F71030 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -94,18 +86,12 @@ export async function POST(req) {
 
 		const circle = trunc(body?.G_CIRCLE ?? body?.gCircle ?? body?.name, 100);
 		if (!circle) {
-			return new Response(JSON.stringify({ success: false, error: '봉사회명(단체명)을 입력해주세요.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '봉사회명(단체명)을 입력해주세요.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -158,10 +144,7 @@ export async function POST(req) {
 					)
 				`);
 
-			return new Response(
-				JSON.stringify({ success: true, created: true, G_SEQ: gSeq }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, created: true, G_SEQ: gSeq });
 		}
 
 		const result = await pool
@@ -187,22 +170,13 @@ export async function POST(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '수정할 단체 정보를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '수정할 단체 정보를 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, created: false, G_SEQ: gSeq }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, created: false, G_SEQ: gSeq });
 	} catch (err) {
 		console.error('F71030 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -219,18 +193,12 @@ export async function DELETE(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!Number.isFinite(gSeq)) {
-			return new Response(JSON.stringify({ success: false, error: 'gSeq가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'gSeq가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -246,13 +214,10 @@ export async function DELETE(req) {
 				WHERE [ANCD] = @ANCD AND [G_SEQ] = @G_SEQ
 			`);
 		if (child.recordset?.[0]) {
-			return new Response(
-				JSON.stringify({
+			return jsonError({
 					success: false,
 					error: '해당 단체에 봉사실적이 있어 삭제할 수 없습니다. 실적을 먼저 삭제해주세요.',
-				}),
-				{ status: 409, headers: { 'Content-Type': 'application/json' } }
-			);
+				}, 409);
 		}
 
 		const result = await pool
@@ -266,21 +231,12 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 단체 정보를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 단체 정보를 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true, G_SEQ: gSeq }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, G_SEQ: gSeq });
 	} catch (err) {
 		console.error('F71030 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

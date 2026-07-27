@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 
 import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F00132]';
 const BENEFICIARY_TABLE = '[돌봄시설DB].[dbo].[F10010]';
 
@@ -70,18 +71,12 @@ export async function GET(req) {
 		if (!gate.ok) return gate.response;
 
 		if (empno == null) {
-			return new Response(JSON.stringify({ success: false, error: 'empno 파라미터가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'empno 파라미터가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const sessionAncd = ancd ?? gate.sessionAncd;
@@ -122,16 +117,10 @@ export async function GET(req) {
 			ETC: row.ETC != null ? String(row.ETC).trim() : '',
 		}));
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F00132 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -148,18 +137,12 @@ export async function POST(req) {
 		const pnums = parsePnums(body, null);
 
 		if (empno == null || !pnums.length) {
-			return new Response(JSON.stringify({ success: false, error: 'EMPNO, PNUM(또는 PNUMS)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'EMPNO, PNUM(또는 PNUMS)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -190,16 +173,10 @@ export async function POST(req) {
 			if (result.recordset?.[0]?.inserted === 1) inserted += 1;
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, inserted, count: pnums.length }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, inserted, count: pnums.length });
 	} catch (err) {
 		console.error('F00132 추가 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -224,18 +201,12 @@ export async function DELETE(req) {
 		const pnums = parsePnums(body, searchParams);
 
 		if (empno == null || !pnums.length) {
-			return new Response(JSON.stringify({ success: false, error: 'EMPNO, PNUM(또는 PNUMS)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'EMPNO, PNUM(또는 PNUMS)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -253,15 +224,9 @@ export async function DELETE(req) {
 			deleted += result?.rowsAffected?.[0] ?? 0;
 		}
 
-		return new Response(JSON.stringify({ success: true, deleted }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, deleted });
 	} catch (err) {
 		console.error('F00132 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

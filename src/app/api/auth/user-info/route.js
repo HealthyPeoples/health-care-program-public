@@ -1,31 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { connPool } from '../../../../config/server';
 import { parseUserInfoCookieValue } from '../../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../../utils/apiResponse';
 export async function GET(req) {
   try {
     // 쿠키에서 user_info 읽기
     const userInfo = req.cookies.get('user_info')?.value;
 
     if (!userInfo) {
-      return NextResponse.json({
+      return jsonError({
         success: false,
         error: '쿠키가 없습니다'
-      }, {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 404);
     }
 
     let parsedUserInfo = parseUserInfoCookieValue(userInfo);
     if (!parsedUserInfo) {
-      return NextResponse.json({
+      return jsonError({
         success: false,
         error: '쿠키 파싱 오류'
-      }, {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 400);
     }
 
     // DB에서 기관명·관리등급·로그인 사원명 보강 (쿠키에 없거나 DB만 가능할 때)
@@ -87,22 +82,16 @@ export async function GET(req) {
       console.error('user-info DB 보강 실패:', e);
     }
 
-    return NextResponse.json({
+    return jsonOk({
       success: true,
       data: parsedUserInfo
-    }, {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('user_info 쿠키 읽기 오류:', err);
-    return NextResponse.json({
+    return jsonError({
       success: false,
       error: err.message
-    }, {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }

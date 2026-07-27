@@ -1,15 +1,13 @@
 import { connPool } from '../../../config/server';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 export async function GET(req) {
   try {
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: '데이터베이스 연결 실패' 
-      }), { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -24,24 +22,18 @@ export async function GET(req) {
       ORDER BY TABLE_SCHEMA, TABLE_NAME
     `);
     
-    return new Response(JSON.stringify({ 
+    return jsonOk({ 
       success: true, 
       data: result.recordset,
       count: result.recordset.length
-    }), { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('테이블 목록 조회 오류:', err);
-    return new Response(JSON.stringify({ 
+    return jsonError({ 
       success: false, 
       error: err.message,
       details: err.toString()
-    }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }

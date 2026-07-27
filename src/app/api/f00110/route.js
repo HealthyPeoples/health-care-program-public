@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdAccess, assertAnCdMatchesSession, getSessionAncd } from '../../../config/sessionServer';
 
 import { normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F00110]';
 
 
@@ -32,10 +33,7 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     // 기관 목록 전체 (UGR=1만)
@@ -55,10 +53,7 @@ export async function GET(req) {
             ORDER BY [ANNM]
           `);
         const rows = (result.recordset || []).map(normalizeRow);
-        return new Response(JSON.stringify({ success: true, data: rows, count: rows.length }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonOk({ success: true, data: rows, count: rows.length });
       }
 
       const result = await pool.request().query(`
@@ -68,10 +63,7 @@ export async function GET(req) {
         ORDER BY [ANNM]
       `);
       const rows = (result.recordset || []).map(normalizeRow);
-      return new Response(JSON.stringify({ success: true, data: rows, count: rows.length }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true, data: rows, count: rows.length });
     }
 
     const access = await assertAnCdAccess(req, pool, ancdParam);
@@ -90,24 +82,15 @@ export async function GET(req) {
     const row = result.recordset?.[0] ?? null;
 
     if (!row) {
-      return new Response(JSON.stringify({ success: true, data: [], count: 0 }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true, data: [], count: 0 });
     }
 
     const normalized = normalizeRow(row);
 
-    return new Response(JSON.stringify({ success: true, data: [normalized], count: 1 }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true, data: [normalized], count: 1 });
   } catch (err) {
     console.error('F00110 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -115,10 +98,7 @@ export async function PUT(req) {
   try {
     const sessionAncd = getSessionAncd(req);
     if (sessionAncd == null) {
-      return new Response(JSON.stringify({ success: false, error: '로그인이 필요합니다.' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
     }
 
     const body = await req.json().catch(() => ({}));
@@ -129,10 +109,7 @@ export async function PUT(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const pick = (k) => (Object.prototype.hasOwnProperty.call(body || {}, k) ? body[k] : undefined);
@@ -178,10 +155,7 @@ export async function PUT(req) {
     });
 
     if (setParts.length === 0) {
-      return new Response(JSON.stringify({ success: false, error: '수정할 항목이 없습니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '수정할 항목이 없습니다.' }, 400);
     }
 
     const query = `
@@ -194,22 +168,13 @@ export async function PUT(req) {
     const affected = result.rowsAffected?.[0] ?? 0;
 
     if (affected === 0) {
-      return new Response(JSON.stringify({ success: false, error: '해당 고객(ANCD) 정보를 찾을 수 없습니다.' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '해당 고객(ANCD) 정보를 찾을 수 없습니다.' }, 404);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F00110 수정 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -218,20 +183,14 @@ export async function POST(req) {
   try {
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const body = await req.json();
     const { query, params } = body;
 
     if (!query) {
-      return new Response(JSON.stringify({ success: false, error: '쿼리가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '쿼리가 필요합니다' }, 400);
     }
 
     const request = pool.request();
@@ -242,15 +201,9 @@ export async function POST(req) {
     }
 
     const result = await request.query(query);
-    return new Response(
-      JSON.stringify({ success: true, data: result.recordset, count: result.recordset.length }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({ success: true, data: result.recordset, count: result.recordset.length });
   } catch (err) {
     console.error('F00110 쿼리 실행 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }

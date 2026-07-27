@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F71041]';
 
 
@@ -63,18 +64,12 @@ export async function GET(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!phone) {
-			return new Response(JSON.stringify({ success: false, error: 'phone이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'phone이 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -104,16 +99,10 @@ export async function GET(req) {
 
 		const data = (result.recordset || []).map(mapRow);
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F71041 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -129,24 +118,15 @@ export async function POST(req) {
 		const phone = trunc(body?.P_PHONE ?? body?.pPhone ?? body?.phone, 20);
 		const pSdt = normalizeYmd(body?.P_SDT ?? body?.pSdt ?? body?.date);
 		if (!phone) {
-			return new Response(JSON.stringify({ success: false, error: 'P_PHONE이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'P_PHONE이 필요합니다.' }, 400);
 		}
 		if (!pSdt) {
-			return new Response(JSON.stringify({ success: false, error: '봉사일자를 입력해주세요.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '봉사일자를 입력해주세요.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -170,10 +150,7 @@ export async function POST(req) {
 				WHERE [ANCD] = @ANCD AND [P_PHONE] = @P_PHONE
 			`);
 		if (!master.recordset?.[0]) {
-			return new Response(JSON.stringify({ success: false, error: '선택한 봉사자 정보를 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '선택한 봉사자 정보를 찾을 수 없습니다.' }, 404);
 		}
 
 		await pool
@@ -217,16 +194,10 @@ export async function POST(req) {
 					);
 			`);
 
-		return new Response(
-			JSON.stringify({ success: true, P_PHONE: phone, P_SDT: pSdt }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, P_PHONE: phone, P_SDT: pSdt });
 	} catch (err) {
 		console.error('F71041 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -244,18 +215,12 @@ export async function DELETE(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!phone || !pSdt) {
-			return new Response(JSON.stringify({ success: false, error: 'phone, pSdt가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'phone, pSdt가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -273,21 +238,12 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 봉사실적을 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 봉사실적을 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true, P_PHONE: phone, P_SDT: pSdt }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, P_PHONE: phone, P_SDT: pSdt });
 	} catch (err) {
 		console.error('F71041 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

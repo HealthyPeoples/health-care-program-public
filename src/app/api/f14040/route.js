@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdStrict as normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE = '[돌봄시설DB].[dbo].[F14040]';
 
 // F14040 치료프로그램 목록 (로그인 기관 ANCD만)
@@ -16,10 +17,7 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -55,20 +53,14 @@ export async function GET(req) {
       ORDER BY [PGSEQ] ASC, [PGNM] ASC
     `);
 
-    return new Response(
-      JSON.stringify({
+    return jsonOk({
         success: true,
         data: result.recordset || [],
         count: result.recordset ? result.recordset.length : 0,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+      });
   } catch (err) {
     console.error('F14040 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -100,19 +92,13 @@ export async function POST(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     if (action === 'create') {
       const name = truncStr(body.PGNM ?? '', 100);
       if (!name || String(name).trim() === '') {
-        return new Response(JSON.stringify({ success: false, error: '프로그램 명을 입력해 주세요.' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '프로그램 명을 입력해 주세요.' }, 400);
       }
 
       const seqReq = pool.request();
@@ -122,10 +108,7 @@ export async function POST(req) {
       );
       const nextPgseq = seqResult.recordset?.[0]?.nx;
       if (nextPgseq == null || !Number.isFinite(Number(nextPgseq))) {
-        return new Response(JSON.stringify({ success: false, error: '일련번호를 생성할 수 없습니다.' }), {
-          status: 500,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '일련번호를 생성할 수 없습니다.' });
       }
 
       const { start: schF, end: schT } = parseSchedule(body.programSchedule);
@@ -169,22 +152,16 @@ export async function POST(req) {
         )
       `);
 
-      return new Response(
-        JSON.stringify({
+      return jsonOk({
           success: true,
           pgseq: Number(nextPgseq),
           ancd: gate.sessionAncd,
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+        });
     }
 
     const pgseq = parseInt(String(body.pgseq ?? ''), 10);
     if (!Number.isFinite(pgseq)) {
-      return new Response(JSON.stringify({ success: false, error: 'pgseq가 필요합니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'pgseq가 필요합니다.' }, 400);
     }
 
     const request = pool.request();
@@ -198,15 +175,9 @@ export async function POST(req) {
         WHERE [ANCD] = @ANCD AND [PGSEQ] = @PGSEQ
       `);
       if (r.rowsAffected[0] === 0) {
-        return new Response(JSON.stringify({ success: false, error: '대상 행을 찾을 수 없습니다.' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '대상 행을 찾을 수 없습니다.' }, 404);
       }
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonOk({ success: true });
     }
 
     const { start: schF, end: schT } = parseSchedule(body.programSchedule);
@@ -256,21 +227,12 @@ export async function POST(req) {
     `);
 
     if (upd.rowsAffected[0] === 0) {
-      return new Response(JSON.stringify({ success: false, error: '대상 행을 찾을 수 없습니다.' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '대상 행을 찾을 수 없습니다.' }, 404);
     }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F14040 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }

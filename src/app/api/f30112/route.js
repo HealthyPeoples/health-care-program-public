@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 // F30112_수급자입력기준정보: 수급자별 디폴트(예: 식사종류) 조회
 // - pnum: 단일 PNUM
 // - pnums: 콤마로 구분된 PNUM 목록
@@ -18,10 +19,7 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const pnums = (pnumsRaw || '')
@@ -31,10 +29,7 @@ export async function GET(req) {
     if (pnum) pnums.push(String(pnum).trim());
 
     if (pnums.length === 0) {
-      return new Response(JSON.stringify({ success: false, error: 'pnum 또는 pnums 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      return jsonError({ success: false, error: 'pnum 또는 pnums 파라미터가 필요합니다' }, 400);
     }
 
     const request = pool.request();
@@ -90,24 +85,11 @@ export async function GET(req) {
 
     const result = await request.query(query);
 
-    return new Response(
-      JSON.stringify({ success: true, data: result.recordset || [], count: result.recordset ? result.recordset.length : 0 }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({ success: true, data: result.recordset || [], count: result.recordset ? result.recordset.length : 0 });
   } catch (err) {
     console.error('F30112 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
-}
-
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }
 
 function normalizeBoolToDb(v) {
@@ -155,10 +137,10 @@ export async function POST(req) {
     const gate = assertAnCdMatchesSession(req, ancd);
     if (!gate.ok) return gate.response;
 
-    if (!pnum) return json({ success: false, error: 'pnum이 필요합니다' }, 400);
+    if (!pnum) return jsonError({ success: false, error: 'pnum이 필요합니다' }, 400);
 
     const pool = await connPool;
-    if (!pool) return json({ success: false, error: '데이터베이스 연결 실패' }, 500);
+    if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 
     const columns = await getF30112Columns(pool);
 
@@ -210,7 +192,7 @@ export async function POST(req) {
     });
 
     if (Object.keys(toSave).length === 0) {
-      return json({ success: false, error: '저장할 값이 없습니다(컬럼 매핑 확인 필요)' }, 400);
+      return jsonError({ success: false, error: '저장할 값이 없습니다(컬럼 매핑 확인 필요)' }, 400);
     }
 
     const request = pool.request();
@@ -248,10 +230,10 @@ export async function POST(req) {
       END
     `);
 
-    return json({ success: true });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F30112 POST 오류:', err);
-    return json({ success: false, error: err?.message || '서버 오류', details: String(err) }, 500);
+    return jsonError({ success: false, error: err?.message || '서버 오류', details: String(err) });
   }
 }
 

@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const VIEW = '[돌봄시설DB].[dbo].[V10010C]';
@@ -49,18 +50,12 @@ export async function GET(req) {
 
 		const pnum = sp.get('pnum');
 		if (!pnum || String(pnum).trim() === '') {
-			return new Response(JSON.stringify({ success: false, error: 'pnum 파라미터가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -75,15 +70,9 @@ export async function GET(req) {
     `);
 
 		const row = result.recordset?.[0] ? mapRow(result.recordset[0]) : null;
-		return new Response(JSON.stringify({ success: true, data: row }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data: row });
 	} catch (err) {
 		console.error('V10010C GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }

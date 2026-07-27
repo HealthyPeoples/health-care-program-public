@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 /** 급여수금 F40120 — 동일 수급자·일자라도 DOC(출납번호)로 행 구분 */
@@ -98,18 +99,12 @@ export async function GET(req) {
 
 		const salmm = normalizeSalmm(salmmRaw);
 		if (!salmm) {
-			return new Response(JSON.stringify({ success: false, error: 'salmm(YYYYMM)이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'salmm(YYYYMM)이 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		/** 본인부담금수납대장 출력 — F40120 + F40100 + F10010 (행 = 수금 1건) */
@@ -144,10 +139,7 @@ export async function GET(req) {
 			rq.input('salmm', sql.Char(6), salmm);
 			const ledgerResult = await rq.query(ledgerSql);
 			const ledger = ledgerResult.recordset || [];
-			return new Response(
-				JSON.stringify({ success: true, salmm, ledger, count: ledger.length }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, salmm, ledger, count: ledger.length });
 		}
 
 		const summarySql = `
@@ -218,23 +210,17 @@ export async function GET(req) {
 		const summary = summaryResult.recordset || [];
 		const details = detailsResult.recordset || [];
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				salmm,
 				summary,
 				details,
 				data: details,
 				count: { summary: summary.length, details: details.length },
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('F40120 GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -250,27 +236,18 @@ export async function POST(req) {
 		const body = await req.json();
 		const row = body?.row;
 		if (!row || typeof row !== 'object') {
-			return new Response(JSON.stringify({ success: false, error: 'row 객체가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'row 객체가 필요합니다.' }, 400);
 		}
 
 		const salmm = normalizeSalmm(row.SALMM);
 		const insdt = parseInsdT(row.INSDT);
 		if (!salmm || !row.PNUM || !insdt) {
-			return new Response(JSON.stringify({ success: false, error: 'SALMM, PNUM, INSDT(수금일자)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'SALMM, PNUM, INSDT(수금일자)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const pnum = String(row.PNUM).trim();
@@ -299,14 +276,11 @@ export async function POST(req) {
           AND CAST([INSDT] AS DATE) = CAST(@INSDT AS DATE)
       `);
 			if ((dupResult.recordset?.length ?? 0) > 0) {
-				return new Response(
-					JSON.stringify({
+				return jsonError({
 						success: false,
 						error:
 							'하루에 두 개의 수금 내역을 등록하는 것은 불가능 합니다. 기존 수금 내역을 수정해주세요',
-					}),
-					{ status: 409, headers: { 'Content-Type': 'application/json' } }
-				);
+					}, 409);
 			}
 
 			doc = await nextDocNumber(pool, gate.sessionAncd);
@@ -331,17 +305,11 @@ export async function POST(req) {
           (@ANCD, @SALMM, @PNUM, @INSDT, GETDATE(), @HAMT, @CAMT, @YAMT, @ETC, @DOC)
       `);
 
-			return new Response(JSON.stringify({ success: true, mode: 'create', DOC: doc }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, mode: 'create', DOC: doc });
 		}
 
 		if (doc == null) {
-			return new Response(
-				JSON.stringify({ success: false, error: '수정 시 출납번호(DOC)가 필요합니다.' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '수정 시 출납번호(DOC)가 필요합니다.' }, 400);
 		}
 
 		const request = pool.request();
@@ -373,22 +341,13 @@ export async function POST(req) {
 
 		const affected = result.rowsAffected?.[0] ?? 0;
 		if (affected === 0) {
-			return new Response(
-				JSON.stringify({ success: false, error: '수정할 수금 데이터를 찾지 못했습니다. (출납번호 확인)' }),
-				{ status: 404, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '수정할 수금 데이터를 찾지 못했습니다. (출납번호 확인)' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true, mode: 'update', DOC: doc }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, mode: 'update', DOC: doc });
 	} catch (err) {
 		console.error('F40120 POST 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -405,24 +364,15 @@ export async function DELETE(req) {
 		const doc = parseDoc(sp.get('doc'));
 
 		if (!salmm || !pnum || !insdt) {
-			return new Response(JSON.stringify({ success: false, error: 'salmm, pnum, insdt가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'salmm, pnum, insdt가 필요합니다.' }, 400);
 		}
 		if (doc == null) {
-			return new Response(JSON.stringify({ success: false, error: 'doc(출납번호)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'doc(출납번호)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -441,15 +391,9 @@ export async function DELETE(req) {
         AND [DOC] = @DOC
     `);
 
-		return new Response(
-			JSON.stringify({ success: true, rowsAffected: result.rowsAffected?.[0] ?? 0 }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, rowsAffected: result.rowsAffected?.[0] ?? 0 });
 	} catch (err) {
 		console.error('F40120 DELETE 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }

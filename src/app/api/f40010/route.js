@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdOrNull: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -56,10 +57,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -86,16 +84,10 @@ export async function GET(req) {
     `);
 
 		const data = (result.recordset || []).map(mapRow);
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F40010 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -111,18 +103,12 @@ export async function POST(req) {
 		const sdt = normalizeYmd(body.SDT ?? body.sdt);
 		const pGrd = normalizePGrd(body.P_GRD ?? body.p_grd ?? body.grade);
 		if (!sdt || !pGrd) {
-			return new Response(JSON.stringify({ success: false, error: '적용일자(SDT)와 등급(P_GRD)이 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '적용일자(SDT)와 등급(P_GRD)이 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		if (action === 'delete') {
@@ -137,15 +123,9 @@ export async function POST(req) {
           AND LTRIM(RTRIM([P_GRD])) = LTRIM(RTRIM(@P_GRD))
       `);
 			if (!del.rowsAffected?.[0]) {
-				return new Response(JSON.stringify({ success: false, error: '삭제할 데이터가 없습니다.' }), {
-					status: 404,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '삭제할 데이터가 없습니다.' }, 404);
 			}
-			return new Response(JSON.stringify({ success: true, action: 'delete' }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, action: 'delete' });
 		}
 
 		const baamt = parseAmount(body.BAAMT ?? body.baamt ?? body.inpatientPrice);
@@ -192,15 +172,9 @@ export async function POST(req) {
         VALUES (@ANCD, @SDT, @P_GRD, @BAAMT, @OUTAMT, GETDATE(), @ETC, @INEMPNO, @INEMPNM);
     `);
 
-		return new Response(JSON.stringify({ success: true, action: 'save' }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, action: 'save' });
 	} catch (err) {
 		console.error('F40010 저장/삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

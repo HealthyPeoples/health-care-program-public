@@ -2,24 +2,19 @@ import { connPool } from '../../../config/server';
 import { NextRequest } from 'next/server';
 import { getSessionAncd, ancdEquals } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 export async function GET(req) {
   try {
     const sessionAncd = getSessionAncd(req);
     if (sessionAncd == null) {
-      return new Response(
-        JSON.stringify({ success: false, error: '로그인이 필요합니다.' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: '데이터베이스 연결 실패' 
-      }), { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -148,24 +143,18 @@ export async function GET(req) {
     
     const uniqueData = Array.from(uniqueMembers.values());
     
-    return new Response(JSON.stringify({ 
+    return jsonOk({ 
       success: true, 
       data: uniqueData,
       count: uniqueData.length
-    }), { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('F10010 테이블 조회 오류:', err);
-    return new Response(JSON.stringify({ 
+    return jsonError({ 
       success: false, 
       error: err.message,
       details: err.toString()
-    }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }
@@ -174,20 +163,14 @@ export async function POST(req) {
   try {
     const sessionAncd = getSessionAncd(req);
     if (sessionAncd == null) {
-      return new Response(
-        JSON.stringify({ success: false, error: '로그인이 필요합니다.' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+      return jsonError({ success: false, error: '로그인이 필요합니다.' }, 401);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: '데이터베이스 연결 실패' 
-      }), { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
 
@@ -197,21 +180,15 @@ export async function POST(req) {
     if (params && typeof params === 'object') {
       const rowAncd = params.ANCD ?? params.ancd;
       if (rowAncd != null && rowAncd !== '' && !ancdEquals(rowAncd, sessionAncd)) {
-        return new Response(
-          JSON.stringify({ success: false, error: '해당 기관에 대한 접근 권한이 없습니다.' }),
-          { status: 403, headers: { 'Content-Type': 'application/json' } }
-        );
+        return jsonError({ success: false, error: '해당 기관에 대한 접근 권한이 없습니다.' }, 403);
       }
     }
 
     if (!query) {
-      return new Response(JSON.stringify({ 
+      return jsonError({ 
         success: false, 
         error: '쿼리가 필요합니다' 
-      }), { 
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      });
+      }, 400);
     }
 
     // 동적 쿼리 실행
@@ -229,24 +206,18 @@ export async function POST(req) {
     // recordset이 undefined일 수 있으므로 안전하게 처리
     const recordset = result.recordset || [];
     
-    return new Response(JSON.stringify({ 
+    return jsonOk({ 
       success: true, 
       data: recordset,
       count: recordset.length
-    }), { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
     });
 
   } catch (err) {
     console.error('쿼리 실행 오류:', err);
-    return new Response(JSON.stringify({ 
+    return jsonError({ 
       success: false, 
       error: err.message,
       details: err.toString()
-    }), { 
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
     });
   }
 }

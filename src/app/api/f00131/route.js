@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F00131]';
 
 const UGR_LABEL = {
@@ -26,18 +27,12 @@ export async function GET(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!uid) {
-			return new Response(JSON.stringify({ success: false, error: 'uid 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'uid 파라미터가 필요합니다' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const sessionAncd = ancd ?? gate.sessionAncd;
@@ -66,10 +61,7 @@ export async function GET(req) {
 			`);
 
 			const row = result.recordset?.[0] ?? null;
-			return new Response(JSON.stringify({ success: true, data: row, allowed: !!row }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, data: row, allowed: !!row });
 		}
 
 		// 목록 조회
@@ -106,16 +98,10 @@ export async function GET(req) {
 			};
 		});
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F00131 권한 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -134,18 +120,12 @@ export async function POST(req) {
 			: [String(body?.PGMID ?? body?.pgmid ?? '').trim()].filter(Boolean);
 
 		if (!uid || !pgmids.length) {
-			return new Response(JSON.stringify({ success: false, error: 'UID, PGMID(또는 PGMIDS)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'UID, PGMID(또는 PGMIDS)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const session = getSessionFromRequest(req);
@@ -176,16 +156,10 @@ export async function POST(req) {
 			if (result.recordset?.[0]?.inserted === 1) inserted += 1;
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, inserted, count: pgmids.length }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, inserted, count: pgmids.length });
 	} catch (err) {
 		console.error('F00131 추가 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -214,18 +188,12 @@ export async function DELETE(req) {
 				);
 
 		if (!uid || !pgmids.length) {
-			return new Response(JSON.stringify({ success: false, error: 'UID, PGMID(또는 PGMIDS)가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'UID, PGMID(또는 PGMIDS)가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = gate.sessionAncd;
@@ -243,15 +211,9 @@ export async function DELETE(req) {
 			deleted += result?.rowsAffected?.[0] ?? 0;
 		}
 
-		return new Response(JSON.stringify({ success: true, deleted }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, deleted });
 	} catch (err) {
 		console.error('F00131 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

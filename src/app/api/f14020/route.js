@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const CARE_COLUMNS = [
 	'PH_HEAD_HELP',
 	'PH_BATH_HELP',
@@ -120,10 +121,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		let query = `
@@ -145,34 +143,25 @@ export async function GET(req) {
 
 		if (startDate && endDate) {
 			if (!validateDate(startDate) || !validateDate(endDate)) {
-				return new Response(
-					JSON.stringify({
+				return jsonError({
 						success: false,
 						error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.'
-					}),
-					{ status: 400, headers: { 'Content-Type': 'application/json' } }
-				);
+					}, 400);
 			}
 			query += ` AND f14020.[SVDT] >= @startDate AND f14020.[SVDT] <= @endDate`;
 			request.input('startDate', toSvdtIso(startDate));
 			request.input('endDate', toSvdtIso(endDate));
 		} else if (svdt) {
 			if (!validateDate(svdt)) {
-				return new Response(
-					JSON.stringify({
+				return jsonError({
 						success: false,
 						error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.'
-					}),
-					{ status: 400, headers: { 'Content-Type': 'application/json' } }
-				);
+					}, 400);
 			}
 			query += ` AND f14020.[SVDT] = @svdt`;
 			request.input('svdt', toSvdtIso(svdt));
 		} else {
-			return new Response(JSON.stringify({ success: false, error: 'SVDT 또는 startDate/endDate 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: 'SVDT 또는 startDate/endDate 파라미터가 필요합니다' }, 400);
 		}
 
 		if (pnum) {
@@ -184,20 +173,14 @@ export async function GET(req) {
 
 		const result = await request.query(query);
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				data: result.recordset || [],
 				count: result.recordset ? result.recordset.length : 0
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('F14020 테이블 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' }
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -211,28 +194,19 @@ export async function POST(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const body = await req.json();
 		const { svdt, rows } = body || {};
 
 		if (!svdt || !Array.isArray(rows)) {
-			return new Response(JSON.stringify({ success: false, error: 'svdt와 rows 배열이 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: 'svdt와 rows 배열이 필요합니다' }, 400);
 		}
 
 		const svdtIso = toSvdtIso(svdt);
 		if (!/^\d{4}-\d{2}-\d{2}$/.test(svdtIso)) {
-			return new Response(JSON.stringify({ success: false, error: 'svdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: 'svdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }, 400);
 		}
 
 		const now = new Date();
@@ -304,16 +278,10 @@ export async function POST(req) {
 			results.push({ index: i, pnum: String(pnum), ok: true, rowsAffected: result.rowsAffected || [] });
 		}
 
-		return new Response(JSON.stringify({ success: true, data: results, count: results.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' }
-		});
+		return jsonOk({ success: true, data: results, count: results.length });
 	} catch (err) {
 		console.error('F14020 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' }
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -328,26 +296,17 @@ export async function DELETE(req) {
 		if (!gate.ok) return gate.response;
 
 		if (!pnum || !svdt) {
-			return new Response(JSON.stringify({ success: false, error: 'pnum, svdt 파라미터가 필요합니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: 'pnum, svdt 파라미터가 필요합니다' }, 400);
 		}
 
 		const svdtIso = toSvdtIso(svdt);
 		if (!/^\d{4}-\d{2}-\d{2}$/.test(svdtIso)) {
-			return new Response(JSON.stringify({ success: false, error: 'svdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: 'svdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' }
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -364,15 +323,9 @@ export async function DELETE(req) {
 
 		await request.query(query);
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' }
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F14020 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' }
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

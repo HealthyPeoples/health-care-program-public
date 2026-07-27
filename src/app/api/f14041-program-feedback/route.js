@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, parseUserInfoCookieValue } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE = '[돌봄시설DB].[dbo].[F14041_PROGRAM_FEEDBACK]';
 const PROGRAM_TABLE = '[돌봄시설DB].[dbo].[F14040]';
 
@@ -147,18 +148,12 @@ export async function GET(req) {
 
 		const ymDigits = ymToDigits(ym);
 		if (!/^\d{6}$/.test(ymDigits)) {
-			return new Response(JSON.stringify({ success: false, error: 'ym 파라미터가 필요합니다 (YYYYMM 또는 YYYY-MM)' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'ym 파라미터가 필요합니다 (YYYYMM 또는 YYYY-MM)' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		await ensureTable(pool);
@@ -176,10 +171,7 @@ export async function GET(req) {
 		if (pgseqRaw != null && String(pgseqRaw).trim() !== '') {
 			const pgseq = parseInt(String(pgseqRaw).trim(), 10);
 			if (!Number.isFinite(pgseq)) {
-				return new Response(JSON.stringify({ success: false, error: 'pgseq 형식이 올바르지 않습니다' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: 'pgseq 형식이 올바르지 않습니다' }, 400);
 			}
 			request.input('PGSEQ', pgseq);
 			where += ' AND f.[PGSEQ] = @PGSEQ';
@@ -210,16 +202,10 @@ export async function GET(req) {
 		const result = await request.query(query);
 		const data = (result.recordset || []).map(mapRow);
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F14041_PROGRAM_FEEDBACK 조회 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -236,34 +222,22 @@ export async function POST(req) {
 		const ymDigits = ymToDigits(body?.YM ?? body?.ym);
 
 		if (!Number.isFinite(pgseq)) {
-			return new Response(JSON.stringify({ success: false, error: 'PGSEQ는 필수입니다' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'PGSEQ는 필수입니다' }, 400);
 		}
 		if (!/^\d{6}$/.test(ymDigits)) {
-			return new Response(JSON.stringify({ success: false, error: 'YM 형식이 올바르지 않습니다 (YYYYMM 또는 YYYY-MM)' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'YM 형식이 올바르지 않습니다 (YYYYMM 또는 YYYY-MM)' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		await ensureTable(pool);
 
 		const exists = await assertProgramInSession(pool, gate.sessionAncd, pgseq);
 		if (!exists) {
-			return new Response(JSON.stringify({ success: false, error: '해당 프로그램을 찾을 수 없습니다' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '해당 프로그램을 찾을 수 없습니다' }, 404);
 		}
 
 		const userId = resolveUserId(req);
@@ -311,16 +285,10 @@ export async function POST(req) {
 		const result = await request.query(query);
 		const opinionSeq = result.recordset?.[0]?.OPINION_SEQ ?? null;
 
-		return new Response(JSON.stringify({ success: true, opinionSeq }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, opinionSeq });
 	} catch (err) {
 		console.error('F14041_PROGRAM_FEEDBACK 저장 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -337,10 +305,7 @@ export async function DELETE(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		await ensureTable(pool);
@@ -353,10 +318,7 @@ export async function DELETE(req) {
 		if (opinionSeqRaw != null && String(opinionSeqRaw).trim() !== '') {
 			const opinionSeq = parseInt(String(opinionSeqRaw).trim(), 10);
 			if (!Number.isFinite(opinionSeq)) {
-				return new Response(JSON.stringify({ success: false, error: 'opinionSeq 형식이 올바르지 않습니다' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: 'opinionSeq 형식이 올바르지 않습니다' }, 400);
 			}
 			request.input('OPINION_SEQ', opinionSeq);
 			query = `
@@ -371,10 +333,7 @@ export async function DELETE(req) {
 			const pgseq = parseInt(String(pgseqRaw ?? ''), 10);
 			const ymDigits = ymToDigits(ym);
 			if (!Number.isFinite(pgseq) || !/^\d{6}$/.test(ymDigits)) {
-				return new Response(JSON.stringify({ success: false, error: 'opinionSeq 또는 pgseq+ym 파라미터가 필요합니다' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: 'opinionSeq 또는 pgseq+ym 파라미터가 필요합니다' }, 400);
 			}
 			request.input('PGSEQ', pgseq);
 			request.input('YM', ymDigits);
@@ -391,21 +350,12 @@ export async function DELETE(req) {
 
 		const result = await request.query(query);
 		if (result.rowsAffected[0] === 0) {
-			return new Response(JSON.stringify({ success: false, error: '삭제할 데이터가 없습니다' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '삭제할 데이터가 없습니다' }, 404);
 		}
 
-		return new Response(JSON.stringify({ success: true }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F14041_PROGRAM_FEEDBACK 삭제 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

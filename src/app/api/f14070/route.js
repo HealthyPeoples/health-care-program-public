@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdEmptyRaw: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -34,10 +35,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -61,10 +59,7 @@ export async function GET(req) {
 				.map((s) => s.trim())
 				.filter(Boolean);
 			if (list.length === 0) {
-				return new Response(JSON.stringify({ success: true, data: [], count: 0 }), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonOk({ success: true, data: [], count: 0 });
 			}
 			const placeholders = list
 				.map((_, i) => {
@@ -100,16 +95,10 @@ export async function GET(req) {
 			ROOM_NO: str(r.ROOM_NO),
 		}));
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length });
 	} catch (err) {
 		console.error('F14070 GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
@@ -130,26 +119,17 @@ export async function PUT(req) {
 
 		const frDt = parseFrDt(frDtRaw);
 		if (!frDt) {
-			return new Response(
-				JSON.stringify({ success: false, error: 'frDt(YYYY-MM-DD) 파라미터가 필요합니다' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: 'frDt(YYYY-MM-DD) 파라미터가 필요합니다' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const ancd = Number(gate.sessionAncd);
 		if (!Number.isFinite(ancd)) {
-			return new Response(
-				JSON.stringify({ success: false, error: '세션 기관코드(ANCD)가 올바르지 않습니다' }),
-				{ status: 401, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: '세션 기관코드(ANCD)가 올바르지 않습니다' }, 401);
 		}
 
 		/**
@@ -166,19 +146,13 @@ export async function PUT(req) {
         EXEC [돌봄시설DB].[dbo].[Usp_P14070] @pv_ancd = @pv_ancd, @pv_fr_dt = @pv_fr_dt;
       `);
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				ancd,
 				frDt,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('Usp_P14070 실행 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

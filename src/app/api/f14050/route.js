@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdStrict: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -41,18 +42,12 @@ export async function GET(req) {
     if (!gate.ok) return gate.response;
 
     if (!pnum || String(pnum).trim() === '') {
-      return new Response(JSON.stringify({ success: false, error: 'pnum 파라미터가 필요합니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다.' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -77,20 +72,14 @@ export async function GET(req) {
       ORDER BY [JHSEQ] ASC
     `);
 
-    return new Response(
-      JSON.stringify({
+    return jsonOk({
         success: true,
         data: result.recordset || [],
         count: result.recordset ? result.recordset.length : 0,
-      }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+      });
   } catch (err) {
     console.error('F14050 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -106,19 +95,13 @@ export async function POST(req) {
     const jhseqRaw = body.jhseq ?? body.JHSEQ;
 
     if (!pnum || String(pnum).trim() === '') {
-      return new Response(JSON.stringify({ success: false, error: 'pnum이 필요합니다.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'pnum이 필요합니다.' }, 400);
     }
 
     if (action === 'save') {
       const jhseq = parseInt(String(jhseqRaw), 10);
       if (Number.isNaN(jhseq)) {
-        return new Response(JSON.stringify({ success: false, error: '저장 시 jhseq가 필요합니다.' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        return jsonError({ success: false, error: '저장 시 jhseq가 필요합니다.' }, 400);
       }
     }
 
@@ -137,10 +120,7 @@ export async function POST(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     if (action === 'create') {
@@ -177,14 +157,11 @@ export async function POST(req) {
         )
       `);
 
-      return new Response(
-        JSON.stringify({
+      return jsonOk({
           success: true,
           action: 'create',
           jhseq: jhseqNew,
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } }
-      );
+        });
     }
 
     const jhseq = parseInt(String(jhseqRaw), 10);
@@ -216,21 +193,12 @@ export async function POST(req) {
     `);
 
     if (!upd.rowsAffected?.[0]) {
-      return new Response(JSON.stringify({ success: false, error: '해당 일련번호의 데이터가 없습니다.' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '해당 일련번호의 데이터가 없습니다.' }, 404);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, action: 'save', jhseq }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return jsonOk({ success: true, action: 'save', jhseq });
   } catch (err) {
     console.error('F14050 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }

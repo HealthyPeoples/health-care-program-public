@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 
 import { normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F01002]';
 
 
@@ -13,10 +14,7 @@ export async function GET(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -48,16 +46,10 @@ export async function GET(req) {
       URDT: normalizeYmd(r.URDT),
     }));
 
-    return new Response(JSON.stringify({ success: true, data, count: data.length }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
     console.error('F01002 조회 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -68,18 +60,12 @@ export async function POST(req) {
     const ucd = body?.UCD;
 
     if (!code || !ucd) {
-      return new Response(JSON.stringify({ success: false, error: 'CODE, UCD는 필수입니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'CODE, UCD는 필수입니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -112,16 +98,10 @@ export async function POST(req) {
 
     await request.query(query);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F01002 저장 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }
 
@@ -132,18 +112,12 @@ export async function DELETE(req) {
     const ucd = searchParams.get('ucd');
 
     if (!code || !ucd) {
-      return new Response(JSON.stringify({ success: false, error: 'code, ucd 파라미터가 필요합니다' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: 'code, ucd 파라미터가 필요합니다' }, 400);
     }
 
     const pool = await connPool;
     if (!pool) {
-      return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const request = pool.request();
@@ -156,15 +130,9 @@ export async function DELETE(req) {
       WHERE [CODE] = @CODE AND [UCD] = @UCD
     `);
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonOk({ success: true });
   } catch (err) {
     console.error('F01002 삭제 오류:', err);
-    return new Response(JSON.stringify({ success: false, error: err.message, details: err.toString() }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return jsonError({ success: false, error: err.message, details: err.toString() });
   }
 }

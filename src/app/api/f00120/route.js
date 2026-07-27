@@ -2,6 +2,7 @@ import { connPool } from '../../../config/server';
 import { assertAnCdAccess } from '../../../config/sessionServer';
 
 import { normalizeYmd } from '../../../utils/normalizeYmd';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F00120]';
 
 
@@ -19,10 +20,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const access = await assertAnCdAccess(req, pool, ancdParam || null);
@@ -108,16 +106,10 @@ export async function GET(req) {
 				: {}),
 		}));
 
-		return new Response(JSON.stringify({ success: true, data, count: data.length, ancd }), {
-			status: 200,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonOk({ success: true, data, count: data.length, ancd });
 	} catch (err) {
 		console.error('F00120 목록 조회 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -135,18 +127,12 @@ export async function PUT(req) {
 		const action = String(body?.action ?? '').trim();
 
 		if (!uid) {
-			return new Response(JSON.stringify({ success: false, error: 'UID가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'UID가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const access = await assertAnCdAccess(req, pool, body?.ANCD ?? body?.ancd ?? null);
@@ -169,33 +155,21 @@ export async function PUT(req) {
 
 			const affected = result?.rowsAffected?.[0] ?? 0;
 			if (!affected) {
-				return new Response(JSON.stringify({ success: false, error: '해당 사용자 계정을 찾을 수 없습니다.' }), {
-					status: 404,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '해당 사용자 계정을 찾을 수 없습니다.' }, 404);
 			}
 
-			return new Response(
-				JSON.stringify({ success: true, message: '암호가 0000으로 초기화되었습니다.', uid }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, message: '암호가 0000으로 초기화되었습니다.', uid });
 		}
 
 		if (action === 'linkEmployee' || action === 'update' || action === 'create') {
 			const originalUid = String(body?.originalUID ?? body?.ORIGINAL_UID ?? '').trim();
 			const newUid = String(body?.UID ?? body?.uid ?? '').trim().slice(0, 20);
 			if (!newUid) {
-				return new Response(JSON.stringify({ success: false, error: '사용자ID(UID)를 입력해주세요.' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '사용자ID(UID)를 입력해주세요.' }, 400);
 			}
 			// linkEmployee: originalUID 없이 신규/기존 UID upsert 허용
 			if (!originalUid && action !== 'create' && action !== 'linkEmployee') {
-				return new Response(JSON.stringify({ success: false, error: '원본 UID가 필요합니다.' }), {
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '원본 UID가 필요합니다.' }, 400);
 			}
 
 			const empnm = String(body?.EMPNM ?? body?.empnm ?? '').trim();
@@ -215,17 +189,11 @@ export async function PUT(req) {
 			} else {
 				decpos = parseInt(String(decpos), 10);
 				if (!Number.isFinite(decpos) || decpos < 1 || decpos > 4) {
-					return new Response(
-						JSON.stringify({ success: false, error: '결재위치는 1~4 사이여야 합니다.' }),
-						{ status: 400, headers: { 'Content-Type': 'application/json' } }
-					);
+					return jsonError({ success: false, error: '결재위치는 1~4 사이여야 합니다.' }, 400);
 				}
 			}
 			if (!['1', '2', '3', '9'].includes(ugr)) {
-				return new Response(
-					JSON.stringify({ success: false, error: '관리등급(UGR)이 올바르지 않습니다.' }),
-					{ status: 400, headers: { 'Content-Type': 'application/json' } }
-				);
+				return jsonError({ success: false, error: '관리등급(UGR)이 올바르지 않습니다.' }, 400);
 			}
 
 			const initUpw = String(body?.UPW ?? body?.upw ?? 'Abc54321').trim().slice(0, 20) || 'Abc54321';
@@ -268,10 +236,7 @@ export async function PUT(req) {
 						WHERE [ANCD] = @ancd AND [UID] = @newUid
 					`);
 				if (dup.recordset?.[0]) {
-					return new Response(
-						JSON.stringify({ success: false, error: `이미 존재하는 사용자ID입니다: ${newUid}` }),
-						{ status: 409, headers: { 'Content-Type': 'application/json' } }
-					);
+					return jsonError({ success: false, error: `이미 존재하는 사용자ID입니다: ${newUid}` }, 409);
 				}
 			}
 
@@ -297,16 +262,13 @@ export async function PUT(req) {
 						)
 					`);
 
-				return new Response(
-					JSON.stringify({
+				return jsonOk({
 						success: true,
 						message: '사용자정보가 신규 등록되었습니다.',
 						uid: newUid,
 						created: true,
 						PWDT: true,
-					}),
-					{ status: 200, headers: { 'Content-Type': 'application/json' } }
-				);
+					});
 			}
 
 			// 기존 계정 UPDATE
@@ -356,28 +318,16 @@ export async function PUT(req) {
 
 			const affected = result?.rowsAffected?.[0] ?? 0;
 			if (!affected) {
-				return new Response(JSON.stringify({ success: false, error: '해당 사용자 계정을 찾을 수 없습니다.' }), {
-					status: 404,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonError({ success: false, error: '해당 사용자 계정을 찾을 수 없습니다.' }, 404);
 			}
 
-			return new Response(
-				JSON.stringify({ success: true, message: '사용자정보가 저장되었습니다.', uid: newUid }),
-				{ status: 200, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonOk({ success: true, message: '사용자정보가 저장되었습니다.', uid: newUid });
 		}
 
-		return new Response(JSON.stringify({ success: false, error: '지원하지 않는 작업입니다.' }), {
-			status: 400,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: '지원하지 않는 작업입니다.' }, 400);
 	} catch (err) {
 		console.error('F00120 수정 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }
 
@@ -392,18 +342,12 @@ export async function DELETE(req) {
 		const ancdParam = searchParams.get('ancd');
 
 		if (!uid) {
-			return new Response(JSON.stringify({ success: false, error: 'uid 파라미터가 필요합니다.' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: 'uid 파라미터가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const access = await assertAnCdAccess(req, pool, ancdParam || null);
@@ -421,21 +365,12 @@ export async function DELETE(req) {
 
 		const affected = result?.rowsAffected?.[0] ?? 0;
 		if (!affected) {
-			return new Response(JSON.stringify({ success: false, error: '해당 사용자 계정을 찾을 수 없습니다.' }), {
-				status: 404,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '해당 사용자 계정을 찾을 수 없습니다.' }, 404);
 		}
 
-		return new Response(
-			JSON.stringify({ success: true, message: '사용자 계정이 삭제되었습니다.', uid }),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonOk({ success: true, message: '사용자 계정이 삭제되었습니다.', uid });
 	} catch (err) {
 		console.error('F00120 삭제 오류:', err);
-		return new Response(
-			JSON.stringify({ success: false, error: err.message, details: err.toString() }),
-			{ status: 500, headers: { 'Content-Type': 'application/json' } }
-		);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
 	}
 }

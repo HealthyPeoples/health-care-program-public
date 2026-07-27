@@ -1,6 +1,7 @@
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
 
 const { normalizeYmdEmptyRaw: normalizeYmd } = require('../../../utils/normalizeYmd');
@@ -72,18 +73,12 @@ export async function GET(req) {
 
 		const salmm = normalizeSalmm(sp.get('salmm'));
 		if (!salmm) {
-			return new Response(
-				JSON.stringify({ success: false, error: 'salmm(YYYYMM) 파라미터가 필요합니다.' }),
-				{ status: 400, headers: { 'Content-Type': 'application/json' } }
-			);
+			return jsonError({ success: false, error: 'salmm(YYYYMM) 파라미터가 필요합니다.' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) {
-			return new Response(JSON.stringify({ success: false, error: '데이터베이스 연결 실패' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
 		const request = pool.request();
@@ -104,10 +99,7 @@ export async function GET(req) {
           AND CAST([PNUM] AS VARCHAR(30)) = @pnum
       `);
 			const row = result.recordset?.[0] ? mapRow(result.recordset[0]) : null;
-			return new Response(JSON.stringify({ success: true, data: row, salmm }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return jsonOk({ success: true, data: row, salmm });
 		}
 
 		if (pnumsRaw != null && String(pnumsRaw).trim() !== '') {
@@ -116,10 +108,7 @@ export async function GET(req) {
 				.map((s) => s.trim())
 				.filter(Boolean);
 			if (list.length === 0) {
-				return new Response(JSON.stringify({ success: true, data: [], count: 0, salmm }), {
-					status: 200,
-					headers: { 'Content-Type': 'application/json' },
-				});
+				return jsonOk({ success: true, data: [], count: 0, salmm });
 			}
 			const placeholders = list
 				.map((_, i) => {
@@ -154,20 +143,14 @@ export async function GET(req) {
 			mapped.push(mapRow(raw));
 		}
 
-		return new Response(
-			JSON.stringify({
+		return jsonOk({
 				success: true,
 				data: mapped,
 				count: mapped.length,
 				salmm,
-			}),
-			{ status: 200, headers: { 'Content-Type': 'application/json' } }
-		);
+			});
 	} catch (err) {
 		console.error('V40100E GET 오류:', err);
-		return new Response(JSON.stringify({ success: false, error: err.message, details: String(err) }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }

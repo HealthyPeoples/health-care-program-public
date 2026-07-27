@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { parseStringPromise } from 'xml2js';
 
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
 // 동적 렌더링 설정
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -25,12 +26,9 @@ export async function GET(req: NextRequest) {
     const json = await parseStringPromise(xml, { explicitArray: false, trim: true });
     const rows = json?.Result?.Model?.DataTable?.Row || [];
     
-    return NextResponse.json({ rows });
+    return jsonOk({ rows });
   } catch (error) {
     console.error('API Error:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch data', rows: [] },
-      { status: 500 }
-    );
+    return jsonError({ error: 'Failed to fetch data', rows: [] });
   }
 } 
