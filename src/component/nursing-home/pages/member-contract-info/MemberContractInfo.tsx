@@ -143,38 +143,30 @@ function formatYmd(d: string | null | undefined): string {
 	return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-/** USRGU: 1=일반, 2=40%경감, 3=60%경감, 4=국민기초 (구 DB에서 3만 쓰이던 기초수급은 USRPER≈0·INSPER≈100이면 국민기초로 표시) */
+/** USRGU(F10110): 1=일반, 2=50%경감대상자, 3=국민기초생활수급권자, 4=60%경감대상자, 5=40%경감대상자 */
 function burdenRatesFromUsrgu(code: string): { ins: number; usr: number } | null {
 	const c = String(code);
 	if (c === '1') return { ins: 80, usr: 20 };
-	if (c === '2') return { ins: 88, usr: 12 };
-	if (c === '3') return { ins: 92, usr: 8 };
-	if (c === '4') return { ins: 100, usr: 0 };
+	if (c === '2') return { ins: 90, usr: 10 };
+	if (c === '3') return { ins: 100, usr: 0 };
+	if (c === '4') return { ins: 92, usr: 8 };
+	if (c === '5') return { ins: 88, usr: 12 };
 	return null;
 }
 
-/** 편집 폼: 구(기초)=코드3+100/0 인 경우 선택값을 4로 맞춤 */
 function normalizeUsrguForSelect(row: MemberData | null | undefined): string {
 	if (!row) return '';
-	const gu = String(row.USRGU ?? '');
-	const ur = Number(row.USRPER);
-	const ins = Number(row.INSPER);
-	if (gu === '3' && !Number.isNaN(ur) && ur < 1 && !Number.isNaN(ins) && ins >= 99) return '4';
-	return gu;
+	return String(row.USRGU ?? '').trim();
 }
 
-function formatUsrguLabel(v: string | number | null | undefined, row?: MemberData | null): string {
+function formatUsrguLabel(v: string | number | null | undefined, _row?: MemberData | null): string {
 	if (v == null || v === '') return '-';
-	const x = String(v);
+	const x = String(v).trim();
 	if (x === '1') return '일반';
-	if (x === '2') return '40%경감';
-	if (x === '3') {
-		const ur = Number(row?.USRPER);
-		const ins = Number(row?.INSPER);
-		if (!Number.isNaN(ur) && ur < 1 && !Number.isNaN(ins) && ins >= 99) return '국민기초생활수급권자';
-		return '60%경감';
-	}
-	if (x === '4') return '국민기초생활수급권자';
+	if (x === '2') return '50%경감대상자';
+	if (x === '3') return '국민기초생활수급권자';
+	if (x === '4') return '60%경감대상자';
+	if (x === '5') return '40%경감대상자';
 	return x;
 }
 
@@ -1621,9 +1613,10 @@ export default function MemberContractInfo() {
 													>
 														<option value="">선택</option>
 														<option value="1">일반 (보험자 80% / 수급자 20%)</option>
-														<option value="2">40%경감 (보험자 88% / 수급자 12%)</option>
-														<option value="3">60%경감 (보험자 92% / 수급자 8%)</option>
-														<option value="4">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+														<option value="2">50%경감대상자 (보험자 90% / 수급자 10%)</option>
+														<option value="3">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+														<option value="4">60%경감대상자 (보험자 92% / 수급자 8%)</option>
+														<option value="5">40%경감대상자 (보험자 88% / 수급자 12%)</option>
 													</select>
 												</div>
 												<div className="col-span-12 md:col-span-6 flex flex-col gap-1">
@@ -2056,9 +2049,10 @@ export default function MemberContractInfo() {
 									>
 										<option value="">선택</option>
 										<option value="1">일반 (보험자 80% / 수급자 20%)</option>
-										<option value="2">40%경감 (보험자 88% / 수급자 12%)</option>
-										<option value="3">60%경감 (보험자 92% / 수급자 8%)</option>
-										<option value="4">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+										<option value="2">50%경감대상자 (보험자 90% / 수급자 10%)</option>
+										<option value="3">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
+										<option value="4">60%경감대상자 (보험자 92% / 수급자 8%)</option>
+										<option value="5">40%경감대상자 (보험자 88% / 수급자 12%)</option>
 									</select>
 								</div>
 								<div className="col-span-12 md:col-span-6 flex flex-col gap-1">

@@ -249,11 +249,14 @@ export default function MemberInfoView() {
 				}
 
 				setMembers(mergedMembers);
-				if (mergedMembers.length > 0) {
-					setSelectedMember(mergedMembers[0]);
-				} else {
-					setSelectedMember(null);
-				}
+				setSelectedMember((prev) => {
+					if (!prev) return null;
+					const found = mergedMembers.find(
+						(m) =>
+							String(m.ANCD) === String(prev.ANCD) && String(m.PNUM) === String(prev.PNUM)
+					);
+					return found ?? null;
+				});
 			} else {
 				setError(result.error || '수급자 데이터 조회 실패');
 			}
@@ -1515,7 +1518,7 @@ export default function MemberInfoView() {
 					</aside>
 
 					{/* 우측: 상세 영역 */}
-					<section className="flex-1 space-y-4">
+					<section className="relative flex-1 space-y-4">
 						{isCreating ? (
 							<>
 								{/* 수급자 생성 폼 */}
@@ -1559,8 +1562,8 @@ export default function MemberInfoView() {
 														))}
 													</select>
 												</div>
-												{/* 1행 */}
-												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+												{/* 1행: 수급자명 + 성별 */}
+												<div className="flex flex-col col-span-12 gap-1 md:col-span-8">
 													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">수급자명 *</label>
 													<input
 														type="text"
@@ -1570,28 +1573,7 @@ export default function MemberInfoView() {
 														placeholder="수급자명을 입력하세요"
 													/>
 												</div>
-												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">생년월일</label>
-													<input
-														type="date"
-														value={newMember.P_BRDT || ''}
-														onChange={(e) => handleNewMemberFieldChange('P_BRDT', e.target.value)}
-														className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-													/>
-												</div>
-
-												{/* 2행 */}
-												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">주민번호</label>
-													<input
-														type="text"
-														value={newMember.P_NO || ''}
-														onChange={(e) => handleNewMemberFieldChange('P_NO', e.target.value)}
-														className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-														placeholder="주민번호를 입력하세요"
-													/>
-												</div>
-												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+												<div className="flex flex-col col-span-12 gap-1 md:col-span-4">
 													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">성별</label>
 													<select
 														value={newMember.P_SEX || ''}
@@ -1602,6 +1584,27 @@ export default function MemberInfoView() {
 														<option value="1">남자</option>
 														<option value="2">여자</option>
 													</select>
+												</div>
+
+												{/* 2행 */}
+												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">생년월일</label>
+													<input
+														type="date"
+														value={newMember.P_BRDT || ''}
+														onChange={(e) => handleNewMemberFieldChange('P_BRDT', e.target.value)}
+														className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+													/>
+												</div>
+												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">주민번호</label>
+													<input
+														type="text"
+														value={newMember.P_NO || ''}
+														onChange={(e) => handleNewMemberFieldChange('P_NO', e.target.value)}
+														className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+														placeholder="주민번호를 입력하세요"
+													/>
 												</div>
 
 												{/* 3행 - 주소 검색 버튼 */}
@@ -1855,7 +1858,14 @@ export default function MemberInfoView() {
 									</div>
 								</div>
 							</>
-						) : selectedMember ? (
+						) : (
+							<>
+								<div
+									className={`space-y-4 ${
+										!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+									}`}
+								>
+									{selectedMember ? (
 							<>
 								{/* 개인정보 카드 */}
 								<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
@@ -1931,23 +1941,47 @@ export default function MemberInfoView() {
 														</span>
 													)}
 												</div>
-												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+												<div className="flex flex-col col-span-12 gap-1 md:col-span-8">
 													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">수급자명 *</label>
 													{isEditing && editedMember ? (
-														<input
-															type="text"
-															value={editedMember.P_NM || ''}
-															onChange={(e) => handleFieldChange('P_NM', e.target.value)}
-															className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-															placeholder="수급자명을 입력하세요"
-														/>
+														<div className="flex items-center gap-2">
+															<input
+																type="text"
+																value={editedMember.P_NM || ''}
+																onChange={(e) => handleFieldChange('P_NM', e.target.value)}
+																className="flex-1 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+																placeholder="수급자명을 입력하세요"
+															/>
+															<span className="shrink-0 text-xs text-blue-900/55 whitespace-nowrap">
+																No.{selectedMember.PNUM || '-'}
+															</span>
+														</div>
 													) : (
-														<span className="w-full border-b border-blue-200 py-1">{selectedMember.P_NM || '-'}</span>
+														<span className="flex w-full items-baseline gap-2 border-b border-blue-200 py-1">
+															<span>{selectedMember.P_NM || '-'}</span>
+															<span className="text-xs text-blue-900/55 whitespace-nowrap">
+																No.{selectedMember.PNUM || '-'}
+															</span>
+														</span>
 													)}
 												</div>
-												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">수급자번호</label>
-													<span className="w-full border-b border-blue-200 py-1">{selectedMember.PNUM || '-'}</span>
+												<div className="flex flex-col col-span-12 gap-1 md:col-span-4">
+													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">성별</label>
+													{isEditing && editedMember ? (
+														<select
+															value={editedMember.P_SEX || ''}
+															onChange={(e) => handleFieldChange('P_SEX', e.target.value)}
+															className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+														>
+															<option value="">선택</option>
+															<option value="1">남자</option>
+															<option value="2">여자</option>
+														</select>
+													) : (
+														<span className="w-full border-b border-blue-200 py-1">
+															{selectedMember.P_SEX === '1' ? '남자' : selectedMember.P_SEX === '2' ? '여자' : '-'}
+														</span>
+													)}
 												</div>
 												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
 													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">생년월일</label>
@@ -1976,24 +2010,6 @@ export default function MemberInfoView() {
 														/>
 													) : (
 														<span className="w-full border-b border-blue-200 py-1">{selectedMember.P_NO || '-'}</span>
-													)}
-												</div>
-												<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-													<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">성별</label>
-													{isEditing && editedMember ? (
-														<select
-															value={editedMember.P_SEX || ''}
-															onChange={(e) => handleFieldChange('P_SEX', e.target.value)}
-															className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-														>
-															<option value="">선택</option>
-															<option value="1">남자</option>
-															<option value="2">여자</option>
-														</select>
-													) : (
-														<span className="w-full border-b border-blue-200 py-1">
-															{selectedMember.P_SEX === '1' ? '남자' : selectedMember.P_SEX === '2' ? '여자' : '-'}
-														</span>
 													)}
 												</div>
 
@@ -2526,13 +2542,54 @@ export default function MemberInfoView() {
 									</div>
 								</div>
 							</>
-						) : (
-							<div className="flex items-center justify-center h-96">
-								<div className="text-center text-gray-500">
-									<p className="text-lg">수급자를 선택해주세요</p>
-									<p className="mt-2 text-sm">왼쪽 목록에서 수급자를 클릭하면 상세 정보를 확인할 수 있습니다</p>
+									) : (
+										<>
+											<div className="bg-white border border-blue-300 rounded-lg shadow-sm min-h-[420px]">
+												<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
+													<h2 className="text-xl font-semibold text-blue-900">개인정보</h2>
+												</div>
+												<div className="p-8 grid grid-cols-12 gap-3 opacity-50">
+													{Array.from({ length: 8 }).map((_, i) => (
+														<div key={i} className="col-span-12 md:col-span-6 flex flex-col gap-1">
+															<div className="h-7 rounded bg-blue-100 border border-blue-200" />
+															<div className="h-8 rounded border border-blue-200 bg-white" />
+														</div>
+													))}
+												</div>
+											</div>
+											<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+												<div className="bg-white border border-blue-300 rounded-lg shadow-sm min-h-[180px]">
+													<div className="px-4 py-3 bg-blue-100 border-b border-blue-200">
+														<h3 className="text-lg font-semibold text-blue-900">계약정보</h3>
+													</div>
+													<div className="p-4 space-y-3 opacity-50">
+														<div className="h-6 border-b border-blue-200" />
+														<div className="h-6 border-b border-blue-200" />
+														<div className="h-6 border-b border-blue-200" />
+													</div>
+												</div>
+												<div className="bg-white border border-blue-300 rounded-lg shadow-sm min-h-[180px]">
+													<div className="px-4 py-3 bg-blue-100 border-b border-blue-200">
+														<h3 className="text-lg font-semibold text-blue-900">보호자 정보</h3>
+													</div>
+													<div className="p-4 space-y-3 opacity-50">
+														<div className="h-6 border-b border-blue-200" />
+														<div className="h-6 border-b border-blue-200" />
+														<div className="h-6 border-b border-blue-200" />
+													</div>
+												</div>
+											</div>
+										</>
+									)}
 								</div>
-							</div>
+								{!selectedMember && (
+									<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+										<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
+											수급자를 선택해주세요
+										</p>
+									</div>
+								)}
+							</>
 						)}
 					</section>
 				</div>
