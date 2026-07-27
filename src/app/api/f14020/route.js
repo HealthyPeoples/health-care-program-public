@@ -29,6 +29,10 @@ const CARE_COLUMNS = [
 	'NS_ETC',
 	'NS_PS',
 	'NS_WRITE_NAME',
+	'NS_SORE_CHK',
+	'NS_SORE_MNG',
+	'NS_SORE_DESC',
+	'NS_MEDI_CHK',
 	'FN_COGN_HELP',
 	'FN_MOVE_HELP',
 	'FN_MIND_HELP',
@@ -37,10 +41,29 @@ const CARE_COLUMNS = [
 	'FN_PS',
 	'FN_WRITE_NAME',
 	'IO_TM_INFO',
-	'ROOM_NO'
+	'ROOM_NO',
+	'GINFO'
 ];
 
-const MEAL_COLUMNS = ['ST_PLAC', 'ST_KIND', 'GYN', 'MOST', 'LCST', 'DNST', 'MGST', 'AGST', 'ST_ETC'];
+const MEAL_COLUMNS = [
+	'ST_PLAC',
+	'ST_KIND',
+	'GYN',
+	'MOST',
+	'LCST',
+	'DNST',
+	'MGST',
+	'AGST',
+	'DGST',
+	'MOVOL',
+	'LCVOL',
+	'DNVOL',
+	'MGVOL',
+	'AGVOL',
+	'DGVOL',
+	'ST_ETC',
+	'ST_CONF'
+];
 
 function validateDate(dateStr) {
 	if (!dateStr) return false;
@@ -236,7 +259,15 @@ export async function POST(req) {
 				DNST: r.dnst ?? r.DNST ?? r.mealStatus?.dinner,
 				MGST: r.mgst ?? r.MGST ?? r.snackStatus?.morning,
 				AGST: r.agst ?? r.AGST ?? r.snackStatus?.afternoon,
-				ST_ETC: r.specialNotes ?? r.ST_ETC
+				DGST: r.dgst ?? r.DGST,
+				MOVOL: r.movol ?? r.MOVOL,
+				LCVOL: r.lcvol ?? r.LCVOL,
+				DNVOL: r.dnvol ?? r.DNVOL,
+				MGVOL: r.mgvol ?? r.MGVOL,
+				AGVOL: r.agvol ?? r.AGVOL,
+				DGVOL: r.dgvol ?? r.DGVOL,
+				ST_ETC: r.specialNotes ?? r.ST_ETC,
+				ST_CONF: r.stConf ?? r.ST_CONF
 			};
 
 			const providedMealKeys = MEAL_COLUMNS.filter((k) => mealValues[k] !== undefined);
