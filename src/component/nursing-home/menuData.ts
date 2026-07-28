@@ -215,8 +215,8 @@ export const sections3: Sections3 = {
     '자료실(신규_개발중)': [
       { name: '자료실(신규_개발중)', link: '/nursingHome/data-room' },
     ],
-    '평가체크리스트(신규_개발중)': [
-      { name: '평가체크리스트(신규_개발중)', link: '/nursingHome/evaluation-checklist' },
+    '평가체크리스트': [
+      { name: '평가체크리스트', link: '/nursingHome/evaluation-checklist' },
     ],
   },
   '요양원 관리시스템': {
