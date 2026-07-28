@@ -89,36 +89,38 @@ function createTask(
 const INITIAL_TASKS: ChecklistTask[] = [
 	createTask("op-y1", "기관운영", "1", "운영규정 마련 및 정비 (지표 1번)"),
 	createTask("op-y2", "기관운영", "1", "급여제공지침 마련 및 정비 (지표 26번)"),
-	createTask("op-y3", "기관운영", "1", "사업계획 및 예산수립 (지표 2번)"),
+	createTask("op-y3", "기관운영", "1", "사업계획 및 예산 수립 (지표 2번)"),
 	createTask("op-y4", "기관운영", "1", "사업계획 평가 (지표 2번)"),
-	createTask("op-y5", "기관운영", "1", "프로그램계획 (지표 38번)"),
+	createTask("op-y5", "기관운영", "1", "프로그램 계획 수립 (지표 38번)"),
 	createTask("op-h1", "기관운영", "2", "보호자 간담회 (지표 27번)"),
 	createTask("op-h2", "기관운영", "2", "프로그램 의견수렴 (지표 38번)"),
-	createTask("op-q1", "기관운영", "4", "실내외 소독 (지표 15번)"),
+	createTask("op-q1", "기관운영", "4", "실/내외 소독 (살균, 살충, 살서) (지표 15번)"),
 	createTask("op-q2", "기관운영", "4", "의약품 관리 (지표 35번)"),
-	createTask("op-m1", "기관운영", "12", "소방 및 경보설비 점검 (지표 22번)"),
-	createTask("op-m2", "기관운영", "12", "시설소식 제공 (지표 27번)"),
-	createTask("op-w1", "기관운영", "12", "위생활동 (지표 3번)", {
+	createTask("op-m1", "기관운영", "12", "소화 및 경보 설비 점검 (지표 22번)"),
+	createTask("op-m2", "기관운영", "12", "기관소식제공 (지표 27번)"),
+	createTask("op-w1", "기관운영", "12", "자원봉사활동 (지표 3번)", {
 		freqLabel: "매주",
-		texts: Array.from({ length: 12 }, () => "(월1회)"),
+		texts: Array.from({ length: 12 }, () => "일 1회"),
 	}),
-	createTask("op-w2", "기관운영", "12", "주방도구 소독 (지표 14번)", { freqLabel: "매주" }),
+	createTask("op-w2", "기관운영", "12", "주방 및 집기 소독 (지표 14번)", { freqLabel: "매주" }),
 
 	createTask("rc-y1", "수급자", "1", "욕구평가 (지표 30번)"),
 	createTask("rc-y2", "수급자", "1", "위험도 평가 (지표 30번)"),
 	createTask("rc-y3", "수급자", "1", "급여계획 작성 (지표 31번)"),
 	createTask("rc-y4", "수급자", "1", "급여제공결과 평가 (지표 44번)"),
-	createTask("rc-h1", "수급자", "2", "재난대응훈련 (지표 23번)"),
+	createTask("rc-h1", "수급자", "2", "재난상황 대응훈련 (지표 23번)"),
 	createTask("rc-q1", "수급자", "4", "수급자(보호자) 상담 (지표 25번)"),
-	createTask("rc-q2", "수급자", "4", "사례관리회의 (지표 43번)"),
+	createTask("rc-q2", "수급자", "4", "사례관리 회의 (지표 43번)"),
 	createTask("rc-m1", "수급자", "12", "급여제공기록지 제공 (지표 44번)"),
-	createTask("rc-m2", "수급자", "12", "상태변화기록 (지표 44번)"),
+	createTask("rc-m2", "수급자", "12", "상태변화 기록 (지표 44번)"),
 
-	createTask("st-y1", "직원", "1", "운영규정 및 급여지침 교육 (지표 1번, 26번)"),
-	createTask("st-y2", "직원", "1", "직원 건강검진 (지표 7번)"),
-	createTask("st-h1", "직원", "2", "소방 및 경보설비 교육 (지표 22번)"),
-	createTask("st-h2", "직원", "2", "재난대응훈련 (지표 23번)"),
-	createTask("st-q1", "직원", "4", "복지(포상)등 제공 (지표 10번)"),
+	createTask("st-y1", "직원", "1", "운영규정, 급여제공지침 교육 (지표 1번, 26번)"),
+	createTask("st-y2", "직원", "1", "직원 건강검진 (지표 7번)", {
+		texts: ["연 1회 (연 내에 모두 받을 수 있도록 하여야 함)"],
+	}),
+	createTask("st-h1", "직원", "2", "소화 및 경보설비 교육 (지표 22번)"),
+	createTask("st-h2", "직원", "2", "재난상황 대응훈련 (지표 23번)"),
+	createTask("st-q1", "직원", "4", "복지(포상) 등 제공 (지표 10번)"),
 ];
 
 function buildFreqRowSpans(tasks: ChecklistTask[]): Map<string, number> {
@@ -134,17 +136,145 @@ function buildFreqRowSpans(tasks: ChecklistTask[]): Map<string, number> {
 	return spans;
 }
 
+function cloneInitialTasks(): ChecklistTask[] {
+	return INITIAL_TASKS.map((t) => ({ ...t, cells: t.cells.map((c) => ({ ...c })) }));
+}
+
+function mapApiToTasks(
+	structure: Array<{
+		TASK_ID: string;
+		CATEGORY: string;
+		FREQ_LABEL: string;
+		MERGE_MODE: string;
+		CONTENT: string;
+		CELL_TEXTS: string[];
+	}>,
+	checks: Array<{ TASK_ID: string; CELL_INDEX: number; CHECKED: boolean }>
+): ChecklistTask[] {
+	if (!structure.length) return cloneInitialTasks();
+
+	const checkMap = new Map<string, boolean>();
+	for (const c of checks) {
+		checkMap.set(`${c.TASK_ID}:${c.CELL_INDEX}`, !!c.CHECKED);
+	}
+
+	return structure.map((s) => {
+		const mergeMode = (["1", "2", "4", "12"].includes(s.MERGE_MODE) ? s.MERGE_MODE : "12") as MergeMode;
+		const meta = mergeMeta(mergeMode);
+		const texts =
+			Array.isArray(s.CELL_TEXTS) && s.CELL_TEXTS.length > 0
+				? s.CELL_TEXTS
+				: defaultTextsForMerge(mergeMode);
+		const category = (TABS.includes(s.CATEGORY as CategoryTab) ? s.CATEGORY : "기관운영") as CategoryTab;
+		return {
+			id: s.TASK_ID,
+			category,
+			mergeMode,
+			freqLabel: s.FREQ_LABEL || meta.freqLabel,
+			content: s.CONTENT || "",
+			cells: Array.from({ length: meta.count }, (_, i) => ({
+				text: String(texts[i] ?? ""),
+				checked: checkMap.get(`${s.TASK_ID}:${i}`) ?? false,
+			})),
+		};
+	});
+}
+
+function buildChecksPayload(tasks: ChecklistTask[]) {
+	return tasks.flatMap((t) =>
+		t.cells.map((c, cellIndex) => ({
+			TASK_ID: t.id,
+			CELL_INDEX: cellIndex,
+			CHECKED: !!c.checked,
+		}))
+	);
+}
+
 export default function EvaluationChecklist() {
 	const currentYear = useMemo(() => new Date().getFullYear(), []);
 	const [year, setYear] = useState(currentYear);
-	const [facilityName, setFacilityName] = useState("여주점");
+	const [facilityName, setFacilityName] = useState("");
 	const [activeTab, setActiveTab] = useState<CategoryTab>("기관운영");
 	const [isEditMode, setIsEditMode] = useState(false);
-	const [tasks, setTasks] = useState<ChecklistTask[]>(() =>
-		INITIAL_TASKS.map((t) => ({ ...t, cells: t.cells.map((c) => ({ ...c })) }))
-	);
+	const [tasks, setTasks] = useState<ChecklistTask[]>(cloneInitialTasks);
+	const [sessionAncd, setSessionAncd] = useState<string | number | null>(null);
+	const [sessionEmpno, setSessionEmpno] = useState<string>("");
+	const [loading, setLoading] = useState(true);
+	const [saving, setSaving] = useState(false);
 
 	const tabTasks = useMemo(() => tasks.filter((t) => t.category === activeTab), [tasks, activeTab]);
+
+	const loadData = React.useCallback(async (ancd: string | number, empno: string, y: number) => {
+		setLoading(true);
+		try {
+			const qs = new URLSearchParams({
+				ancd: String(ancd),
+				year: String(y),
+				empno: String(empno),
+			});
+			const res = await fetch(`/api/evaluation-checklists?${qs.toString()}`, {
+				cache: "no-store",
+				credentials: "include",
+			});
+			const data = await res.json();
+			if (!res.ok || !data?.success) {
+				throw new Error(data?.error || "조회에 실패했습니다.");
+			}
+			setTasks(mapApiToTasks(data.structure || [], data.checks || []));
+		} catch (e) {
+			console.error(e);
+			alert(e instanceof Error ? e.message : "평가 체크리스트 조회 중 오류가 발생했습니다.");
+			setTasks(cloneInitialTasks());
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	React.useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const res = await fetch("/api/auth/user-info", { cache: "no-store", credentials: "include" });
+				const json = await res.json().catch(() => ({}));
+				if (cancelled) return;
+				if (!res.ok || !json?.success) {
+					alert(json?.error || "로그인 정보를 확인할 수 없습니다.");
+					setLoading(false);
+					return;
+				}
+				// API: { success, data: { ancd, empno, annm, ... } }
+				const user = (json?.data || json?.user || {}) as {
+					ancd?: string | number;
+					empno?: string | number;
+					uid?: string;
+					annm?: string;
+					ANNM?: string;
+				};
+				const ancd = user?.ancd;
+				const empno = String(user?.empno ?? user?.uid ?? "").trim();
+				const anNm = String(user?.annm ?? user?.ANNM ?? "").trim();
+				if (anNm) setFacilityName(anNm);
+				if (ancd == null || ancd === "" || !empno) {
+					alert("로그인 기관/직원 정보를 확인할 수 없습니다.");
+					setLoading(false);
+					return;
+				}
+				setSessionAncd(ancd);
+				setSessionEmpno(empno);
+			} catch (e) {
+				console.error(e);
+				if (!cancelled) setLoading(false);
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	React.useEffect(() => {
+		if (sessionAncd == null || !sessionEmpno) return;
+		loadData(sessionAncd, sessionEmpno, year);
+	}, [year, sessionAncd, sessionEmpno, loadData]);
 
 	const updateTask = (taskId: string, patch: Partial<ChecklistTask> | ((t: ChecklistTask) => ChecklistTask)) => {
 		setTasks((prev) =>
@@ -211,8 +341,45 @@ export default function EvaluationChecklist() {
 		setTasks((prev) => prev.filter((t) => t.id !== taskId));
 	};
 
-	const handleSave = () => {
-		alert("화면에 입력된 내용이 유지됩니다. (저장 API 미연동)");
+	const handleSave = async () => {
+		if (sessionAncd == null || !sessionEmpno) {
+			alert("로그인 정보를 확인할 수 없습니다.");
+			return;
+		}
+		setSaving(true);
+		try {
+			const res = await fetch("/api/evaluation-checklists", {
+				method: "POST",
+				credentials: "include",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					ancd: sessionAncd,
+					year,
+					empno: sessionEmpno,
+					mode: "both",
+					tasks: tasks.map((t, sortNo) => ({
+						id: t.id,
+						category: t.category,
+						freqLabel: t.freqLabel,
+						mergeMode: t.mergeMode,
+						content: t.content,
+						sortNo,
+						cells: t.cells,
+					})),
+					checks: buildChecksPayload(tasks),
+				}),
+			});
+			const data = await res.json();
+			if (!res.ok || !data?.success) {
+				throw new Error(data?.error || "저장에 실패했습니다.");
+			}
+			alert("저장되었습니다.");
+		} catch (e) {
+			console.error(e);
+			alert(e instanceof Error ? e.message : "저장 중 오류가 발생했습니다.");
+		} finally {
+			setSaving(false);
+		}
 	};
 
 	const handlePrint = () => {
@@ -406,7 +573,25 @@ export default function EvaluationChecklist() {
 	const planColSpan = 12;
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="relative min-h-screen bg-white text-black">
+			{(loading || saving) && (
+				<div
+					className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40"
+					aria-busy="true"
+					aria-live="polite"
+				>
+					<div className="flex flex-col items-center gap-3 rounded-lg border border-blue-200 bg-white px-8 py-6 shadow-lg">
+						<div
+							className="h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600"
+							role="status"
+						/>
+						<div className="text-sm font-medium text-blue-900">
+							{saving ? "저장 중..." : "데이터를 불러오는 중..."}
+						</div>
+					</div>
+				</div>
+			)}
+
 			<div className="p-4 space-y-4">
 				<div className="flex flex-col items-stretch gap-3">
 					<div className="flex-1 rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
@@ -453,21 +638,24 @@ export default function EvaluationChecklist() {
 							<button
 								type="button"
 								onClick={handleSave}
-								className="w-24 rounded border border-blue-400 bg-blue-200 px-6 py-3 text-base font-medium text-blue-900 hover:bg-blue-300"
+								disabled={saving || loading}
+								className="w-24 rounded border border-blue-400 bg-blue-200 px-6 py-3 text-base font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
 							>
-								저장
+								{saving ? "저장중" : "저장"}
 							</button>
 							<button
 								type="button"
 								onClick={handlePrint}
-								className="w-24 rounded border border-blue-400 bg-blue-200 px-6 py-3 text-base font-medium text-blue-900 hover:bg-blue-300"
+								disabled={loading}
+								className="w-24 rounded border border-blue-400 bg-blue-200 px-6 py-3 text-base font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
 							>
 								출력
 							</button>
 							<button
 								type="button"
 								onClick={() => setIsEditMode((v) => !v)}
-								className={`rounded border px-4 py-3 text-base font-medium hover:opacity-90 ${
+								disabled={loading}
+								className={`rounded border px-4 py-3 text-base font-medium hover:opacity-90 disabled:opacity-50 ${
 									isEditMode
 										? "border-amber-500 bg-amber-400 text-amber-950"
 										: "border-blue-400 bg-blue-200 text-blue-900 hover:bg-blue-300"
@@ -515,7 +703,7 @@ export default function EvaluationChecklist() {
 							</button>
 						)}
 						<div className="ml-auto pr-2 text-sm font-medium text-blue-900">
-							{facilityName}
+							{facilityName || "평가 체크리스트"}
 							{isEditMode ? " · 수정모드" : ""}
 						</div>
 					</div>
