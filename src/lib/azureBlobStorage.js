@@ -137,8 +137,9 @@ async function uploadProgramDailyLogPhoto({ ancd, buffer, fileName, mimeType, si
 }
 
 /**
- * 자료실 파일 → 전용 컨테이너(data-room)에 저장
- * blobName 예: 190000/ms6c1a-ab12cd.xlsx
+ * 자료실 파일 → 전용 컨테이너(data-room)에 기관코드 폴더로 저장
+ * 사진(program-daily-log/{ancd}/...)과 동일하게 기관코드가 가상 폴더가 됩니다.
+ * blobName 예: 190000/ms6c1a-ab12cd_서식.xlsx
  */
 async function uploadDataRoomFile({ ancd, buffer, fileName, mimeType, size }) {
   const name = String(fileName || 'file').trim() || 'file';
@@ -148,6 +149,10 @@ async function uploadDataRoomFile({ ancd, buffer, fileName, mimeType, size }) {
   }
   if (n > MAX_DATA_ROOM_BYTES) {
     throw new Error('파일 크기는 50MB 이하여야 합니다.');
+  }
+  const facilityFolder = sanitizeBlobPathSegment(ancd);
+  if (!facilityFolder) {
+    throw new Error('기관코드(ANCD)가 없어 Blob 폴더를 만들 수 없습니다.');
   }
   const ext = extFromFileName(name);
   if (ext && DATA_ROOM_BLOCKED_EXT.has(ext)) {
@@ -159,7 +164,10 @@ async function uploadDataRoomFile({ ancd, buffer, fileName, mimeType, size }) {
   const stamp = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 10);
   const safeExt = ext || 'bin';
-  const blobName = `${sanitizeBlobPathSegment(ancd)}/${stamp}-${rand}.${safeExt}`;
+  // 원본 파일명(확장자 제외)을 경로에 남겨 Azure 포털에서도 구분 가능
+  const baseName = sanitizeBlobPathSegment(name.replace(/\.[^.]+$/, '')) || 'file';
+  // 기관코드 폴더 / 고유파일명  (예: 190000/ms6c1a-ab12_입소자_서식.xlsx)
+  const blobName = `${facilityFolder}/${stamp}-${rand}_${baseName}.${safeExt}`;
 
   const blockBlob = container.getBlockBlobClient(blobName);
   await blockBlob.uploadData(buffer, {
@@ -179,14 +187,14 @@ function isProgramDailyLogBlob(blobName) {
   return String(blobName || '').trim().startsWith('program-daily-log/');
 }
 
-/** 자료실 blob 경로 형식 검증 (기관 간 공유 다운로드용) */
+/** 자료실 blob 경로 형식 검증 (기관코드 폴더 하위) */
 function isValidDataRoomBlobName(blobName) {
   const name = String(blobName || '').trim();
   if (!name || name.includes('..') || name.startsWith('/')) return false;
-  // 신규: 190000/xxx.ext
-  if (/^\d+[a-zA-Z0-9._-]*\//.test(name)) return true;
-  // 과거: data-room/190000/xxx.ext
-  if (/^data-room\/\d+[a-zA-Z0-9._-]*\//.test(name)) return true;
+  // 기관코드 폴더: 190000/xxx.ext
+  if (/^[a-zA-Z0-9._-]+\//.test(name)) return true;
+  // 과거: data-room/190000/xxx.ext (동일/타 컨테이너)
+  if (/^data-room\/[a-zA-Z0-9._-]+\//.test(name)) return true;
   return false;
 }
 
