@@ -122,11 +122,11 @@ export default function OutingProcessing() {
 				{/* 상단: 헤더 및 네비게이션 */}
 				<div className="mb-4 flex items-center border-b border-blue-200 pb-3 relative">
 					{/* 왼쪽: 외래진료 기록 이동 버튼 */}
-					<div className="flex items-center gap-2">
+					{/* <div className="flex items-center gap-2">
 						<button className="px-4 py-1.5 text-sm border border-orange-400 rounded bg-orange-200 hover:bg-orange-300 text-orange-900 font-medium">
 							외래진료 기록
 						</button>
-					</div>
+					</div> */}
 
 					{/* 가운데: 월/년 선택 */}
 					<div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-4">

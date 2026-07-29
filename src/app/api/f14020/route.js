@@ -1,4 +1,4 @@
-import { connPool } from '../../../config/server';
+import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
@@ -109,6 +109,66 @@ function normalizeCareValue(key, value) {
 	return String(value);
 }
 
+/** 최신 이전 실적이 외박(GYN=2)이고 당일 F14020이 없는 수급자 (복귀 전) */
+async function fetchOvernightPending(pool, ancd, svdtIso) {
+	const request = pool.request();
+	request.input('ANCD', ancd);
+	request.input('SVDT', svdtIso);
+	const result = await request.query(`
+		;WITH latest_prev AS (
+			SELECT
+				f.*,
+				ROW_NUMBER() OVER (
+					PARTITION BY f.[ANCD], f.[PNUM]
+					ORDER BY f.[SVDT] DESC
+				) AS rn
+			FROM [돌봄시설DB].[dbo].[F14020] f
+			WHERE f.[ANCD] = @ANCD
+				AND f.[SVDT] < CAST(@SVDT AS date)
+		)
+		SELECT
+			prev.[ANCD],
+			prev.[PNUM],
+			prev.[SVDT] AS PREV_SVDT,
+			prev.[GYN] AS PREV_GYN,
+			prev.[IO_TM_INFO] AS PREV_IO_TM_INFO,
+			prev.[ST_KIND] AS PREV_ST_KIND,
+			prev.[ST_PLAC] AS PREV_ST_PLAC,
+			f10010.[P_NM],
+			f10010.[P_BRDT]
+		FROM latest_prev prev
+		LEFT JOIN [돌봄시설DB].[dbo].[F10010] f10010
+			ON prev.[ANCD] = f10010.[ANCD]
+			AND prev.[PNUM] = f10010.[PNUM]
+		WHERE prev.rn = 1
+			AND LTRIM(RTRIM(CAST(prev.[GYN] AS VARCHAR(10)))) = '2'
+			AND NOT EXISTS (
+				SELECT 1
+				FROM [돌봄시설DB].[dbo].[F14020] today
+				WHERE today.[ANCD] = prev.[ANCD]
+					AND CAST(today.[PNUM] AS VARCHAR) = CAST(prev.[PNUM] AS VARCHAR)
+					AND today.[SVDT] = CAST(@SVDT AS date)
+			)
+		ORDER BY f10010.[P_NM] ASC
+	`);
+	return result.recordset || [];
+}
+
+function padTime5Server(t) {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+	if (!m) return '';
+	return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
+}
+
+function calcReturnPayComGu(returnTime) {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(String(returnTime || '').trim());
+	if (!m) return '0';
+	const minutes = Number(m[1]) * 60 + Number(m[2]);
+	if (!Number.isFinite(minutes)) return '0';
+	const facilityHours = (24 * 60 - minutes) / 60;
+	return facilityHours >= 12 ? '0' : '1';
+}
+
 export async function GET(req) {
 	try {
 		const searchParams = req.nextUrl.searchParams;
@@ -118,12 +178,24 @@ export async function GET(req) {
 		const startDate = searchParams.get('startDate');
 		const endDate = searchParams.get('endDate');
 
+		const overnightPending = searchParams.get('overnightPending');
+
 		const gate = assertAnCdMatchesSession(req, ancd || null);
 		if (!gate.ok) return gate.response;
 
 		const pool = await connPool;
 		if (!pool) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		}
+
+		// 외박 복귀 대기 목록 (전일 GYN=2, 당일 미생성)
+		if (overnightPending === '1' || overnightPending === 'true') {
+			if (!svdt || !validateDate(svdt)) {
+				return jsonError({ success: false, error: 'svdt 파라미터가 필요합니다' }, 400);
+			}
+			const svdtIso = toSvdtIso(svdt);
+			const data = await fetchOvernightPending(pool, gate.sessionAncd, svdtIso);
+			return jsonOk({ success: true, data, count: data.length, svdt: svdtIso });
 		}
 
 		let query = `
@@ -200,15 +272,122 @@ export async function POST(req) {
 		}
 
 		const body = await req.json();
-		const { svdt, rows } = body || {};
-
-		if (!svdt || !Array.isArray(rows)) {
-			return jsonError({ success: false, error: 'svdt와 rows 배열이 필요합니다' }, 400);
-		}
+		const { svdt, rows, action } = body || {};
 
 		const svdtIso = toSvdtIso(svdt);
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(svdtIso)) {
+		if (!svdt || !/^\d{4}-\d{2}-\d{2}$/.test(svdtIso)) {
 			return jsonError({ success: false, error: 'svdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }, 400);
+		}
+
+		// 전체추가: Usp_P14020 (출석부/약물/목욕 일괄 생성)
+		if (action === 'generate' || action === 'usp_p14020') {
+			const ancdNum = Number(gate.sessionAncd);
+			if (!Number.isFinite(ancdNum)) {
+				return jsonError({ success: false, error: '세션 기관코드(ANCD)가 올바르지 않습니다' }, 401);
+			}
+
+			await pool
+				.request()
+				.input('pv_ancd', sql.Int, ancdNum)
+				.input('pv_svdt', sql.Date, svdtIso)
+				.execute('[돌봄시설DB].[dbo].[Usp_P14020]');
+
+			const overnightPending = await fetchOvernightPending(pool, gate.sessionAncd, svdtIso);
+
+			return jsonOk({
+				success: true,
+				action: 'generate',
+				ancd: ancdNum,
+				svdt: svdtIso,
+				overnightPending,
+				overnightPendingCount: overnightPending.length
+			});
+		}
+
+		// 외박 복귀 처리: 당일 F14020 생성 (GYN=1, IO_TM_INFO=R:복귀시각)
+		if (action === 'returnFromOvernight') {
+			if (!Array.isArray(rows) || rows.length === 0) {
+				return jsonError({ success: false, error: '복귀 처리할 rows가 필요합니다' }, 400);
+			}
+
+			const pending = await fetchOvernightPending(pool, gate.sessionAncd, svdtIso);
+			const pendingByPnum = new Map(
+				pending.map((p) => [String(p.PNUM ?? '').trim(), p])
+			);
+
+			const now = new Date();
+			const nowStr = now.toISOString().slice(0, 19).replace('T', ' ');
+			const results = [];
+
+			for (let i = 0; i < rows.length; i++) {
+				const r = rows[i] || {};
+				const pnum = String(r.pnum ?? r.PNUM ?? '').trim();
+				const returnTime = padTime5Server(r.returnTime ?? r.RETURN_TIME ?? '');
+				if (!pnum || !returnTime) {
+					results.push({ index: i, pnum, ok: false, error: 'pnum/returnTime 필요' });
+					continue;
+				}
+				const prev = pendingByPnum.get(pnum);
+				if (!prev) {
+					results.push({ index: i, pnum, ok: false, error: '외박 복귀 대상이 아님' });
+					continue;
+				}
+
+				const payComGu = calcReturnPayComGu(returnTime);
+				const stKind = String(prev.PREV_ST_KIND ?? r.mealType ?? r.ST_KIND ?? '1');
+				const stPlac = String(prev.PREV_ST_PLAC ?? r.mealLocation ?? r.ST_PLAC ?? '식장');
+
+				const request = pool.request();
+				request.input('ANCD', gate.sessionAncd);
+				request.input('PNUM', pnum);
+				request.input('SVDT', svdtIso);
+				request.input('INDT', nowStr);
+				request.input('GYN', '1');
+				request.input('ST_KIND', stKind);
+				request.input('ST_PLAC', stPlac);
+				request.input('PAY_COM_GU', payComGu);
+				request.input('IO_TM_INFO', `R:${returnTime}`);
+				request.input('MOST', '1');
+				request.input('LCST', '1');
+				request.input('DNST', '1');
+				request.input('MGST', '1');
+				request.input('AGST', '1');
+
+				await request.query(`
+					MERGE [돌봄시설DB].[dbo].[F14020] AS T
+					USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, @SVDT AS SVDT) AS S
+						ON (T.[ANCD] = S.[ANCD] AND CAST(T.[PNUM] AS VARCHAR) = CAST(S.[PNUM] AS VARCHAR) AND T.[SVDT] = S.[SVDT])
+					WHEN MATCHED THEN
+						UPDATE SET
+							[INDT] = @INDT,
+							[GYN] = @GYN,
+							[ST_KIND] = @ST_KIND,
+							[ST_PLAC] = @ST_PLAC,
+							[PAY_COM_GU] = @PAY_COM_GU,
+							[IO_TM_INFO] = @IO_TM_INFO,
+							[MOST] = @MOST,
+							[LCST] = @LCST,
+							[DNST] = @DNST,
+							[MGST] = @MGST,
+							[AGST] = @AGST
+					WHEN NOT MATCHED THEN
+						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
+						VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST);
+				`);
+				results.push({ index: i, pnum, ok: true, returnTime, payComGu });
+			}
+
+			return jsonOk({
+				success: true,
+				action: 'returnFromOvernight',
+				svdt: svdtIso,
+				data: results,
+				count: results.filter((x) => x.ok).length
+			});
+		}
+
+		if (!Array.isArray(rows)) {
+			return jsonError({ success: false, error: 'svdt와 rows 배열이 필요합니다 (또는 action: generate / returnFromOvernight)' }, 400);
 		}
 
 		const now = new Date();
