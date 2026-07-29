@@ -63,7 +63,9 @@ const MEAL_COLUMNS = [
 	'AGVOL',
 	'DGVOL',
 	'ST_ETC',
-	'ST_CONF'
+	'ST_CONF',
+	'PAY_COM_GU',
+	'IO_TM_INFO'
 ];
 
 function validateDate(dateStr) {
@@ -241,7 +243,9 @@ export async function POST(req) {
 				AGVOL: r.agvol ?? r.AGVOL,
 				DGVOL: r.dgvol ?? r.DGVOL,
 				ST_ETC: r.specialNotes ?? r.ST_ETC,
-				ST_CONF: r.stConf ?? r.ST_CONF
+				ST_CONF: r.stConf ?? r.ST_CONF,
+				PAY_COM_GU: r.payComGu ?? r.PAY_COM_GU,
+				IO_TM_INFO: r.ioTmInfo ?? r.IO_TM_INFO
 			};
 
 			const providedMealKeys = MEAL_COLUMNS.filter((k) => mealValues[k] !== undefined);

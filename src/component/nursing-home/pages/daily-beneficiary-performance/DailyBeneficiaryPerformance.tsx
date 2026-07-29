@@ -11,10 +11,137 @@ interface PerformanceData {
 	pnum?: string;
 	mealLocation: string; // ST_PLAC
 	mealType: string; // ST_KIND
-	gyn: string; // GYN: '0'=외출, '1'=입원(외박)
+	gyn: string; // GYN: '0'=외출, '1'=입원, '2'=외박
+	gynStartTime: string; // 외출/외박 시작 (IO_TM_INFO)
+	gynEndTime: string; // 외출/외박 종료 (IO_TM_INFO)
+	payComGu: string; // PAY_COM_GU: '1'=급여50%적용
 	mealStatus: { breakfast: string; lunch: string; dinner: string }; // MOST, LCST, DNST: '1'=양호, '2'=이상
 	specialNotes: string; // ST_ETC
 	snackStatus: { morning: string; afternoon: string }; // MGST, AGST: '1'=양호, '2'=이상
+}
+
+function padTime5(t: string): string {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+	if (!m) return '';
+	return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
+}
+
+function parseIoTmInfo(info: string | null | undefined): { start: string; end: string } {
+	const s = String(info || '').trim();
+	const range = /^(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})$/.exec(s);
+	if (range) return { start: padTime5(range[1]), end: padTime5(range[2]) };
+	// 외박: 나간 시각만 저장된 경우 (예: "08:00" 또는 "08:00~")
+	const single = /^(\d{1,2}:\d{2})\s*[~\-–]?\s*$/.exec(s);
+	if (single) return { start: padTime5(single[1]), end: '' };
+	return { start: '', end: '' };
+}
+
+function formatIoTmInfo(gyn: string, start: string, end: string): string {
+	const a = padTime5(start);
+	const b = padTime5(end);
+	if (!a && !b) return '';
+	if (gyn === '2') return a; // 외박: 나간 시각만
+	if (!a || !b) return a || b;
+	return `${a}~${b}`;
+}
+
+function parseTimeToMinutes(t: string): number | null {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+	if (!m) return null;
+	const h = Number(m[1]);
+	const min = Number(m[2]);
+	if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) return null;
+	return h * 60 + min;
+}
+
+/** 외출: 24h − 외출구간. 외박: 0시~나간시각(=당일 기관 체류). */
+function calcFacilityHours(gyn: string, start: string, end: string): number | null {
+	if (gyn === '2') {
+		const leave = parseTimeToMinutes(start);
+		if (leave == null) return null;
+		return leave / 60;
+	}
+	if (gyn === '0') {
+		const a = parseTimeToMinutes(start);
+		const b = parseTimeToMinutes(end);
+		if (a == null || b == null) return null;
+		const outingMin = b >= a ? b - a : 24 * 60 - a + b;
+		return (24 * 60 - outingMin) / 60;
+	}
+	return null;
+}
+
+function formatFacilityHoursText(hours: number | null): string {
+	if (hours == null) return '';
+	const rounded = Math.round(hours * 10) / 10;
+	const text = Number.isInteger(rounded) ? String(rounded) : String(rounded);
+	return `기관 ${text}시간`;
+}
+
+/** 외출(0)/외박(2): 기관 체류 ≥12h → 0(정상), <12h → 1(급여50%적용). 입원(1) → 0 */
+function calcPayComGu(gyn: string, start: string, end: string): string {
+	if (gyn !== '0' && gyn !== '2') return '0';
+	const hours = calcFacilityHours(gyn, start, end);
+	if (hours == null) return '0';
+	return hours >= 12 ? '0' : '1';
+}
+
+function gynLabel(gyn: string): string {
+	if (gyn === '1') return '입원';
+	if (gyn === '0') return '외출';
+	if (gyn === '2') return '외박';
+	return '';
+}
+
+function mapApiItemToPerformance(item: any, index: number): PerformanceData {
+	const times = parseIoTmInfo(item.IO_TM_INFO);
+	const gyn = String(item.GYN ?? '0').trim();
+	const payFromDb = String(item.PAY_COM_GU ?? '').trim();
+	const payComGu =
+		payFromDb === '0' || payFromDb === '1'
+			? payFromDb
+			: calcPayComGu(gyn, times.start, times.end);
+	return {
+		id: index + 1,
+		serialNo: Number(item.MENUM) || index + 1,
+		name: item.P_NM || '',
+		birthDate: '',
+		ancd: item.ANCD || '',
+		pnum: item.PNUM || '',
+		mealLocation: item.ST_PLAC || '',
+		mealType: item.ST_KIND || '1',
+		gyn,
+		gynStartTime: times.start,
+		gynEndTime: times.end,
+		payComGu,
+		mealStatus: {
+			breakfast: item.MOST || '1',
+			lunch: item.LCST || '1',
+			dinner: item.DNST || '1'
+		},
+		specialNotes: item.ST_ETC || '',
+		snackStatus: {
+			morning: item.MGST || '1',
+			afternoon: item.AGST || '1'
+		}
+	};
+}
+
+function buildMealSavePayload(r: PerformanceData) {
+	const isOuting = r.gyn === '0' || r.gyn === '2';
+	const endTime = r.gyn === '2' ? '' : r.gynEndTime;
+	const payComGu = calcPayComGu(r.gyn, r.gynStartTime, endTime);
+	return {
+		pnum: r.pnum,
+		mealLocation: r.mealLocation,
+		mealType: r.mealType,
+		gyn: r.gyn,
+		mealStatus: r.mealStatus,
+		snackStatus: r.snackStatus,
+		specialNotes: r.specialNotes,
+		payComGu,
+		ioTmInfo: isOuting ? formatIoTmInfo(r.gyn, r.gynStartTime, endTime) : ''
+	};
 }
 
 export default function DailyBeneficiaryPerformance() {
@@ -86,27 +213,8 @@ export default function DailyBeneficiaryPerformance() {
 			if (result.success && Array.isArray(result.data)) {
 				// F14020 데이터를 combinedData 형식으로 변환
 				let transformedData: PerformanceData[] = result.data.map((item: any, index: number) => {
-					return {
-						id: index + 1,
-						serialNo: Number(item.MENUM) || index + 1,
-						name: item.P_NM || '',
-						birthDate: formatDate(item.P_BRDT),
-						ancd: item.ANCD || '',
-						pnum: item.PNUM || '',
-						mealLocation: item.ST_PLAC || '',
-						mealType: item.ST_KIND || '1',
-						gyn: item.GYN || '0', // '0'=외출, '1'=입원(외박)
-						mealStatus: {
-							breakfast: item.MOST || '1', // '1'=양호, '2'=이상
-							lunch: item.LCST || '1',
-							dinner: item.DNST || '1'
-						},
-						specialNotes: item.ST_ETC || '',
-						snackStatus: {
-							morning: item.MGST || '1', // '1'=양호, '2'=이상
-							afternoon: item.AGST || '1'
-						}
-					};
+					const row = mapApiItemToPerformance(item, index);
+					return { ...row, birthDate: formatDate(item.P_BRDT) };
 				});
 
 				// 수급자명 가나다순(오름차순) 정렬 후 연번 재부여
@@ -168,13 +276,56 @@ export default function DailyBeneficiaryPerformance() {
 		}
 	};
 
-	// 수정 모드 토글
-	const handleEditClick = (id: number) => {
+	// 수정 모드 토글 (+ 저장 시 F14020 업서트)
+	const handleEditClick = async (id: number) => {
 		if (editingRowId === id) {
-			// 수정 완료
-			setEditingRowId(null);
+			const row = combinedData.find((r) => r.id === id);
+			if (!row) {
+				setEditingRowId(null);
+				return;
+			}
+			if (!row.pnum) {
+				alert('수급자를 선택해주세요.');
+				return;
+			}
+			if (row.gyn === '0' && (!row.gynStartTime || !row.gynEndTime)) {
+				alert('외출 시 시작·종료 시간을 입력해주세요.');
+				return;
+			}
+			if (row.gyn === '2' && !row.gynStartTime) {
+				alert('외박 시 나간 시간을 입력해주세요.');
+				return;
+			}
+			const payload = buildMealSavePayload(row);
+			try {
+				const saveRes = await fetch('/api/f14020', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ svdt: selectedDate, rows: [payload] })
+				});
+				const saveJson = await saveRes.json();
+				if (!saveJson?.success) {
+					alert(`저장 실패: ${saveJson?.error || '알 수 없는 오류'}`);
+					return;
+				}
+				setCombinedData((prev) =>
+					prev.map((r) =>
+						r.id === id
+							? {
+									...r,
+									payComGu: payload.payComGu,
+									gynStartTime: row.gyn === '1' ? '' : r.gynStartTime,
+									gynEndTime: row.gyn === '0' ? r.gynEndTime : ''
+								}
+							: r
+					)
+				);
+				setEditingRowId(null);
+			} catch (e) {
+				console.error('저장 오류:', e);
+				alert('저장 중 오류가 발생했습니다.');
+			}
 		} else {
-			// 수정 모드 진입
 			setEditingRowId(id);
 		}
 	};
@@ -198,7 +349,10 @@ export default function DailyBeneficiaryPerformance() {
 			birthDate: '',
 			mealLocation: '',
 			mealType: '1',
-			gyn: '0', // 기본값: 외출
+			gyn: '1', // 기본값: 입원
+			gynStartTime: '',
+			gynEndTime: '',
+			payComGu: '0',
 			mealStatus: { breakfast: '1', lunch: '1', dinner: '1' }, // 기본값: 양호
 			specialNotes: '',
 			snackStatus: { morning: '1', afternoon: '1' } // 기본값: 양호
@@ -226,11 +380,45 @@ export default function DailyBeneficiaryPerformance() {
 			pnum: member.PNUM || '',
 			mealLocation: '식장',
 			mealType: mealTypeDefault || '1',
-			gyn: '1', // 기본: 입원(외박)
+			gyn: '1', // 기본: 입원
+			gynStartTime: '',
+			gynEndTime: '',
+			payComGu: '0',
 			mealStatus: { breakfast: '1', lunch: '1', dinner: '1' },
 			specialNotes: '',
 			snackStatus: { morning: '1', afternoon: '1' }
 		};
+	};
+
+	const applyGynChange = (rowId: number, nextGyn: string) => {
+		setCombinedData((prev) =>
+			prev.map((r) => {
+				if (r.id !== rowId) return r;
+				const gyn = nextGyn;
+				const gynStartTime = gyn === '0' || gyn === '2' ? r.gynStartTime : '';
+				const gynEndTime = gyn === '0' ? r.gynEndTime : '';
+				return {
+					...r,
+					gyn,
+					gynStartTime,
+					gynEndTime,
+					payComGu: calcPayComGu(gyn, gynStartTime, gynEndTime)
+				};
+			})
+		);
+	};
+
+	const applyGynTimeChange = (rowId: number, field: 'gynStartTime' | 'gynEndTime', value: string) => {
+		setCombinedData((prev) =>
+			prev.map((r) => {
+				if (r.id !== rowId) return r;
+				const next = { ...r, [field]: value };
+				return {
+					...next,
+					payComGu: calcPayComGu(next.gyn, next.gynStartTime, next.gynEndTime)
+				};
+			})
+		);
 	};
 
 	// 전체추가: 입소중 수급자 일괄 등록 + 디폴트 값 세팅 + 전체저장
@@ -306,15 +494,7 @@ export default function DailyBeneficiaryPerformance() {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					svdt: selectedDate,
-					rows: newRowsRaw.map((r) => ({
-						pnum: r.pnum,
-						mealLocation: r.mealLocation,
-						mealType: r.mealType,
-						gyn: r.gyn,
-						mealStatus: r.mealStatus,
-						snackStatus: r.snackStatus,
-						specialNotes: r.specialNotes
-					}))
+					rows: newRowsRaw.map((r) => buildMealSavePayload(r))
 				})
 			});
 			const saveJson = await saveRes.json();
@@ -512,7 +692,7 @@ export default function DailyBeneficiaryPerformance() {
 		}
 		return rows
 			.map((row) => {
-				const gynText = row.gyn === '1' ? '입원' : row.gyn === '0' ? '외출' : '';
+				const gynText = gynLabel(row.gyn);
 				const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
 				const lunch = row.mealStatus.lunch === '1' ? '○' : '';
 				const dinner = row.mealStatus.dinner === '1' ? '○' : '';
@@ -564,7 +744,7 @@ export default function DailyBeneficiaryPerformance() {
 						<tr>
 							<th>수급자명</th>
 							<th>생일</th>
-							<th>입원/외출</th>
+							<th>입원/외출/외박</th>
 							<th>아침</th>
 							<th>점심</th>
 							<th>저녁</th>
@@ -661,25 +841,8 @@ export default function DailyBeneficiaryPerformance() {
 				const d = normalizeSvdtToYmd(item.SVDT);
 				if (!d) return;
 				const row: PerformanceData = {
-					id: index + 1,
-					serialNo: Number(item.MENUM) || index + 1,
-					name: item.P_NM || '',
-					birthDate: formatDate(item.P_BRDT),
-					ancd: item.ANCD || '',
-					pnum: item.PNUM || '',
-					mealLocation: item.ST_PLAC || '',
-					mealType: item.ST_KIND || '1',
-					gyn: item.GYN || '0',
-					mealStatus: {
-						breakfast: item.MOST || '1',
-						lunch: item.LCST || '1',
-						dinner: item.DNST || '1'
-					},
-					specialNotes: item.ST_ETC || '',
-					snackStatus: {
-						morning: item.MGST || '1',
-						afternoon: item.AGST || '1'
-					}
+					...mapApiItemToPerformance(item, index),
+					birthDate: formatDate(item.P_BRDT)
 				};
 				if (!byDate.has(d)) byDate.set(d, []);
 				byDate.get(d)!.push(row);
@@ -858,25 +1021,8 @@ export default function DailyBeneficiaryPerformance() {
 			if (result.success && Array.isArray(result.data)) {
 				// 데이터 변환
 				let transformedData: PerformanceData[] = result.data.map((item: any, index: number) => ({
-					id: index + 1,
-					serialNo: index + 1,
-					name: item.P_NM || '',
-					birthDate: formatDate(item.P_BRDT),
-					ancd: item.ANCD || '',
-					pnum: item.PNUM || '',
-					mealLocation: item.ST_PLAC || '',
-					mealType: item.ST_KIND || '1',
-					gyn: item.GYN || '0',
-					mealStatus: {
-						breakfast: item.MOST || '1',
-						lunch: item.LCST || '1',
-						dinner: item.DNST || '1'
-					},
-					specialNotes: item.ST_ETC || '',
-					snackStatus: {
-						morning: item.MGST || '1',
-						afternoon: item.AGST || '1'
-					}
+					...mapApiItemToPerformance(item, index),
+					birthDate: formatDate(item.P_BRDT)
 				}));
 
 				// 출력 데이터도 수급자명 가나다순 정렬
@@ -1025,7 +1171,7 @@ export default function DailyBeneficiaryPerformance() {
 						<tr>
 							<th>수급자명</th>
 							<th>생일</th>
-							<th>외박여부</th>
+							<th>입원/외출/외박</th>
 							<th>아</th>
 							<th>정</th>
 							<th>저</th>
@@ -1036,7 +1182,7 @@ export default function DailyBeneficiaryPerformance() {
 					</thead>
 					<tbody>
 						${memberPrintData.map(row => {
-							const gynText = row.gyn === '1' ? '입원' : row.gyn === '0' ? '외출' : '';
+							const gynText = gynLabel(row.gyn);
 							const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
 							const lunch = row.mealStatus.lunch === '1' ? '○' : '';
 							const dinner = row.mealStatus.dinner === '1' ? '○' : '';
@@ -1175,7 +1321,7 @@ export default function DailyBeneficiaryPerformance() {
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">수급자명(생년월일)</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">식사장소</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-28">식사종류</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">입원/외출</th>
+									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 min-w-[320px]">입원/외출/외박</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">식사상태</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">간식상태</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-80">특이사항</th>
@@ -1331,39 +1477,88 @@ export default function DailyBeneficiaryPerformance() {
 												<option value="3">유동식(미음)</option>
 											</select>
 										</td>
-										{/* 입원/외출 (GYN) */}
-										<td className="text-center px-3 py-3 border-r border-blue-100">
-											<div className="flex justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-												<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.gyn === '0'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, gyn: e.target.checked ? '0' : '' } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '0' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">외출</span>
-												</label>
-												<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.gyn === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, gyn: e.target.checked ? '1' : '' } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">입원</span>
-												</label>
+										{/* 입원/외출/외박 (GYN) */}
+										<td className="text-center px-3 py-3 border-r border-blue-100 min-w-[320px]">
+											<div className="flex flex-col items-center gap-1" onClick={(e) => e.stopPropagation()}>
+												<div className="flex justify-center gap-1 flex-wrap">
+													<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+														<input
+															type="checkbox"
+															checked={row.gyn === '0'}
+															onChange={(e) => applyGynChange(row.id, e.target.checked ? '0' : '')}
+															disabled={editingRowId !== row.id}
+															className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '0' ? "disabled-checked-blue" : ""}`}
+														/>
+														<span className="text-xs">외출</span>
+													</label>
+													<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+														<input
+															type="checkbox"
+															checked={row.gyn === '1'}
+															onChange={(e) => applyGynChange(row.id, e.target.checked ? '1' : '')}
+															disabled={editingRowId !== row.id}
+															className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '1' ? "disabled-checked-blue" : ""}`}
+														/>
+														<span className="text-xs">입원</span>
+													</label>
+													<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+														<input
+															type="checkbox"
+															checked={row.gyn === '2'}
+															onChange={(e) => applyGynChange(row.id, e.target.checked ? '2' : '')}
+															disabled={editingRowId !== row.id}
+															className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '2' ? "disabled-checked-blue" : ""}`}
+														/>
+														<span className="text-xs">외박</span>
+													</label>
+												</div>
+												{row.gyn === '0' && (
+													<div className="flex flex-col items-center gap-0.5">
+														<div className="flex items-center gap-1 whitespace-nowrap">
+															<input
+																type="time"
+																value={row.gynStartTime || ''}
+																onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
+																disabled={editingRowId !== row.id}
+																className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																	editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																}`}
+															/>
+															<span className="text-xs text-blue-900/70 shrink-0">~</span>
+															<input
+																type="time"
+																value={row.gynEndTime || ''}
+																onChange={(e) => applyGynTimeChange(row.id, 'gynEndTime', e.target.value)}
+																disabled={editingRowId !== row.id}
+																className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																	editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																}`}
+															/>
+														</div>
+													</div>
+												)}
+												{row.gyn === '2' && (
+													<div className="flex items-center gap-1 whitespace-nowrap">
+														<span className="text-xs text-blue-900/70 shrink-0">나감</span>
+														<input
+															type="time"
+															value={row.gynStartTime || ''}
+															onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
+															disabled={editingRowId !== row.id}
+															className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+															}`}
+														/>
+														{row.gynStartTime && (
+															<span className="text-xs text-blue-900/80 shrink-0">
+																{formatFacilityHoursText(calcFacilityHours('2', row.gynStartTime, ''))}
+															</span>
+														)}
+													</div>
+												)}
+												{row.payComGu === '1' && (
+													<span className="text-xs font-semibold text-red-600">급여50%적용</span>
+												)}
 											</div>
 										</td>
 										{/* 식사상태 */}
