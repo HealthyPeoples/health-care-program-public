@@ -213,7 +213,8 @@ export const sections3: Sections3 = {
       { name: '공지사항 조회', link: '/nursingHome/notice-inquiry' },
     ],
     '자료실(신규_개발중)': [
-      { name: '자료실(신규_개발중)', link: '/nursingHome/data-room' },
+            { name: '자료실', link: '/nursingHome/data-room' },
+
     ],
     '평가체크리스트': [
       { name: '평가체크리스트', link: '/nursingHome/evaluation-checklist' },
