@@ -7,6 +7,33 @@ const sql = require('mssql');
 const { normalizeYmdStrict: normalizeYmd } = require('../../../utils/normalizeYmd');
 const TABLE = '[돌봄시설DB].[dbo].[F14030]';
 
+/** MIMG: 사진 메타 JSON 저장용 — 짧으면 NVARCHAR(MAX)로 확장 */
+let mimgColumnEnsured = false;
+async function ensureMimgColumnWide(pool) {
+  if (mimgColumnEnsured) return;
+  try {
+    const check = await pool.request().query(`
+      SELECT CHARACTER_MAXIMUM_LENGTH AS maxLen
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = 'dbo'
+        AND TABLE_NAME = 'F14030'
+        AND COLUMN_NAME = 'MIMG'
+    `);
+    const maxLen = check.recordset?.[0]?.maxLen;
+    // MAX는 -1. 100 등 짧은 길이면 확장.
+    if (maxLen == null || (typeof maxLen === 'number' && maxLen > 0 && maxLen < 4000)) {
+      await pool.request().query(`
+        ALTER TABLE ${TABLE} ALTER COLUMN [MIMG] NVARCHAR(MAX) NULL;
+      `);
+      console.log('F14030.MIMG 컬럼을 NVARCHAR(MAX)로 확장했습니다. (이전 길이:', maxLen, ')');
+    }
+    mimgColumnEnsured = true;
+  } catch (e) {
+    console.error('F14030 MIMG 컬럼 확장 실패:', e?.message || e);
+    // 확장이 안 되면 저장 시 truncation이 나므로 플래그를 올리지 않음 → 매 요청 재시도
+  }
+}
+
 function truncStr(v, max) {
   if (v == null) return '';
   const s = String(v);
@@ -72,6 +99,8 @@ export async function GET(req) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
+    await ensureMimgColumnWide(pool);
+
     const request = pool.request();
     request.input('sessionAncd', gate.sessionAncd);
     inputDate(request, 'startDate', s);
@@ -117,6 +146,8 @@ export async function POST(req) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
+    await ensureMimgColumnWide(pool);
+
     if (action === 'delete') {
       const dseq = parseInt(String(body.dseq ?? body.DSEQ ?? ''), 10);
       if (Number.isNaN(dseq)) {
@@ -125,10 +156,52 @@ export async function POST(req) {
       const rq = pool.request();
       rq.input('ANCD', gate.sessionAncd);
       rq.input('DSEQ', dseq);
-      const del = await rq.query(`DELETE FROM ${TABLE} WHERE [ANCD] = @ANCD AND [DSEQ] = @DSEQ`);
+
+      let mimgForCleanup = null;
+      try {
+        const prev = await rq.query(
+          `SELECT [MIMG] FROM ${TABLE} WHERE [ANCD] = @ANCD AND [DSEQ] = @DSEQ`,
+        );
+        mimgForCleanup = prev.recordset?.[0]?.MIMG ?? null;
+      } catch (_) {
+        /* ignore */
+      }
+
+      const del = await pool
+        .request()
+        .input('ANCD', gate.sessionAncd)
+        .input('DSEQ', dseq)
+        .query(`DELETE FROM ${TABLE} WHERE [ANCD] = @ANCD AND [DSEQ] = @DSEQ`);
       if (!del.rowsAffected?.[0]) {
         return jsonError({ success: false, error: '삭제할 데이터가 없습니다.' }, 404);
       }
+
+      // 첨부 사진 blob 정리 (실패해도 행 삭제는 성공으로 처리)
+      try {
+        const { deleteBlobByName, isBlobConfigured } = require('../../../lib/azureBlobStorage');
+        if (isBlobConfigured() && mimgForCleanup) {
+          let photos = [];
+          try {
+            const parsed = JSON.parse(String(mimgForCleanup));
+            if (Array.isArray(parsed)) photos = parsed;
+          } catch (_) {
+            /* legacy plain string — ignore */
+          }
+          for (const p of photos) {
+            const bn = p?.blobName ? String(p.blobName).trim() : '';
+            if (bn) {
+              try {
+                await deleteBlobByName(bn);
+              } catch (e) {
+                console.warn('일지 삭제 시 blob 정리 실패:', bn, e?.message || e);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('일지 사진 blob 정리 중 오류:', e?.message || e);
+      }
+
       return jsonOk({ success: true, action: 'delete' });
     }
 
@@ -165,7 +238,12 @@ export async function POST(req) {
     } else {
       PGSEQ = null;
     }
-    const MIMG = truncNullable(body.MIMG ?? body.mimg, 100);
+    // 사진 메타 JSON(또는 레거시 짧은 문자열) — NVARCHAR(MAX)
+    const MIMG_RAW = body.MIMG ?? body.mimg;
+    const MIMG =
+      MIMG_RAW == null || String(MIMG_RAW).trim() === ''
+        ? null
+        : truncStr(MIMG_RAW, 200000);
     const PG_GU = truncNullable(body.PG_GU ?? body.pg_gu, 10);
     const PG_GU_NM = truncNullable(body.PG_GU_NM ?? body.pg_gu_nm, 50);
     const SVDIC_SUB = truncNullable(body.SVDIC_SUB ?? body.svdic_sub, 50);
@@ -201,7 +279,7 @@ export async function POST(req) {
       ins.input('INEMPNO', sql.Int, INEMPNO);
       ins.input('INEMPNM', sql.NVarChar(100), INEMPNM);
       ins.input('PGSEQ', sql.Int, PGSEQ);
-      ins.input('MIMG', sql.NVarChar(100), MIMG);
+      ins.input('MIMG', sql.NVarChar(sql.MAX), MIMG);
       ins.input('PG_GU', sql.NVarChar(10), PG_GU);
       ins.input('PG_GU_NM', sql.NVarChar(50), PG_GU_NM);
       ins.input('SVDIC_SUB', sql.NVarChar(50), SVDIC_SUB);
@@ -247,7 +325,7 @@ export async function POST(req) {
     up.input('INEMPNO', sql.Int, INEMPNO);
     up.input('INEMPNM', sql.NVarChar(100), INEMPNM);
     up.input('PGSEQ', sql.Int, PGSEQ);
-    up.input('MIMG', sql.NVarChar(100), MIMG);
+    up.input('MIMG', sql.NVarChar(sql.MAX), MIMG);
     up.input('PG_GU', sql.NVarChar(10), PG_GU);
     up.input('PG_GU_NM', sql.NVarChar(50), PG_GU_NM);
     up.input('SVDIC_SUB', sql.NVarChar(50), SVDIC_SUB);

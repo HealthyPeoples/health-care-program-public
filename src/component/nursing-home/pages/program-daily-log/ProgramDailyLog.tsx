@@ -234,6 +234,49 @@ function escapeHtml(s: string): string {
 		.replace(/"/g, "&quot;");
 }
 
+/** 일지 첨부 사진 (F14030.MIMG JSON) */
+type LogPhoto = { blobName: string; fileName?: string };
+
+const MAX_LOG_PHOTOS = 4;
+
+function serializeMimgPhotos(photos: LogPhoto[]): string {
+	if (!photos.length) return "";
+	// DB 컬럼이 짧을 수 있어 blobName만 콤팩트 저장
+	return JSON.stringify(photos.slice(0, MAX_LOG_PHOTOS).map((p) => p.blobName));
+}
+
+function parseMimgPhotos(mimg: string | null | undefined): LogPhoto[] {
+	const s = String(mimg ?? "").trim();
+	if (!s) return [];
+	try {
+		const parsed = JSON.parse(s);
+		if (!Array.isArray(parsed)) return [];
+		return parsed
+			.map((p: unknown) => {
+				if (typeof p === "string") {
+					const blobName = p.trim();
+					return blobName ? { blobName } : null;
+				}
+				if (p && typeof p === "object") {
+					const blobName = String((p as { blobName?: unknown }).blobName ?? "").trim();
+					const fileName = String((p as { fileName?: unknown }).fileName ?? "").trim() || undefined;
+					return blobName ? { blobName, fileName } : null;
+				}
+				return null;
+			})
+			.filter((p): p is LogPhoto => Boolean(p?.blobName))
+			.slice(0, MAX_LOG_PHOTOS);
+	} catch {
+		return [];
+	}
+}
+
+function photoViewUrl(blobName: string, origin?: string): string {
+	const path = `/api/program-daily-log/photos?blobName=${encodeURIComponent(blobName)}`;
+	if (origin) return `${origin.replace(/\/$/, "")}${path}`;
+	return path;
+}
+
 /** 참여 실적 표 — 프로그램 명 앞 분류 접두어 */
 const PG_GU_SHORT_PRINT: Record<string, string> = {
 	"1": "인지",
@@ -451,11 +494,38 @@ function sortRowsChronologicalForLogPrint(a: F14030Row, b: F14030Row): number {
 	return (a.DSEQ ?? 0) - (b.DSEQ ?? 0);
 }
 
+async function fetchPhotoAsDataUrl(blobName: string): Promise<string | null> {
+	try {
+		const res = await fetch(photoViewUrl(blobName), { credentials: "include", cache: "no-store" });
+		if (!res.ok) return null;
+		const blob = await res.blob();
+		return await new Promise<string | null>((resolve) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+			reader.onerror = () => resolve(null);
+			reader.readAsDataURL(blob);
+		});
+	} catch {
+		return null;
+	}
+}
+
+async function resolvePrintPhotoSrcs(mimg: string | null | undefined): Promise<{ src: string; fileName?: string }[]> {
+	const photos = parseMimgPhotos(mimg);
+	const out: { src: string; fileName?: string }[] = [];
+	for (const p of photos) {
+		const dataUrl = await fetchPhotoAsDataUrl(p.blobName);
+		if (dataUrl) out.push({ src: dataUrl, fileName: p.fileName });
+	}
+	return out;
+}
+
 function buildSingleProgramDailyLogSheetHtml(
 	row: F14030Row,
 	planMeta: ReadonlyMap<number, { pgGu: string; pgnm: string }>,
 	institutionName: string,
 	pageBreakAfter: boolean,
+	printPhotos: { src: string; fileName?: string }[] = [],
 ): string {
 	const pb = pageBreakAfter ? "page-break-after:always;break-after:page;" : "";
 	const org = escapeHtml(institutionName.trim() || "—");
@@ -470,6 +540,16 @@ function buildSingleProgramDailyLogSheetHtml(
 	const materials = escapeHtml(String(row.PGJB ?? "").trim() || " ");
 	const process = escapeHtml(String(row.PGDES ?? "").trim() || " ");
 	const evaluation = escapeHtml(String(row.SVDES ?? "").trim() || " ");
+
+	const photoCells =
+		printPhotos.length > 0
+			? printPhotos
+					.map((p) => {
+						const src = escapeHtml(p.src);
+						return `<div class="photo-item"><img src="${src}" alt="${escapeHtml(p.fileName || "첨부사진")}" /></div>`;
+					})
+					.join("")
+			: `<div class="photo-empty">&nbsp;</div>`;
 
 	return `<div class="log-sheet" style="${pb}">
 <div class="log-top">
@@ -491,47 +571,47 @@ function buildSingleProgramDailyLogSheetHtml(
 		<col style="width:34%"/>
 	</colgroup>
 	<tbody>
-	<tr>
+	<tr class="row-fixed">
 		<td class="cell-label">프로그램명</td>
 		<td class="cell-val">${progName}</td>
 		<td class="cell-label">장소</td>
 		<td class="cell-val">${place}</td>
 	</tr>
-	<tr>
+	<tr class="row-fixed">
 		<td class="cell-label">일시</td>
 		<td class="cell-val">${dt}</td>
 		<td class="cell-label">구분</td>
 		<td class="cell-val">${svgu}</td>
 	</tr>
-	<tr>
+	<tr class="row-fixed">
 		<td class="cell-label">진행자</td>
 		<td class="cell-val">${man1}</td>
 		<td class="cell-label">보조진행자</td>
 		<td class="cell-val">${man2}</td>
 	</tr>
-	<tr>
+	<tr class="row-attend">
 		<td class="cell-label">참석자</td>
-		<td class="cell-val cell-pre cell-tall-sm" colspan="3">${attendees}</td>
+		<td class="cell-val cell-pre" colspan="3">${attendees}</td>
 	</tr>
-	<tr>
+	<tr class="row-goal">
 		<td class="cell-label">프로그램 목표</td>
-		<td class="cell-val cell-pre cell-tall-sm" colspan="3">${goal}</td>
+		<td class="cell-val cell-pre" colspan="3">${goal}</td>
 	</tr>
-	<tr>
+	<tr class="row-mat">
 		<td class="cell-label">준비물</td>
-		<td class="cell-val cell-pre cell-tall-sm" colspan="3">${materials}</td>
+		<td class="cell-val cell-pre" colspan="3">${materials}</td>
 	</tr>
-	<tr>
+	<tr class="row-process">
 		<td class="cell-label">프로그램 운영<br/>과정 및 내용</td>
-		<td class="cell-val cell-pre cell-tall-lg" colspan="3">${process}</td>
+		<td class="cell-val cell-pre" colspan="3">${process}</td>
 	</tr>
-	<tr>
+	<tr class="row-eval">
 		<td class="cell-label">평가</td>
-		<td class="cell-val cell-pre cell-tall-lg" colspan="3">${evaluation}</td>
+		<td class="cell-val cell-pre" colspan="3">${evaluation}</td>
 	</tr>
-	<tr>
-		<td class="cell-label">&nbsp;</td>
-		<td class="cell-val" colspan="3">&nbsp;</td>
+	<tr class="row-photo">
+		<td class="cell-label">사진</td>
+		<td class="cell-val cell-photo" colspan="3"><div class="photo-grid">${photoCells}</div></td>
 	</tr>
 	</tbody>
 </table>
@@ -545,27 +625,86 @@ function wrapProgramDailyLogPrintDocument(sheetsInnerHtml: string): string {
 <meta charset="utf-8"/>
 <title>프로그램일지</title>
 <style>
-@page { size: A4 portrait; margin: 12mm; }
+@page { size: A4 portrait; margin: 10mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
 body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.5pt; color: #000; background: #fff; }
-.log-sheet { max-width: 186mm; margin: 0 auto 0 auto; padding-bottom: 4mm; }
-.log-top { display: flex; flex-direction: row; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 6px; }
+.log-sheet {
+	width: 190mm;
+	height: 277mm;
+	max-height: 277mm;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+.log-top {
+	display: flex;
+	flex-direction: row;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 8px;
+	margin-bottom: 4px;
+	flex: 0 0 auto;
+}
 .log-title-block { flex: 1; min-width: 0; }
-.log-title { text-align: center; font-size: 18pt; font-weight: 700; text-decoration: underline; margin: 0 0 8px 0; line-height: 1.2; }
+.log-title { text-align: center; font-size: 18pt; font-weight: 700; text-decoration: underline; margin: 0 0 6px 0; line-height: 1.2; }
 .log-org { text-align: left; font-size: 11pt; padding-left: 2mm; }
 .sign-table { border-collapse: collapse; border: 1px solid #000; font-size: 9pt; flex-shrink: 0; }
-.sign-table th, .sign-table td { border: 1px solid #000; width: 64px; min-width: 56px; text-align: center; vertical-align: middle; padding: 4px 2px; }
-.sign-table th { font-weight: 700; background: #f7f7f7; height: 26px; }
-.sign-table td { height: 34px; }
-.log-main { width: 100%; border-collapse: collapse; border: 2px solid #000; table-layout: fixed; }
-.log-main td { border: 1px solid #000; padding: 6px 8px; vertical-align: middle; font-size: 10.5pt; }
-.cell-label { text-align: center; font-weight: 600; background: #fafafa; }
+.sign-table th, .sign-table td { border: 1px solid #000; width: 64px; min-width: 56px; text-align: center; vertical-align: middle; padding: 3px 2px; }
+.sign-table th { font-weight: 700; background: #f7f7f7; height: 22px; }
+.sign-table td { height: 28px; }
+.log-main {
+	width: 100%;
+	flex: 1 1 auto;
+	height: 100%;
+	border-collapse: collapse;
+	border: 2px solid #000;
+	table-layout: fixed;
+}
+.log-main td { border: 1px solid #000; padding: 5px 7px; vertical-align: middle; font-size: 10.5pt; }
+.cell-label { text-align: center; font-weight: 600; background: #fafafa; vertical-align: middle; }
 .cell-val { text-align: left; word-break: break-word; }
 .cell-pre { white-space: pre-wrap; vertical-align: top; }
-.cell-tall-sm { min-height: 3.2em; }
-.cell-tall-lg { min-height: 10em; }
+.row-fixed { height: 7mm; }
+.row-attend { height: 12mm; }
+.row-goal { height: 14mm; }
+.row-mat { height: 10mm; }
+.row-process { height: 42mm; }
+.row-eval { height: 28mm; }
+.row-photo { height: auto; }
+.row-photo td { height: 72mm; vertical-align: top; }
+.cell-photo { padding: 4px; }
+.photo-grid {
+	display: flex;
+	flex-wrap: wrap;
+	align-content: flex-start;
+	gap: 4px;
+	width: 100%;
+	height: 100%;
+	min-height: 68mm;
+}
+.photo-item {
+	flex: 1 1 calc(50% - 4px);
+	max-width: calc(50% - 4px);
+	height: calc(50% - 2px);
+	min-height: 32mm;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid #ccc;
+	overflow: hidden;
+	background: #fff;
+}
+.photo-item img {
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+}
+.photo-empty { width: 100%; height: 100%; min-height: 68mm; }
 @media print {
 	body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+	.log-sheet { height: 277mm; page-break-inside: avoid; }
 }
 </style>
 </head>
@@ -575,7 +714,7 @@ ${sheetsInnerHtml}
 </html>`;
 }
 
-function openProgramDailyLogPrintWindow(html: string): void {
+function openProgramDailyLogPrintWindow(html: string, waitForImages = true): void {
 	const printWindow = window.open("", "_blank");
 	if (!printWindow) {
 		alert("팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.");
@@ -584,10 +723,39 @@ function openProgramDailyLogPrintWindow(html: string): void {
 	printWindow.document.open();
 	printWindow.document.write(html);
 	printWindow.document.close();
-	setTimeout(() => {
-		printWindow.focus();
-		printWindow.print();
-	}, 250);
+
+	const doPrint = () => {
+		try {
+			printWindow.focus();
+			printWindow.print();
+		} catch (_) {
+			/* ignore */
+		}
+	};
+
+	if (!waitForImages) {
+		setTimeout(doPrint, 250);
+		return;
+	}
+
+	const imgs = Array.from(printWindow.document.images || []);
+	if (imgs.length === 0) {
+		setTimeout(doPrint, 250);
+		return;
+	}
+	let done = 0;
+	const mark = () => {
+		done += 1;
+		if (done >= imgs.length) setTimeout(doPrint, 100);
+	};
+	imgs.forEach((img) => {
+		if (img.complete) mark();
+		else {
+			img.addEventListener("load", mark);
+			img.addEventListener("error", mark);
+		}
+	});
+	setTimeout(doPrint, 4000);
 }
 
 export default function ProgramDailyLog() {
@@ -608,6 +776,8 @@ export default function ProgramDailyLog() {
 	const [datePage, setDatePage] = useState(1);
 	const [formData, setFormData] = useState<Record<string, string>>(() => emptyForm(initialRange.start));
 	const [saveLoading, setSaveLoading] = useState(false);
+	const [photoUploading, setPhotoUploading] = useState(false);
+	const photoInputRef = useRef<HTMLInputElement | null>(null);
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 	/** 「검색」으로 조회를 한 번이라도 성공한 뒤(빈 목록 포함) — 안내 문구 구분용 */
 	const [hasSearched, setHasSearched] = useState(false);
@@ -992,7 +1162,7 @@ export default function ProgramDailyLog() {
 		setPeriodLogModalOpen(true);
 	};
 
-	const handlePrintSingleProgramLog = () => {
+	const handlePrintSingleProgramLog = async () => {
 		if (editingDseq == null || !selectedSvdDate) {
 			alert("출력할 일지를 목록에서 선택해 주세요.");
 			return;
@@ -1006,13 +1176,19 @@ export default function ProgramDailyLog() {
 			alert("선택한 일지 데이터를 찾을 수 없습니다.");
 			return;
 		}
-		const sheet = buildSingleProgramDailyLogSheetHtml(
-			row,
-			pgseqToPlanMeta,
-			institutionNameForPrint,
-			false,
-		);
-		openProgramDailyLogPrintWindow(wrapProgramDailyLogPrintDocument(sheet));
+		try {
+			const printPhotos = await resolvePrintPhotoSrcs(formData.MIMG || row.MIMG);
+			const sheet = buildSingleProgramDailyLogSheetHtml(
+				row,
+				pgseqToPlanMeta,
+				institutionNameForPrint,
+				false,
+				printPhotos,
+			);
+			openProgramDailyLogPrintWindow(wrapProgramDailyLogPrintDocument(sheet));
+		} catch (e) {
+			alert(e instanceof Error ? e.message : "출력 중 오류가 발생했습니다.");
+		}
 	};
 
 	const handlePrintProgramLogsInPeriod = async () => {
@@ -1047,17 +1223,21 @@ export default function ProgramDailyLog() {
 				alert("해당 기간에 출력할 일지가 없습니다.");
 				return;
 			}
-			const inner = sorted
-				.map((row, i) =>
+			const sheets = [];
+			for (let i = 0; i < sorted.length; i++) {
+				const row = sorted[i];
+				const printPhotos = await resolvePrintPhotoSrcs(row.MIMG);
+				sheets.push(
 					buildSingleProgramDailyLogSheetHtml(
 						row,
 						planMeta,
 						institutionNameForPrint,
 						i < sorted.length - 1,
+						printPhotos,
 					),
-				)
-				.join("");
-			openProgramDailyLogPrintWindow(wrapProgramDailyLogPrintDocument(inner));
+				);
+			}
+			openProgramDailyLogPrintWindow(wrapProgramDailyLogPrintDocument(sheets.join("")));
 			setPeriodLogModalOpen(false);
 		} catch (e) {
 			alert(e instanceof Error ? e.message : "출력 중 오류가 발생했습니다.");
@@ -1116,6 +1296,79 @@ export default function ProgramDailyLog() {
 	const canEditFormFields =
 		!formAreaLocked &&
 		(isAddingNewProgram || (editingDseq != null && formFieldsUnlocked));
+
+	const attachedPhotos = useMemo(() => parseMimgPhotos(formData.MIMG), [formData.MIMG]);
+
+	const handleUploadPhotos = async (files: FileList | null) => {
+		if (!canEditFormFields) {
+			alert("「수정」또는 「추가」후 사진을 첨부할 수 있습니다.");
+			return;
+		}
+		if (!files || files.length === 0) return;
+		const remain = MAX_LOG_PHOTOS - attachedPhotos.length;
+		if (remain <= 0) {
+			alert(`사진은 최대 ${MAX_LOG_PHOTOS}장까지 첨부할 수 있습니다.`);
+			return;
+		}
+		const picked = Array.from(files).slice(0, remain);
+		setPhotoUploading(true);
+		try {
+			const next = [...attachedPhotos];
+			for (const file of picked) {
+				const fd = new FormData();
+				fd.append("file", file);
+				const res = await fetch("/api/program-daily-log/photos", {
+					method: "POST",
+					body: fd,
+					credentials: "include",
+				});
+				const json = await res.json().catch(() => ({}));
+				if (!res.ok || !json?.success || !json?.photo?.blobName) {
+					throw new Error(json?.error || `${file.name} 업로드에 실패했습니다.`);
+				}
+				next.push({
+					blobName: String(json.photo.blobName),
+					fileName: String(json.photo.fileName || file.name || ""),
+				});
+			}
+			setFormData((p) => ({ ...p, MIMG: serializeMimgPhotos(next) }));
+			if (files.length > remain) {
+				alert(`사진은 최대 ${MAX_LOG_PHOTOS}장까지 첨부됩니다. 초과분은 제외되었습니다.`);
+			}
+		} catch (e) {
+			alert(e instanceof Error ? e.message : "사진 업로드 중 오류가 발생했습니다.");
+		} finally {
+			setPhotoUploading(false);
+			if (photoInputRef.current) photoInputRef.current.value = "";
+		}
+	};
+
+	const handleRemovePhoto = async (blobName: string) => {
+		if (!canEditFormFields) {
+			alert("「수정」또는 「추가」후 사진을 삭제할 수 있습니다.");
+			return;
+		}
+		if (!confirm("이 사진을 삭제하시겠습니까?")) return;
+		setPhotoUploading(true);
+		try {
+			const res = await fetch("/api/program-daily-log/photos", {
+				method: "DELETE",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({ blobName }),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				throw new Error(json?.error || "사진 삭제에 실패했습니다.");
+			}
+			const next = attachedPhotos.filter((p) => p.blobName !== blobName);
+			setFormData((p) => ({ ...p, MIMG: serializeMimgPhotos(next) }));
+		} catch (e) {
+			alert(e instanceof Error ? e.message : "사진 삭제 중 오류가 발생했습니다.");
+		} finally {
+			setPhotoUploading(false);
+		}
+	};
 
 	const onPgGuChange = (code: string) => {
 		if (!canEditFormFields) return;
@@ -1682,7 +1935,7 @@ export default function ProgramDailyLog() {
 									/>
 								</div>
 
-								<div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 									<div>
 										<label className="block text-xs text-blue-900/80 mb-0.5">비고 (ETC)</label>
 										<input
@@ -1700,15 +1953,69 @@ export default function ProgramDailyLog() {
 											className={fieldRo}
 										/>
 									</div>
-									<div>
-										<label className="block text-xs text-blue-900/80 mb-0.5">MIMG</label>
-										<input
-											value={formData.MIMG}
-											onChange={(e) => setFormData((p) => ({ ...p, MIMG: e.target.value }))}
-											maxLength={100}
-											className={fieldRo}
-										/>
+								</div>
+
+								<div className="rounded border border-blue-200 bg-blue-50/40 p-3 space-y-2">
+									<div className="flex flex-wrap items-center justify-between gap-2">
+										<label className="block text-xs font-medium text-blue-900">
+											첨부 사진 (최대 {MAX_LOG_PHOTOS}장)
+										</label>
+										<div className="flex items-center gap-2">
+											<input
+												ref={photoInputRef}
+												type="file"
+												accept="image/jpeg,image/png,image/webp,image/gif"
+												multiple
+												className="hidden"
+												onChange={(e) => handleUploadPhotos(e.target.files)}
+											/>
+											<button
+												type="button"
+												disabled={!canEditFormFields || photoUploading || attachedPhotos.length >= MAX_LOG_PHOTOS}
+												onClick={() => photoInputRef.current?.click()}
+												className="rounded border border-blue-400 bg-white px-3 py-1.5 text-xs font-medium text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+											>
+												{photoUploading ? "업로드 중..." : "사진 첨부"}
+											</button>
+										</div>
 									</div>
+									<p className="text-[11px] text-blue-900/70">
+										jpeg/png/webp/gif · 장당 8MB 이하 · 저장 시 일지에 함께 보관되며 출력 시 평가 아래에 표시됩니다.
+									</p>
+									{attachedPhotos.length === 0 ? (
+										<div className="text-sm text-blue-900/55 py-2">첨부된 사진이 없습니다.</div>
+									) : (
+										<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+											{attachedPhotos.map((p) => (
+												<div
+													key={p.blobName}
+													className="relative rounded border border-blue-200 bg-white overflow-hidden aspect-[4/3]"
+												>
+													{/* eslint-disable-next-line @next/next/no-img-element */}
+													<img
+														src={photoViewUrl(p.blobName)}
+														alt={p.fileName || "첨부사진"}
+														className="h-full w-full object-contain bg-white"
+													/>
+													{canEditFormFields ? (
+														<button
+															type="button"
+															disabled={photoUploading}
+															onClick={() => handleRemovePhoto(p.blobName)}
+															className="absolute top-1 right-1 rounded bg-red-600/90 px-1.5 py-0.5 text-[10px] font-medium text-white hover:bg-red-700 disabled:opacity-50"
+														>
+															삭제
+														</button>
+													) : null}
+													{p.fileName ? (
+														<div className="absolute bottom-0 inset-x-0 truncate bg-black/50 px-1 py-0.5 text-[10px] text-white">
+															{p.fileName}
+														</div>
+													) : null}
+												</div>
+											))}
+										</div>
+									)}
 								</div>
 
 								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-blue-900/70 border-t border-blue-100 pt-2">
