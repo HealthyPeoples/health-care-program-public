@@ -179,14 +179,26 @@ function isProgramDailyLogBlob(blobName) {
   return String(blobName || '').trim().startsWith('program-daily-log/');
 }
 
-/** 자료실 blob 경로 검증 (컨테이너 내 상대 경로: {ancd}/file.ext) */
-function assertDataRoomBlobName(blobName, sessionAncd) {
+/** 자료실 blob 경로 형식 검증 (기관 간 공유 다운로드용) */
+function isValidDataRoomBlobName(blobName) {
+  const name = String(blobName || '').trim();
+  if (!name || name.includes('..') || name.startsWith('/')) return false;
+  // 신규: 190000/xxx.ext
+  if (/^\d+[a-zA-Z0-9._-]*\//.test(name)) return true;
+  // 과거: data-room/190000/xxx.ext
+  if (/^data-room\/\d+[a-zA-Z0-9._-]*\//.test(name)) return true;
+  return false;
+}
+
+/** @deprecated 세션 ANCD 고정 검증 — 자료실 공유 후에는 isValidDataRoomBlobName 사용 */
+function assertDataRoomBlobName(blobName, ownerAncd) {
   const name = String(blobName || '').trim();
   if (!name || name.includes('..')) return null;
-  // 신규 형식: 190000/xxx.ext
-  const prefix = `${String(sessionAncd).trim()}/`;
+  if (ownerAncd == null || ownerAncd === '') {
+    return isValidDataRoomBlobName(name) ? name : null;
+  }
+  const prefix = `${String(ownerAncd).trim()}/`;
   if (name.startsWith(prefix)) return name;
-  // 과거 형식(동일 컨테이너 내 data-room/ 접두): data-room/190000/xxx.ext
   const legacy = `data-room/${prefix}`;
   if (name.startsWith(legacy)) return name;
   return null;
@@ -280,6 +292,7 @@ module.exports = {
   downloadBlobByName,
   downloadDataRoomBlob,
   assertDataRoomBlobName,
+  isValidDataRoomBlobName,
   MAX_FILE_BYTES,
   MAX_DATA_ROOM_BYTES,
   ALLOWED_MIME,

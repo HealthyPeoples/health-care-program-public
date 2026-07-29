@@ -15,6 +15,8 @@ interface AttachedFile {
 interface DataRoomPost {
 	id: string;
 	drSeq?: number;
+	ancd?: string;
+	annm?: string;
 	category: Exclude<DataRoomCategory, "전체">;
 	title: string;
 	description: string;
@@ -24,6 +26,8 @@ interface DataRoomPost {
 	fileCount: number;
 	downloadCount: number;
 }
+
+type FacilityOption = { ancd: string; annm: string };
 
 const MAX_UPLOAD_FILES = 10;
 
@@ -43,6 +47,8 @@ function mapApiPost(row: Record<string, unknown>): DataRoomPost {
 	return {
 		id: String(row.id ?? row.drSeq ?? ""),
 		drSeq: typeof row.drSeq === "number" ? row.drSeq : parseInt(String(row.drSeq ?? row.id), 10) || undefined,
+		ancd: row.ancd != null ? String(row.ancd) : "",
+		annm: row.annm != null ? String(row.annm) : "",
 		category: String(row.category || "기타") as Exclude<DataRoomCategory, "전체">,
 		title: String(row.title || ""),
 		description: String(row.description || ""),
@@ -81,6 +87,10 @@ export default function DataRoom() {
 	const [category, setCategory] = useState<DataRoomCategory>("전체");
 	const [query, setQuery] = useState("");
 	const [appliedQuery, setAppliedQuery] = useState("");
+	/** 기관 필터: 'all' | ANCD 문자열. 초기 null = 세션 ANCD 로드 전 */
+	const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
+	const [facilities, setFacilities] = useState<FacilityOption[]>([]);
+	const [sessionAncd, setSessionAncd] = useState<string>("");
 
 	const [posts, setPosts] = useState<DataRoomPost[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -101,12 +111,14 @@ export default function DataRoom() {
 	const [uploadFiles, setUploadFiles] = useState<File[]>([]);
 
 	const fetchList = useCallback(async () => {
+		if (facilityFilter == null) return;
 		setLoading(true);
 		setListError(null);
 		try {
 			const qs = new URLSearchParams();
 			if (category !== "전체") qs.set("category", category);
 			if (appliedQuery.trim()) qs.set("q", appliedQuery.trim());
+			qs.set("ancd", facilityFilter === "all" ? "all" : facilityFilter);
 			const res = await fetch(`/api/data-room?${qs.toString()}`, {
 				cache: "no-store",
 				credentials: "include",
@@ -117,13 +129,24 @@ export default function DataRoom() {
 			}
 			const list = Array.isArray(json.data) ? json.data.map(mapApiPost) : [];
 			setPosts(list);
+			if (Array.isArray(json.facilities) && json.facilities.length) {
+				setFacilities(
+					json.facilities.map((f: { ancd?: unknown; annm?: unknown }) => ({
+						ancd: String(f.ancd ?? ""),
+						annm: String(f.annm ?? f.ancd ?? ""),
+					})),
+				);
+			}
+			if (json.sessionAncd != null && String(json.sessionAncd).trim()) {
+				setSessionAncd(String(json.sessionAncd).trim());
+			}
 		} catch (e) {
 			setPosts([]);
 			setListError(e instanceof Error ? e.message : "조회 중 오류가 발생했습니다.");
 		} finally {
 			setLoading(false);
 		}
-	}, [category, appliedQuery]);
+	}, [category, appliedQuery, facilityFilter]);
 
 	useEffect(() => {
 		fetchList();
@@ -137,8 +160,15 @@ export default function DataRoom() {
 				const user = json?.data || json?.user || {};
 				const nm = String(user.empnm || user.EMPNM || "").trim();
 				if (nm) setUploadUploader(nm);
+				const ancd = String(user.ancd ?? user.ANCD ?? "").trim();
+				if (ancd) {
+					setSessionAncd(ancd);
+					setFacilityFilter((prev) => (prev == null ? ancd : prev));
+				} else {
+					setFacilityFilter((prev) => (prev == null ? "all" : prev));
+				}
 			} catch {
-				/* ignore */
+				setFacilityFilter((prev) => (prev == null ? "all" : prev));
 			}
 		})();
 	}, []);
@@ -152,7 +182,7 @@ export default function DataRoom() {
 
 	useEffect(() => {
 		setCurrentPage(1);
-	}, [category, appliedQuery]);
+	}, [category, appliedQuery, facilityFilter]);
 
 	useEffect(() => {
 		if (!posts.length) {
@@ -434,6 +464,27 @@ export default function DataRoom() {
 					<div className="flex flex-wrap items-center gap-3">
 						<div className="flex items-center gap-2 rounded border border-blue-300 bg-white px-3 py-3">
 							<span className="rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900">
+								기관
+							</span>
+							<select
+								value={facilityFilter ?? ""}
+								onChange={(e) => setFacilityFilter(e.target.value || "all")}
+								className="min-w-[180px] rounded border border-blue-300 bg-white px-3 py-2 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+							>
+								<option value="all">전체</option>
+								{facilities.map((f) => (
+									<option key={f.ancd} value={f.ancd}>
+										{f.annm} ({f.ancd})
+									</option>
+								))}
+								{sessionAncd && !facilities.some((f) => f.ancd === sessionAncd) ? (
+									<option value={sessionAncd}>내 기관 ({sessionAncd})</option>
+								) : null}
+							</select>
+						</div>
+
+						<div className="flex items-center gap-2 rounded border border-blue-300 bg-white px-3 py-3">
+							<span className="rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900">
 								분류
 							</span>
 							<select
@@ -497,6 +548,7 @@ export default function DataRoom() {
 							<table className="w-full text-sm">
 								<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50">
 									<tr>
+										<th className="border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900">기관</th>
 										<th className="border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900">분류</th>
 										<th className="border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900">제목</th>
 										<th className="border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900">첨부</th>
@@ -508,8 +560,8 @@ export default function DataRoom() {
 								<tbody>
 									{pagedPosts.length === 0 ? (
 										<tr>
-											<td colSpan={6} className="px-3 py-12 text-center text-blue-900/60">
-												{loading ? "불러오는 중..." : "데이터가 없습니다."}
+											<td colSpan={7} className="px-3 py-12 text-center text-blue-900/60">
+												{loading || facilityFilter == null ? "불러오는 중..." : "데이터가 없습니다."}
 											</td>
 										</tr>
 									) : (
@@ -521,6 +573,7 @@ export default function DataRoom() {
 													: p.fileCount === 1
 														? p.files[0]?.fileName || "1개"
 														: `${p.fileCount}개 파일`;
+											const orgLabel = p.annm ? `${p.annm}` : p.ancd || "-";
 											return (
 												<tr
 													key={p.id}
@@ -531,6 +584,9 @@ export default function DataRoom() {
 														isSelected && "bg-blue-100",
 													)}
 												>
+													<td className="border-r border-blue-100 px-3 py-2" title={p.ancd || ""}>
+														{orgLabel}
+													</td>
 													<td className="border-r border-blue-100 px-3 py-2">{p.category}</td>
 													<td className="border-r border-blue-100 px-3 py-2">{p.title}</td>
 													<td className="border-r border-blue-100 px-3 py-2 truncate max-w-[180px]" title={attachLabel}>
@@ -583,8 +639,18 @@ export default function DataRoom() {
 								<button
 									type="button"
 									onClick={handleDelete}
-									disabled={!selectedId || saving}
+									disabled={
+										!selectedId ||
+										saving ||
+										!selectedPost ||
+										(sessionAncd !== "" && selectedPost.ancd !== "" && selectedPost.ancd !== sessionAncd)
+									}
 									className="rounded border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+									title={
+										selectedPost && sessionAncd && selectedPost.ancd !== sessionAncd
+											? "다른 기관 자료는 삭제할 수 없습니다"
+											: undefined
+									}
 								>
 									삭제
 								</button>
@@ -596,6 +662,20 @@ export default function DataRoom() {
 								<div className="py-16 text-center text-blue-900/60">항목을 선택하세요.</div>
 							) : (
 								<>
+									<div className="grid grid-cols-12 gap-2 items-center">
+										<span className="col-span-3 rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 text-center">
+											기관
+										</span>
+										<input
+											readOnly
+											value={
+												selectedPost.annm
+													? `${selectedPost.annm}${selectedPost.ancd ? ` (${selectedPost.ancd})` : ""}`
+													: selectedPost.ancd || "-"
+											}
+											className="col-span-9 rounded border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900"
+										/>
+									</div>
 									<div className="grid grid-cols-12 gap-2 items-center">
 										<span className="col-span-3 rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 text-center">
 											분류

@@ -12,6 +12,7 @@ const {
   deleteBlobByName,
   downloadDataRoomBlob,
   assertDataRoomBlobName,
+  isValidDataRoomBlobName,
   MAX_DATA_ROOM_BYTES,
 } = require('../../../lib/azureBlobStorage');
 
@@ -195,6 +196,8 @@ function mapPost(r, files) {
   return {
     id: String(r.DR_SEQ),
     drSeq: r.DR_SEQ,
+    ancd: r.ANCD != null ? String(r.ANCD) : '',
+    annm: r.ANNM != null ? String(r.ANNM) : '',
     category: r.CATEGORY,
     title: r.TITLE,
     description: r.DESCRIPTION || '',
@@ -297,35 +300,32 @@ export async function GET(req) {
       if (!Number.isNaN(drfSeq)) {
         const meta = await pool
           .request()
-          .input('ANCD', gate.sessionAncd)
           .input('DRF_SEQ', drfSeq)
           .query(`
-            SELECT TOP 1 [DRF_SEQ], [DR_SEQ], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE]
+            SELECT TOP 1 [DRF_SEQ], [DR_SEQ], [ANCD], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE]
             FROM ${FILE_TABLE}
-            WHERE [ANCD] = @ANCD AND [DRF_SEQ] = @DRF_SEQ
+            WHERE [DRF_SEQ] = @DRF_SEQ
           `);
         row = meta.recordset?.[0] || null;
       } else if (!Number.isNaN(drSeqFallback)) {
         const meta = await pool
           .request()
-          .input('ANCD', gate.sessionAncd)
           .input('DR_SEQ', drSeqFallback)
           .query(`
-            SELECT TOP 1 [DRF_SEQ], [DR_SEQ], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE]
+            SELECT TOP 1 [DRF_SEQ], [DR_SEQ], [ANCD], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE]
             FROM ${FILE_TABLE}
-            WHERE [ANCD] = @ANCD AND [DR_SEQ] = @DR_SEQ
+            WHERE [DR_SEQ] = @DR_SEQ
             ORDER BY [SORT_ORD] ASC, [DRF_SEQ] ASC
           `);
         row = meta.recordset?.[0] || null;
         if (!row) {
           const legacy = await pool
             .request()
-            .input('ANCD', gate.sessionAncd)
             .input('DR_SEQ', drSeqFallback)
             .query(`
-              SELECT TOP 1 [DR_SEQ], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE]
+              SELECT TOP 1 [DR_SEQ], [ANCD], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE]
               FROM ${TABLE}
-              WHERE [ANCD] = @ANCD AND [DR_SEQ] = @DR_SEQ
+              WHERE [DR_SEQ] = @DR_SEQ
             `);
           const L = legacy.recordset?.[0];
           if (L?.BLOB_NAME) {
@@ -337,8 +337,8 @@ export async function GET(req) {
       }
 
       if (!row) return jsonError({ success: false, error: '파일을 찾을 수 없습니다.' }, 404);
-      if (!assertDataRoomBlobName(row.BLOB_NAME, gate.sessionAncd)) {
-        return jsonError({ success: false, error: '권한이 없거나 잘못된 파일 경로입니다.' }, 403);
+      if (!isValidDataRoomBlobName(row.BLOB_NAME) && !assertDataRoomBlobName(row.BLOB_NAME, row.ANCD)) {
+        return jsonError({ success: false, error: '잘못된 파일 경로입니다.' }, 403);
       }
 
       const file = await downloadDataRoomBlob(row.BLOB_NAME);
@@ -347,12 +347,11 @@ export async function GET(req) {
       if (row.DRF_SEQ != null) {
         await pool
           .request()
-          .input('ANCD', gate.sessionAncd)
           .input('DRF_SEQ', row.DRF_SEQ)
           .query(`
             UPDATE ${FILE_TABLE}
             SET [DOWNLOAD_CNT] = ISNULL([DOWNLOAD_CNT], 0) + 1
-            WHERE [ANCD] = @ANCD AND [DRF_SEQ] = @DRF_SEQ
+            WHERE [DRF_SEQ] = @DRF_SEQ
           `);
       }
 
@@ -371,10 +370,23 @@ export async function GET(req) {
 
     const category = String(sp.get('category') || '').trim();
     const q = String(sp.get('q') || '').trim();
+    const filterAncdRaw = String(sp.get('ancd') || sp.get('filterAncd') || '').trim();
+    const filterAll =
+      !filterAncdRaw ||
+      filterAncdRaw === 'all' ||
+      filterAncdRaw === '전체' ||
+      filterAncdRaw.toLowerCase() === 'all';
 
     const rq = pool.request();
-    rq.input('ANCD', gate.sessionAncd);
-    let where = `d.[ANCD] = @ANCD`;
+    let where = `1=1`;
+    if (!filterAll) {
+      const n = parseInt(filterAncdRaw, 10);
+      if (Number.isNaN(n)) {
+        return jsonError({ success: false, error: '기관 필터(ancd)가 올바르지 않습니다.' }, 400);
+      }
+      rq.input('FILTER_ANCD', n);
+      where = `d.[ANCD] = @FILTER_ANCD`;
+    }
     if (category && category !== '전체' && CATEGORIES.has(category)) {
       rq.input('CATEGORY', category);
       where += ` AND d.[CATEGORY] = @CATEGORY`;
@@ -395,8 +407,11 @@ export async function GET(req) {
       SELECT
         d.[DR_SEQ], d.[ANCD], d.[CATEGORY], d.[TITLE], d.[DESCRIPTION],
         d.[FILE_NAME], d.[BLOB_NAME], d.[CONTENT_TYPE], d.[FILE_SIZE], d.[DOWNLOAD_CNT],
-        d.[REG_EMPNO], d.[REG_EMPNM], d.[REG_DATE], d.[MOD_EMPNO], d.[MOD_DATE]
+        d.[REG_EMPNO], d.[REG_EMPNM], d.[REG_DATE], d.[MOD_EMPNO], d.[MOD_DATE],
+        f10.[ANNM]
       FROM ${TABLE} d
+      LEFT JOIN [돌봄시설DB].[dbo].[F00110] f10
+        ON f10.[ANCD] = d.[ANCD] AND (ISNULL(f10.[DEL], '') <> 'D')
       WHERE ${where}
       ORDER BY d.[REG_DATE] DESC, d.[DR_SEQ] DESC
     `);
@@ -405,17 +420,13 @@ export async function GET(req) {
     const ids = posts.map((p) => p.DR_SEQ).filter((x) => x != null);
     let fileRows = [];
     if (ids.length) {
-      const fr = await pool
-        .request()
-        .input('ANCD', gate.sessionAncd)
-        .query(`
-          SELECT [DRF_SEQ], [DR_SEQ], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE],
-                 [FILE_SIZE], [DOWNLOAD_CNT], [SORT_ORD]
-          FROM ${FILE_TABLE}
-          WHERE [ANCD] = @ANCD
-            AND [DR_SEQ] IN (${ids.map((id) => Number(id)).join(',')})
-          ORDER BY [DR_SEQ], [SORT_ORD], [DRF_SEQ]
-        `);
+      const fr = await pool.request().query(`
+        SELECT [DRF_SEQ], [DR_SEQ], [ANCD], [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE],
+               [FILE_SIZE], [DOWNLOAD_CNT], [SORT_ORD]
+        FROM ${FILE_TABLE}
+        WHERE [DR_SEQ] IN (${ids.map((id) => Number(id)).join(',')})
+        ORDER BY [DR_SEQ], [SORT_ORD], [DRF_SEQ]
+      `);
       fileRows = fr.recordset || [];
     }
 
@@ -428,7 +439,6 @@ export async function GET(req) {
 
     const data = posts.map((p) => {
       let files = byDr.get(p.DR_SEQ) || [];
-      // 레거시: 자식 없고 부모에 blob만 있는 경우
       if (!files.length && p.BLOB_NAME) {
         files = [
           mapFileRow({
@@ -444,7 +454,31 @@ export async function GET(req) {
       return mapPost(p, files);
     });
 
-    return jsonOk({ success: true, data, count: data.length, maxFiles: MAX_FILES_PER_POST });
+    // 기관 필터용 목록 (로그인 사용자 누구나)
+    let facilities = [];
+    try {
+      const fac = await pool.request().query(`
+        SELECT [ANCD], [ANNM]
+        FROM [돌봄시설DB].[dbo].[F00110]
+        WHERE (ISNULL([DEL], '') <> 'D')
+        ORDER BY [ANNM]
+      `);
+      facilities = (fac.recordset || []).map((r) => ({
+        ancd: String(r.ANCD),
+        annm: String(r.ANNM || r.ANCD || ''),
+      }));
+    } catch (e) {
+      console.warn('자료실 기관 목록 조회 실패:', e?.message || e);
+    }
+
+    return jsonOk({
+      success: true,
+      data,
+      count: data.length,
+      maxFiles: MAX_FILES_PER_POST,
+      facilities,
+      sessionAncd: gate.sessionAncd != null ? String(gate.sessionAncd) : null,
+    });
   } catch (err) {
     console.error('DATA_ROOM 조회 오류:', err);
     return jsonError({ success: false, error: err.message || '조회 실패' });
@@ -610,38 +644,42 @@ export async function DELETE(req) {
       return jsonError({ success: false, error: 'drSeq가 필요합니다.' }, 400);
     }
 
+    const parent = await pool
+      .request()
+      .input('DR_SEQ', drSeq)
+      .query(`
+        SELECT TOP 1 [DR_SEQ], [ANCD], [BLOB_NAME]
+        FROM ${TABLE}
+        WHERE [DR_SEQ] = @DR_SEQ
+      `);
+    const postRow = parent.recordset?.[0];
+    if (!postRow) {
+      return jsonError({ success: false, error: '삭제할 자료가 없습니다.' }, 404);
+    }
+    // 등록 기관만 삭제 가능
+    if (String(postRow.ANCD) !== String(gate.sessionAncd)) {
+      return jsonError({ success: false, error: '다른 기관에서 등록한 자료는 삭제할 수 없습니다.' }, 403);
+    }
+
     const files = await pool
       .request()
-      .input('ANCD', gate.sessionAncd)
       .input('DR_SEQ', drSeq)
       .query(`
         SELECT [BLOB_NAME] FROM ${FILE_TABLE}
-        WHERE [ANCD] = @ANCD AND [DR_SEQ] = @DR_SEQ
+        WHERE [DR_SEQ] = @DR_SEQ
       `);
     const blobs = (files.recordset || []).map((r) => r.BLOB_NAME).filter(Boolean);
-
-    const parent = await pool
-      .request()
-      .input('ANCD', gate.sessionAncd)
-      .input('DR_SEQ', drSeq)
-      .query(`
-        SELECT [BLOB_NAME] FROM ${TABLE}
-        WHERE [ANCD] = @ANCD AND [DR_SEQ] = @DR_SEQ
-      `);
-    const parentBlob = parent.recordset?.[0]?.BLOB_NAME;
-    if (parentBlob && !blobs.includes(parentBlob)) blobs.push(parentBlob);
+    if (postRow.BLOB_NAME && !blobs.includes(postRow.BLOB_NAME)) blobs.push(postRow.BLOB_NAME);
 
     await pool
       .request()
-      .input('ANCD', gate.sessionAncd)
       .input('DR_SEQ', drSeq)
-      .query(`DELETE FROM ${FILE_TABLE} WHERE [ANCD] = @ANCD AND [DR_SEQ] = @DR_SEQ`);
+      .query(`DELETE FROM ${FILE_TABLE} WHERE [DR_SEQ] = @DR_SEQ`);
 
     const del = await pool
       .request()
-      .input('ANCD', gate.sessionAncd)
       .input('DR_SEQ', drSeq)
-      .query(`DELETE FROM ${TABLE} WHERE [ANCD] = @ANCD AND [DR_SEQ] = @DR_SEQ`);
+      .query(`DELETE FROM ${TABLE} WHERE [DR_SEQ] = @DR_SEQ`);
 
     if (!del.rowsAffected?.[0]) {
       return jsonError({ success: false, error: '삭제할 자료가 없습니다.' }, 404);
