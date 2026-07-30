@@ -182,6 +182,7 @@ export default function DailyBeneficiaryPerformance() {
 	const [selectedMember, setSelectedMember] = useState<number | null>(null);
 	const [nextId, setNextId] = useState(1);
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
+	const [editingBackup, setEditingBackup] = useState<PerformanceData | null>(null);
 	const [searchResults, setSearchResults] = useState<{ [key: number | string]: any[] }>({});
 	const [showSearchResults, setShowSearchResults] = useState<{ [key: number | string]: boolean }>({});
 	const searchInputRefs = useRef<{ [key: number | string]: HTMLInputElement | null }>({});
@@ -259,16 +260,22 @@ export default function DailyBeneficiaryPerformance() {
 					.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
 					.map((row, idx) => ({ ...row, serialNo: idx + 1 }));
 				
-				setCombinedData(transformedData);
+		setCombinedData(transformedData);
 				setNextId(transformedData.length > 0 ? Math.max(...transformedData.map(d => d.id)) + 1 : 1);
+				setEditingRowId(null);
+				setEditingBackup(null);
 			} else {
 				setCombinedData([]);
 				setNextId(1);
+				setEditingRowId(null);
+				setEditingBackup(null);
 			}
 		} catch (err) {
 			console.error('실적 데이터 조회 오류:', err);
 			setCombinedData([]);
 			setNextId(1);
+			setEditingRowId(null);
+			setEditingBackup(null);
 		} finally {
 			setLoading(false);
 		}
@@ -300,17 +307,24 @@ export default function DailyBeneficiaryPerformance() {
 
 	// 행 삭제 함수
 	const handleDeleteRow = (id: number) => {
-		// 수정 중인 행이 있고 저장하지 않은 경우 경고
-		if (editingRowId === id) {
-			if (confirm('작성한 내용은 저장되지 않습니다. 정말 삭제하시겠습니까?')) {
-				setCombinedData(combinedData.filter(row => row.id !== id));
+		if (confirm('정말 삭제하시겠습니까?')) {
+			setCombinedData(combinedData.filter(row => row.id !== id));
+			if (editingRowId === id) {
 				setEditingRowId(null);
-			}
-		} else {
-			if (confirm('정말 삭제하시겠습니까?')) {
-				setCombinedData(combinedData.filter(row => row.id !== id));
+				setEditingBackup(null);
 			}
 		}
+	};
+
+	// 수정 취소: 진입 시점 값으로 복원
+	const handleCancelEdit = (id: number) => {
+		if (editingBackup && editingBackup.id === id) {
+			setCombinedData((prev) => prev.map((r) => (r.id === id ? editingBackup : r)));
+		}
+		setEditingRowId(null);
+		setEditingBackup(null);
+		setShowSearchResults((prev) => ({ ...prev, [id]: false }));
+		setSearchResults((prev) => ({ ...prev, [id]: [] }));
 	};
 
 	// 수정 모드 토글 (+ 저장 시 F14020 업서트)
@@ -319,6 +333,7 @@ export default function DailyBeneficiaryPerformance() {
 			const row = combinedData.find((r) => r.id === id);
 			if (!row) {
 				setEditingRowId(null);
+				setEditingBackup(null);
 				return;
 			}
 			if (!row.pnum) {
@@ -359,11 +374,19 @@ export default function DailyBeneficiaryPerformance() {
 					)
 				);
 				setEditingRowId(null);
+				setEditingBackup(null);
+				alert('저장되었습니다');
 			} catch (e) {
 				console.error('저장 오류:', e);
 				alert('저장 중 오류가 발생했습니다.');
 			}
 		} else {
+			const row = combinedData.find((r) => r.id === id);
+			if (row) {
+				setEditingBackup(JSON.parse(JSON.stringify(row)) as PerformanceData);
+			} else {
+				setEditingBackup(null);
+			}
 			setEditingRowId(id);
 		}
 	};
@@ -406,6 +429,7 @@ export default function DailyBeneficiaryPerformance() {
 		setCombinedData([newRow, ...updatedData]); // 맨 위에 추가
 		setNextId(prev => prev + 1);
 		setEditingRowId(newRow.id); // 새로 추가된 행을 수정 모드로 설정
+		setEditingBackup(JSON.parse(JSON.stringify(newRow)) as PerformanceData);
 		setCurrentPage(1); // 첫 페이지로 이동
 	};
 
@@ -1740,12 +1764,23 @@ export default function DailyBeneficiaryPerformance() {
 												>
 													{editingRowId === row.id ? '저장' : '수정'}
 												</button>
-												<button
-													onClick={() => handleDeleteRow(row.id)}
-													className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
-												>
-													삭제
-												</button>
+												{editingRowId === row.id ? (
+													<button
+														type="button"
+														onClick={() => handleCancelEdit(row.id)}
+														className="px-3 py-1 text-xs border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
+													>
+														취소
+													</button>
+												) : (
+													<button
+														type="button"
+														onClick={() => handleDeleteRow(row.id)}
+														className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
+													>
+														삭제
+													</button>
+												)}
 											</div>
 										</td>
 									</tr>

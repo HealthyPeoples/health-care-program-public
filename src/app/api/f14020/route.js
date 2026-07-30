@@ -2,6 +2,11 @@ import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
+
+const {
+	syncOutingFromF14020Row,
+	syncOutingOnF14020Delete
+} = require('../../../lib/outingF14020Sync');
 const CARE_COLUMNS = [
 	'PH_HEAD_HELP',
 	'PH_BATH_HELP',
@@ -374,6 +379,18 @@ export async function POST(req) {
 						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
 						VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST);
 				`);
+
+				try {
+					await syncOutingFromF14020Row(pool, gate.sessionAncd, {
+						pnum,
+						svdt: svdtIso,
+						gyn: '1',
+						ioTmInfo: `R:${returnTime}`
+					});
+				} catch (syncErr) {
+					console.warn('외박 복귀 → OUTING_INFO 동기화 경고:', syncErr);
+				}
+
 				results.push({ index: i, pnum, ok: true, returnTime, payComGu });
 			}
 
@@ -459,6 +476,33 @@ export async function POST(req) {
 
 			const result = await request.query(query);
 			results.push({ index: i, pnum: String(pnum), ok: true, rowsAffected: result.rowsAffected || [] });
+
+			const gynTouched = mealValues.GYN !== undefined || mealValues.IO_TM_INFO !== undefined;
+			if (gynTouched) {
+				try {
+					const cur = await pool
+						.request()
+						.input('ANCD', gate.sessionAncd)
+						.input('PNUM', String(pnum))
+						.input('SVDT', svdtIso)
+						.query(`
+              SELECT TOP 1 [GYN], [IO_TM_INFO]
+              FROM [돌봄시설DB].[dbo].[F14020]
+              WHERE [ANCD]=@ANCD
+                AND CAST([PNUM] AS VARCHAR)=CAST(@PNUM AS VARCHAR)
+                AND [SVDT]=@SVDT
+            `);
+					const row = cur.recordset?.[0];
+					await syncOutingFromF14020Row(pool, gate.sessionAncd, {
+						pnum,
+						svdt: svdtIso,
+						gyn: row?.GYN,
+						ioTmInfo: row?.IO_TM_INFO
+					});
+				} catch (syncErr) {
+					console.warn('F14020 → OUTING_INFO 동기화 경고:', syncErr);
+				}
+			}
 		}
 
 		return jsonOk({ success: true, data: results, count: results.length });
@@ -492,6 +536,19 @@ export async function DELETE(req) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
+		const prevReq = pool.request();
+		prevReq.input('ANCD', gate.sessionAncd);
+		prevReq.input('PNUM', String(pnum));
+		prevReq.input('SVDT', svdtIso);
+		const prevRes = await prevReq.query(`
+      SELECT TOP 1 [GYN], [IO_TM_INFO]
+      FROM [돌봄시설DB].[dbo].[F14020]
+      WHERE [ANCD] = @ANCD
+        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+        AND [SVDT] = @SVDT
+    `);
+		const prev = prevRes.recordset?.[0] || null;
+
 		const request = pool.request();
 		request.input('ANCD', gate.sessionAncd);
 		request.input('PNUM', String(pnum));
@@ -505,6 +562,19 @@ export async function DELETE(req) {
     `;
 
 		await request.query(query);
+
+		if (prev) {
+			try {
+				await syncOutingOnF14020Delete(pool, gate.sessionAncd, {
+					pnum,
+					svdt: svdtIso,
+					prevGyn: prev.GYN,
+					prevIoTmInfo: prev.IO_TM_INFO
+				});
+			} catch (syncErr) {
+				console.warn('F14020 삭제 → OUTING_INFO 동기화 경고:', syncErr);
+			}
+		}
 
 		return jsonOk({ success: true });
 	} catch (err) {

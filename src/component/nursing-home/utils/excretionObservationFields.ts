@@ -140,12 +140,51 @@ export function excretionFormToPayload(form: ExcretionFormData, pnum: string) {
 }
 
 export function formatDateYmd(dateStr: unknown): string {
-	if (!dateStr) return '';
-	let s = String(dateStr);
-	if (s.includes('T')) s = s.split('T')[0];
+	if (dateStr == null || dateStr === '') return '';
+	if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
+		const y = dateStr.getFullYear();
+		const m = String(dateStr.getMonth() + 1).padStart(2, '0');
+		const d = String(dateStr.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	let s = String(dateStr).trim();
+	// ISO만 분리 (Thu/Tue/Sat 요일의 T와 혼동 방지)
+	if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+		return s.slice(0, 10);
+	}
 	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
 	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-	return s;
+	if (/^\d{2}\.\d{2}\.\d{2}$/.test(s)) {
+		const [yy, mm, dd] = s.split('.');
+		const year = Number(yy) >= 70 ? `19${yy}` : `20${yy}`;
+		return `${year}-${mm}-${dd}`;
+	}
+	// "Fri Mar 13 2020 09:00:00 GMT..." 형식
+	const eng = /^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s+(\d{4})\b/i.exec(s);
+	if (eng) {
+		const monthMap: Record<string, string> = {
+			jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+			jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+		};
+		const mm = monthMap[eng[1].toLowerCase()];
+		const dd = String(Number(eng[2])).padStart(2, '0');
+		if (mm) return `${eng[3]}-${mm}-${dd}`;
+	}
+	const parsed = new Date(s);
+	if (!Number.isNaN(parsed.getTime())) {
+		const y = parsed.getFullYear();
+		const m = String(parsed.getMonth() + 1).padStart(2, '0');
+		const d = String(parsed.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	return '';
+}
+
+/** 화면 표시용 YY.MM.DD */
+export function formatDateYyMmDd(dateStr: unknown): string {
+	const ymd = formatDateYmd(dateStr);
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd || '';
+	return `${ymd.slice(2, 4)}.${ymd.slice(5, 7)}.${ymd.slice(8, 10)}`;
 }
 
 export function createEmptyExcretionForm(beneficiaryName = '', observer = ''): ExcretionFormData {
