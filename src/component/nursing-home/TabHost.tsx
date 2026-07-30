@@ -28,7 +28,7 @@ import ExcretionObservation from '@/component/nursing-home/pages/excretion-obser
 import BathService from '@/component/nursing-home/pages/bath-service/BathService';
 import PositionChangeRecord from '@/component/nursing-home/pages/position-change-record/PositionChangeRecord';
 import HealthExamination from '@/component/nursing-home/pages/health-examination/HealthExamination';
-import MedicationRegistration from '@/component/nursing-home/pages/medication-registration/MedicationRegistration';
+import MedicationRegistrationStub from '@/component/nursing-home/pages/medication-registration/MedicationRegistrationStub';
 import MedicationPerformance from '@/component/nursing-home/pages/medication-performance/MedicationPerformance';
 import EntrustedMedical from '@/component/nursing-home/pages/entrusted-medical/EntrustedMedical';
 import NursingService from '@/component/nursing-home/pages/nursing-service/NursingService';
@@ -172,7 +172,7 @@ function renderInternal(href: string) {
     case '/nursingHome/health-examination':
       return <HealthExamination />;
     case '/nursingHome/medication-registration':
-      return <MedicationRegistration />;
+      return <MedicationRegistrationStub />;
     case '/nursingHome/medication-performance':
       return <MedicationPerformance />;
     case '/nursingHome/entrusted-medical':
