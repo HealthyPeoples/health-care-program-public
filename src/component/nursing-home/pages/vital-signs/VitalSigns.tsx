@@ -1,10 +1,19 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import {
+	parseBloodPressure,
+	toNullableNumber,
+	toNullableDecimal,
+} from '../../utils/f30120Fields';
+import {
+	extractFloorFromRoomNo,
+	fetchRoomNoMapFromF30112,
+	normalizePnumKey,
+} from '../../utils/roomNoFloor';
+import { buildNursingLogHtml, openPrintWindow } from '../../utils/v30030rPrint';
 
 interface VitalSignsData {
 	id: number;
-	checked: boolean;
-	number: number;
 	status: string;
 	beneficiaryName: string;
 	livingRoom: string;
@@ -24,7 +33,10 @@ export default function VitalSigns() {
 	const [selectedStatus, setSelectedStatus] = useState<string>('입소');
 	const [selectedLivingRoom, setSelectedLivingRoom] = useState<string>('');
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
+	const [editingBackup, setEditingBackup] = useState<VitalSignsData | null>(null);
+	const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
 	const [loading, setLoading] = useState(false);
+	const [saving, setSaving] = useState(false);
 	const [vitalSignsData, setVitalSignsData] = useState<VitalSignsData[]>([]);
 	const [nextId, setNextId] = useState(1);
 	const [currentPage, setCurrentPage] = useState(1);
@@ -50,8 +62,10 @@ export default function VitalSigns() {
 			const result = await response.json();
 			
 			if (result.success && Array.isArray(result.data)) {
+				const roomMap = await fetchRoomNoMapFromF30112(result.data.map((item: any) => item.PNUM));
 				// F30120 데이터를 vitalSignsData 형식으로 변환
-				const transformedData: VitalSignsData[] = result.data.map((item: any, index: number) => {
+				const transformedData: VitalSignsData[] = result.data
+					.map((item: any, index: number) => {
 					// 혈압 조합 (수축기/이완기)
 					const bloodPressure = item.SBDP && item.EBDP 
 						? `${item.SBDP}/${item.EBDP}` 
@@ -59,35 +73,46 @@ export default function VitalSigns() {
 					
 					// 현황 (P_ST: '1'=입소, '9'=퇴소)
 					const status = item.P_ST === '1' ? '입소' : item.P_ST === '9' ? '퇴소' : '';
+					const roomNo = roomMap.get(normalizePnumKey(item.PNUM)) || '';
 					
 					return {
 						id: index + 1,
-						checked: false,
-						number: index + 1,
 						status: status,
 						beneficiaryName: item.P_NM || '',
-						livingRoom: '', // F30120에 생활실 정보가 없음
+						livingRoom: roomNo,
 						bloodPressure: bloodPressure,
 						pulse: item.PUCNT || '',
 						bodyTemperature: item.TMPBD || '',
 						respiration: item.BRCNT || '',
-						oxygenSaturation: '', // F30120에 산소포화도 정보가 없음
+						oxygenSaturation:
+							item.O2_SAT != null && item.O2_SAT !== '' ? String(item.O2_SAT) : '',
 						nursingDetails: item.NUDES || '',
-						author: item.INEMPNM || '',
+						author: String(item.NS_WRITE_NAME || item.INEMPNM || ''),
 						ancd: item.ANCD || '',
 						pnum: item.PNUM || ''
 					};
-				});
+				})
+					.sort((a, b) => (a.beneficiaryName || '').localeCompare(b.beneficiaryName || '', 'ko'))
+					.map((row, idx) => ({ ...row, id: idx + 1 }));
 				
 				setVitalSignsData(transformedData);
+				setSelectedRowId(null);
+				setEditingRowId(null);
+				setEditingBackup(null);
 				setNextId(transformedData.length > 0 ? Math.max(...transformedData.map(d => d.id)) + 1 : 1);
 			} else {
 				setVitalSignsData([]);
+				setSelectedRowId(null);
+				setEditingRowId(null);
+				setEditingBackup(null);
 				setNextId(1);
 			}
 		} catch (err) {
 			console.error('활력증상 데이터 조회 오류:', err);
 			setVitalSignsData([]);
+			setSelectedRowId(null);
+			setEditingRowId(null);
+			setEditingBackup(null);
 			setNextId(1);
 		} finally {
 			setLoading(false);
@@ -107,13 +132,6 @@ export default function VitalSigns() {
 		setSelectedDate(date.toISOString().split('T')[0]);
 	};
 
-	// 체크박스 토글
-	const handleCheckboxChange = (id: number) => {
-		setVitalSignsData(prev => prev.map(item => 
-			item.id === id ? { ...item, checked: !item.checked } : item
-		));
-	};
-
 	// 데이터 업데이트
 	const handleDataChange = (id: number, field: string, value: string) => {
 		setVitalSignsData(prev => prev.map(item => 
@@ -121,15 +139,69 @@ export default function VitalSigns() {
 		));
 	};
 
-	// 수정 모드 토글
-	const handleEditClick = (id: number) => {
+	// 수정 모드 토글 (+ 저장 시 F30120 일상 필드 업데이트)
+	const handleEditClick = async (id: number) => {
 		if (editingRowId === id) {
-			// 수정 완료
-			setEditingRowId(null);
+			const row = vitalSignsData.find((r) => r.id === id);
+			if (!row) {
+				setEditingRowId(null);
+				setEditingBackup(null);
+				return;
+			}
+			if (!row.pnum) {
+				alert('수급자 정보가 없어 저장할 수 없습니다.');
+				return;
+			}
+			setSaving(true);
+			try {
+				const { sbdp, ebdp } = parseBloodPressure(row.bloodPressure);
+				const payload = {
+					scope: 'daily',
+					rsdt: selectedDate,
+					pnum: row.pnum,
+					SBDP: sbdp,
+					EBDP: ebdp,
+					TMPBD: toNullableDecimal(row.bodyTemperature),
+					PUCNT: toNullableNumber(row.pulse),
+					BRCNT: toNullableNumber(row.respiration),
+					O2_SAT: toNullableDecimal(row.oxygenSaturation),
+					NUDES: row.nursingDetails || '',
+					INEMPNM: row.author || null,
+					NS_WRITE_NAME: row.author || null,
+				};
+				const res = await fetch('/api/f30120', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload),
+				});
+				const json = await res.json().catch(() => ({}));
+				if (!res.ok || !json?.success) {
+					alert(`저장 실패: ${json?.error || '알 수 없는 오류'}`);
+					return;
+				}
+				setEditingRowId(null);
+				setEditingBackup(null);
+				alert('저장되었습니다');
+			} catch (e) {
+				console.error(e);
+				alert('저장 중 오류가 발생했습니다.');
+			} finally {
+				setSaving(false);
+			}
 		} else {
-			// 수정 모드 진입
+			const row = vitalSignsData.find((r) => r.id === id);
 			setEditingRowId(id);
+			setEditingBackup(row ? (JSON.parse(JSON.stringify(row)) as VitalSignsData) : null);
 		}
+	};
+
+	// 수정 취소: 진입 시점 값으로 복원
+	const handleCancelEdit = (id: number) => {
+		if (editingBackup && editingBackup.id === id) {
+			setVitalSignsData((prev) => prev.map((r) => (r.id === id ? editingBackup : r)));
+		}
+		setEditingRowId(null);
+		setEditingBackup(null);
 	};
 
 	// 삭제 함수
@@ -138,20 +210,15 @@ export default function VitalSigns() {
 			setVitalSignsData(prev => prev.filter(item => item.id !== id));
 			if (editingRowId === id) {
 				setEditingRowId(null);
+				setEditingBackup(null);
 			}
 		}
 	};
 
 	// 행 추가 함수
 	const handleAddRow = () => {
-		const newNumber = vitalSignsData.length > 0 
-			? Math.max(...vitalSignsData.map(row => row.number)) + 1 
-			: 1;
-		
 		const newRow: VitalSignsData = {
 			id: nextId,
-			checked: false,
-			number: newNumber,
 			status: '',
 			beneficiaryName: '',
 			livingRoom: '',
@@ -166,7 +233,9 @@ export default function VitalSigns() {
 		
 		setVitalSignsData(prev => [...prev, newRow]);
 		setNextId(prev => prev + 1);
-		setEditingRowId(newRow.id); // 새로 추가된 행을 수정 모드로 설정
+		setSelectedRowId(newRow.id);
+		setEditingRowId(newRow.id);
+		setEditingBackup(JSON.parse(JSON.stringify(newRow)) as VitalSignsData);
 	};
 
 	// 필터링된 데이터
@@ -176,9 +245,14 @@ export default function VitalSigns() {
 			return false;
 		}
 		
-		// 생활실 필터링
-		if (selectedLivingRoom && row.livingRoom !== selectedLivingRoom) {
-			return false;
+		// 생활실 필터링 (ROOM_NO 또는 층수)
+		if (selectedLivingRoom) {
+			const floorMatch = /^(\d+)층$/.exec(selectedLivingRoom);
+			if (floorMatch) {
+				if (extractFloorFromRoomNo(row.livingRoom) !== Number(floorMatch[1])) return false;
+			} else if (row.livingRoom !== selectedLivingRoom) {
+				return false;
+			}
 		}
 		
 		return true;
@@ -246,7 +320,7 @@ export default function VitalSigns() {
 		setMemberSearchResults([]);
 	};
 
-	// 출력용 데이터 조회
+	// 출력용 데이터 조회 (V30030R)
 	const handleLoadPrintData = async () => {
 		if (!selectedMemberForPrint || !startDate || !endDate) {
 			alert('수급자와 기간을 선택해주세요.');
@@ -260,15 +334,18 @@ export default function VitalSigns() {
 
 		setLoadingPrintData(true);
 		try {
-			const url = `/api/f30120?pnum=${encodeURIComponent(selectedMemberForPrint.PNUM)}&ancd=${encodeURIComponent(selectedMemberForPrint.ANCD || '')}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
+			const url = `/api/v30030r?pnum=${encodeURIComponent(selectedMemberForPrint.PNUM)}&ancd=${encodeURIComponent(selectedMemberForPrint.ANCD || '')}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
 			const response = await fetch(url);
 			const result = await response.json();
 			
 			if (result.success && Array.isArray(result.data)) {
 				setPrintData(result.data);
+				if (result.data.length === 0) {
+					alert('조회된 데이터가 없습니다.');
+				}
 			} else {
 				setPrintData([]);
-				alert('데이터를 조회할 수 없습니다.');
+				alert(`데이터를 조회할 수 없습니다.${result?.error ? `\n${result.error}` : ''}`);
 			}
 		} catch (err) {
 			console.error('출력 데이터 조회 오류:', err);
@@ -279,240 +356,29 @@ export default function VitalSigns() {
 		}
 	};
 
-	// 출력 함수
+	// 출력 함수 (간호일지 레이아웃)
 	const handlePrint = () => {
 		if (printData.length === 0) {
 			alert('출력할 데이터가 없습니다. 먼저 데이터를 조회해주세요.');
 			return;
 		}
 
-		// 날짜 포맷팅 (YYYY-MM-DD만 표시, 시간 제거)
-		const formatDateForDisplay = (dateStr: string) => {
-			if (!dateStr) return '';
-			
-			// YYYYMMDD 형식 (8자리)
-			if (dateStr.length === 8 && !dateStr.includes('-')) {
-				return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-			}
-			
-			// YYYY-MM-DD 형식이지만 시간이 포함된 경우
-			if (dateStr.includes(' ')) {
-				return dateStr.split(' ')[0];
-			}
-			
-			// YYYY-MM-DD 형식
-			if (dateStr.includes('-') && dateStr.length === 10) {
-				return dateStr;
-			}
-			
-			// Date 객체로 변환 시도
-			try {
-				const date = new Date(dateStr);
-				if (!isNaN(date.getTime())) {
-					const year = date.getFullYear();
-					const month = String(date.getMonth() + 1).padStart(2, '0');
-					const day = String(date.getDate()).padStart(2, '0');
-					return `${year}-${month}-${day}`;
-				}
-			} catch (e) {
-				// 변환 실패
-			}
-			
-			return dateStr;
-		};
+		const rrnRaw = selectedMemberForPrint?.P_JUMIN || selectedMemberForPrint?.P_BRDT || '';
+		const rrnMasked =
+			typeof rrnRaw === 'string' && rrnRaw.length >= 7
+				? rrnRaw.replace(/(\d{6})[-]?(\d).*/, '$1-$2******')
+				: String(rrnRaw || '');
 
-		// 부종유무 변환
-		const getEdemaText = (bjyen: string) => {
-			if (bjyen === '1' || bjyen === 'Y' || bjyen === 'y') return '유';
-			if (bjyen === '0' || bjyen === 'N' || bjyen === 'n') return '무';
-			return bjyen || '';
-		};
-
-		// 출력용 HTML 생성
-		const printContent = `
-			<!DOCTYPE html>
-			<html>
-			<head>
-				<meta charset="UTF-8">
-				<title>간호일지</title>
-				<style>
-					@page {
-						size: A4 landscape;
-						margin: 10mm;
-					}
-					body {
-						font-family: 'Malgun Gothic', sans-serif;
-						font-size: 9pt;
-						margin: 0;
-						padding: 0;
-					}
-					.container {
-						position: relative;
-						padding-right: 170px;
-					}
-					.header {
-						margin-bottom: 10px;
-					}
-					.header-table {
-						width: 100%;
-						border-collapse: collapse;
-						margin-bottom: 10px;
-					}
-					.header-table td {
-						padding: 3px 5px;
-						border: 1px solid #000;
-						font-size: 9pt;
-					}
-					.header-table .label {
-						background-color: #f0f0f0;
-						font-weight: bold;
-						width: 120px;
-						text-align: center;
-					}
-					.signature-table {
-						border: 1px solid #000;
-						border-collapse: collapse;
-						width: 150px;
-						font-size: 9pt;
-						position: absolute;
-						top: 0;
-						right: 0;
-					}
-					.signature-table th,
-					.signature-table td {
-						border: 1px solid #000;
-						padding: 5px;
-						text-align: center;
-						height: 25px;
-					}
-					.main-table {
-						width: 100%;
-						border-collapse: collapse;
-						border: 1px solid #000;
-						font-size: 8pt;
-						margin-top: 10px;
-					}
-					.main-table th,
-					.main-table td {
-						border: 1px solid #000;
-						padding: 3px;
-						text-align: center;
-						vertical-align: middle;
-					}
-					.main-table th {
-						background-color: #f0f0f0;
-						font-weight: bold;
-					}
-					.nursing-details {
-						text-align: left;
-						padding: 5px;
-						white-space: normal;
-						word-wrap: break-word;
-						max-width: 200px;
-					}
-					.footer {
-						margin-top: 10px;
-						text-align: right;
-						font-size: 9pt;
-					}
-				</style>
-			</head>
-			<body>
-				<div class="container">
-					<table class="signature-table">
-						<tr>
-							<th>담당</th>
-							<th>검토</th>
-							<th>결재</th>
-						</tr>
-						<tr>
-							<td></td>
-							<td></td>
-							<td></td>
-						</tr>
-					</table>
-					
-					<div class="header">
-					<table class="header-table">
-						<tr>
-							<td class="label">장기요양기관기호</td>
-							<td>${selectedMemberForPrint.ANCD || ''}</td>
-							<td class="label">수급자성명</td>
-							<td>${selectedMemberForPrint.P_NM || ''}</td>
-							<td class="label">장기요양기관명</td>
-							<td>너싱홈 해원</td>
-						</tr>
-						<tr>
-							<td class="label">주민등록번호</td>
-							<td>${selectedMemberForPrint.P_BRDT ? selectedMemberForPrint.P_BRDT.replace(/(\d{6})(\d{7})/, '$1-*******') : ''}</td>
-							<td class="label">장기요양등급</td>
-							<td></td>
-							<td class="label">장기요양인정번호</td>
-							<td></td>
-						</tr>
-						<tr>
-							<td class="label">조사기간</td>
-							<td colspan="5">${startDate} ~ ${endDate}</td>
-						</tr>
-					</table>
-				</div>
-
-				<table class="main-table">
-					<thead>
-						<tr>
-							<th style="width: 80px;">조사일자</th>
-							<th style="width: 60px;">공복혈당</th>
-							<th style="width: 60px;">식후혈당</th>
-							<th style="width: 60px;">수축혈압</th>
-							<th style="width: 60px;">이완혈압</th>
-							<th style="width: 50px;">체온</th>
-							<th style="width: 50px;">맥박수</th>
-							<th style="width: 50px;">호흡수</th>
-							<th style="width: 50px;">체중</th>
-							<th style="width: 50px;">부종유무</th>
-							<th style="width: 50px;">부종정도</th>
-							<th style="width: 60px;">부종부위</th>
-							<th style="width: 200px;">간호내역</th>
-						</tr>
-					</thead>
-					<tbody>
-						${printData.map((item: any) => `
-							<tr>
-								<td>${formatDateForDisplay(item.RSDT)}</td>
-								<td>${item.SBDS || ''}</td>
-								<td>${item.EBDS || ''}</td>
-								<td>${item.SBDP || ''}</td>
-								<td>${item.EBDP || ''}</td>
-								<td>${item.TMPBD || ''}</td>
-								<td>${item.PUCNT || ''}</td>
-								<td>${item.BRCNT || ''}</td>
-								<td>${item.WEIGHT || ''}</td>
-								<td>${getEdemaText(item.BJYN)}</td>
-								<td>${item.BJDG || ''}</td>
-								<td>${item.BJPA || ''}</td>
-								<td class="nursing-details">${item.NUDES || ''}</td>
-							</tr>
-						`).join('')}
-					</tbody>
-				</table>
-
-					<div class="footer">
-						R30030<br>
-						페이지: 1
-					</div>
-				</div>
-			</body>
-			</html>
-		`;
-
-		const printWindow = window.open('', '_blank');
-		if (printWindow) {
-			printWindow.document.write(printContent);
-			printWindow.document.close();
-			printWindow.onload = () => {
-				printWindow.print();
-			};
-		}
+		const html = buildNursingLogHtml(printData, {
+			startDate,
+			endDate,
+			fallback: {
+				facilityCode: selectedMemberForPrint?.ANCD != null ? String(selectedMemberForPrint.ANCD) : '',
+				name: selectedMemberForPrint?.P_NM || '',
+				rrn: rrnMasked,
+			},
+		});
+		openPrintWindow(html);
 	};
 
 	// 모달 닫기
@@ -571,7 +437,7 @@ export default function VitalSigns() {
 				{/* 메인 콘텐츠 영역 */}
 				<div className="flex flex-col gap-4">
 					{/* 상단 필터 패널 - 가로 배치 */}
-					<div className="flex gap-4 items-end">
+					{/* <div className="flex gap-4 items-end">
 						<div className="border border-blue-300 rounded-lg p-3 bg-blue-50">
 							<label className="block text-sm font-semibold text-blue-900 mb-2">현황</label>
 							<select
@@ -585,7 +451,7 @@ export default function VitalSigns() {
 							</select>
 						</div>
 						<div className="border border-blue-300 rounded-lg p-3 bg-blue-50">
-							<label className="block text-sm font-semibold text-blue-900 mb-2">생활실(수급자정보, 활력증상정보 둘 다 데이터 없음)</label>
+							<label className="block text-sm font-semibold text-blue-900 mb-2">생활실</label>
 							<select
 								value={selectedLivingRoom}
 								onChange={(e) => setSelectedLivingRoom(e.target.value)}
@@ -597,7 +463,7 @@ export default function VitalSigns() {
 								<option value="3층">3층</option>
 							</select>
 						</div>
-					</div>
+					</div> */}
 
 					{/* 우측 메인 테이블 */}
 					<div className="flex-1 border border-blue-300 rounded-lg bg-white shadow-sm">
@@ -608,10 +474,6 @@ export default function VitalSigns() {
 							<table className="w-full text-sm">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-12">
-											<input type="checkbox" className="cursor-pointer" />
-										</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">번호</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">현황</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">수급자명</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">생활실</th>
@@ -628,13 +490,13 @@ export default function VitalSigns() {
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={13} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={11} className="text-center px-3 py-4 text-blue-900/60">
 												로딩 중...
 											</td>
 										</tr>
 									) : vitalSignsData.length === 0 ? (
 										<tr>
-											<td colSpan={13} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={11} className="text-center px-3 py-4 text-blue-900/60">
 												데이터가 없습니다
 											</td>
 										</tr>
@@ -642,17 +504,11 @@ export default function VitalSigns() {
 										paginatedData.map((row) => (
 										<tr 
 											key={row.id} 
-											className="border-b border-blue-50 hover:bg-blue-50"
+											onClick={() => setSelectedRowId(row.id)}
+											className={`border-b border-blue-50 cursor-pointer hover:bg-blue-50 ${
+												selectedRowId === row.id ? 'bg-blue-100' : ''
+											}`}
 										>
-											<td className="text-center px-3 py-3 border-r border-blue-100">
-												<input
-													type="checkbox"
-													checked={row.checked}
-													onChange={() => handleCheckboxChange(row.id)}
-													className="cursor-pointer"
-												/>
-											</td>
-											<td className="text-center px-3 py-3 border-r border-blue-100">{row.number}</td>
 											<td className="text-center px-3 py-3 border-r border-blue-100">
 												<input
 													type="text"
@@ -773,20 +629,32 @@ export default function VitalSigns() {
 												<div className="flex justify-center gap-2">
 													<button
 														onClick={() => handleEditClick(row.id)}
-														className={`px-3 py-1 text-xs border rounded font-medium ${
+														disabled={saving}
+														className={`px-3 py-1 text-xs border rounded font-medium disabled:opacity-50 ${
 															editingRowId === row.id
 																? 'border-green-400 bg-green-200 hover:bg-green-300 text-green-900'
 																: 'border-blue-400 bg-blue-200 hover:bg-blue-300 text-blue-900'
 														}`}
 													>
-														{editingRowId === row.id ? '저장' : '수정'}
+														{editingRowId === row.id ? (saving ? '저장중' : '저장') : '수정'}
 													</button>
-													<button
-														onClick={() => handleDeleteClick(row.id)}
-														className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
-													>
-														삭제
-													</button>
+													{editingRowId === row.id ? (
+														<button
+															type="button"
+															onClick={() => handleCancelEdit(row.id)}
+															className="px-3 py-1 text-xs border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
+														>
+															취소
+														</button>
+													) : (
+														<button
+															type="button"
+															onClick={() => handleDeleteClick(row.id)}
+															className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
+														>
+															삭제
+														</button>
+													)}
 												</div>
 											</td>
 										</tr>

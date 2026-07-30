@@ -1,48 +1,8 @@
-import { connPool } from '../../../config/server';
-import { NextRequest } from 'next/server';
+import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
-
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
-export async function GET(req) {
-  try {
-    const searchParams = req.nextUrl.searchParams;
-    const rsdt = searchParams.get('rsdt'); // 조사일자 (yyyy-mm-dd 형식, 단일 날짜)
-    const pnum = searchParams.get('pnum'); // 수급자번호 (선택)
-    const ancd = searchParams.get('ancd'); // 시설코드 (선택, PNUM과 함께 사용)
 
-    const gate = assertAnCdMatchesSession(req, ancd || null);
-    if (!gate.ok) return gate.response;
-
-    const pool = await connPool;
-    if (!pool) {
-      return jsonError({ 
-        success: false, 
-        error: '데이터베이스 연결 실패' 
-      });
-    }
-    const startDate = searchParams.get('startDate'); // 시작일 (yyyy-mm-dd 형식, 선택)
-    const endDate = searchParams.get('endDate'); // 종료일 (yyyy-mm-dd 형식, 선택)
-
-    // 날짜 형식 변환 함수
-    const formatDateForDB = (dateStr) => {
-      if (!dateStr) return null;
-      if (dateStr.includes('-')) {
-        return dateStr.replace(/-/g, '');
-      }
-      return dateStr;
-    };
-
-    // 날짜 형식 검증 함수
-    const validateDate = (dateStr) => {
-      if (!dateStr) return false;
-      if (dateStr.includes('-')) {
-        return /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
-      }
-      return dateStr.length === 8 && !isNaN(dateStr);
-    };
-
-    let query = `
-      SELECT 
+const F30120_SELECT = `
         f30120.[ANCD],
         f30120.[PNUM],
         f30120.[RSDT],
@@ -63,9 +23,82 @@ export async function GET(req) {
         f30120.[ETC],
         f30120.[INEMPNO],
         f30120.[INEMPNM],
+        f30120.[NS_MEDI_CHK],
+        f30120.[NS_JUSA_CHK],
+        f30120.[NS_ACT_CHK],
+        f30120.[NS_FAL_CHK],
+        f30120.[NS_DRY_CHK],
+        f30120.[NS_DNG_CHK],
+        f30120.[NS_PAN_CHK],
+        f30120.[NS_DLM_CHK],
+        f30120.[NS_SORE_MNG],
+        f30120.[NS_SORE_DESC],
+        f30120.[NS_WRITE_NAME],
+        f30120.[WATER_INTAKE],
+        f30120.[DRESSING_FLAG],
+        f30120.[O2_SAT],
         f10010.[P_NM],
         f10010.[P_ST],
         f10010.[P_BRDT]
+`;
+
+let ensureO2SatPromise = null;
+
+async function ensureO2SatColumn(pool) {
+	if (!pool) return;
+	if (!ensureO2SatPromise) {
+		ensureO2SatPromise = pool
+			.request()
+			.query(
+				`
+      IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F30120]', N'O2_SAT') IS NULL
+      BEGIN
+        ALTER TABLE [돌봄시설DB].[dbo].[F30120]
+        ADD [O2_SAT] DECIMAL(4,1) NULL;
+      END
+    `
+			)
+			.catch((err) => {
+				ensureO2SatPromise = null;
+				throw err;
+			});
+	}
+	await ensureO2SatPromise;
+}
+
+function formatDateForDB(dateStr) {
+	if (!dateStr) return null;
+	if (String(dateStr).includes('-')) return String(dateStr).replace(/-/g, '');
+	return String(dateStr);
+}
+
+function validateDate(dateStr) {
+	if (!dateStr) return false;
+	if (String(dateStr).includes('-')) return /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+	return String(dateStr).length === 8 && !isNaN(dateStr);
+}
+
+export async function GET(req) {
+	try {
+		const searchParams = req.nextUrl.searchParams;
+		const rsdt = searchParams.get('rsdt');
+		const pnum = searchParams.get('pnum');
+		const ancd = searchParams.get('ancd');
+		const startDate = searchParams.get('startDate');
+		const endDate = searchParams.get('endDate');
+
+		const gate = assertAnCdMatchesSession(req, ancd || null);
+		if (!gate.ok) return gate.response;
+
+		const pool = await connPool;
+		if (!pool) {
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		}
+		await ensureO2SatColumn(pool);
+
+		let query = `
+      SELECT 
+        ${F30120_SELECT}
       FROM [돌봄시설DB].[dbo].[F30120] f30120
       LEFT JOIN [돌봄시설DB].[dbo].[F10010] f10010 
         ON f30120.[ANCD] = f10010.[ANCD] 
@@ -73,117 +106,98 @@ export async function GET(req) {
       WHERE 1=1
     `;
 
-    const request = pool.request();
-    request.input('sessionAncd', gate.sessionAncd);
-    query += ` AND f30120.[ANCD] = @sessionAncd`;
+		const request = pool.request();
+		request.input('sessionAncd', gate.sessionAncd);
+		query += ` AND f30120.[ANCD] = @sessionAncd`;
 
-    // 날짜 범위 조회 (startDate, endDate가 있는 경우)
-    if (startDate && endDate) {
-      if (!validateDate(startDate) || !validateDate(endDate)) {
-        return jsonError({ 
-          success: false, 
-          error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.' 
-        }, 400);
-      }
-      const startFormatted = formatDateForDB(startDate);
-      const endFormatted = formatDateForDB(endDate);
-      query += ` AND f30120.[RSDT] >= @startDate AND f30120.[RSDT] <= @endDate`;
-      request.input('startDate', startFormatted);
-      request.input('endDate', endFormatted);
-    }
-    // 단일 날짜 조회 (rsdt만 있는 경우)
-    else if (rsdt) {
-      if (!validateDate(rsdt)) {
-        return jsonError({ 
-          success: false, 
-          error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.' 
-        }, 400);
-      }
-      const rsdtFormatted = formatDateForDB(rsdt);
-      query += ` AND f30120.[RSDT] = @rsdt`;
-      request.input('rsdt', rsdtFormatted);
-    } else {
-      return jsonError({ 
-        success: false, 
-        error: 'RSDT 또는 startDate/endDate 파라미터가 필요합니다' 
-      }, 400);
-    }
+		if (startDate && endDate) {
+			if (!validateDate(startDate) || !validateDate(endDate)) {
+				return jsonError(
+					{ success: false, error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.' },
+					400
+				);
+			}
+			query += ` AND f30120.[RSDT] >= @startDate AND f30120.[RSDT] <= @endDate`;
+			request.input('startDate', formatDateForDB(startDate));
+			request.input('endDate', formatDateForDB(endDate));
+		} else if (rsdt) {
+			if (!validateDate(rsdt)) {
+				return jsonError(
+					{ success: false, error: '날짜 형식이 올바르지 않습니다. yyyy-mm-dd 형식으로 입력해주세요.' },
+					400
+				);
+			}
+			query += ` AND f30120.[RSDT] = @rsdt`;
+			request.input('rsdt', formatDateForDB(rsdt));
+		} else {
+			return jsonError({ success: false, error: 'RSDT 또는 startDate/endDate 파라미터가 필요합니다' }, 400);
+		}
 
-    // PNUM 필터 (수급자별 조회)
-    if (pnum) {
-      query += ` AND CAST(f30120.[PNUM] AS VARCHAR) = CAST(@pnum AS VARCHAR)`;
-      request.input('pnum', String(pnum));
-    }
+		if (pnum) {
+			query += ` AND CAST(f30120.[PNUM] AS VARCHAR) = CAST(@pnum AS VARCHAR)`;
+			request.input('pnum', String(pnum));
+		}
 
-    query += ` ORDER BY f30120.[RSDT] ASC, f30120.[INDT] DESC`;
+		query += ` ORDER BY f30120.[RSDT] ASC, f30120.[INDT] DESC`;
 
-    console.log('[F30120 API] 조회 요청:', {
-      rsdt,
-      pnum,
-      ancd,
-      startDate,
-      endDate
-    });
+		const result = await request.query(query);
 
-    const result = await request.query(query);
-    
-    return jsonOk({ 
-      success: true, 
-      data: result.recordset || [],
-      count: result.recordset ? result.recordset.length : 0
-    });
-
-  } catch (err) {
-    console.error('F30120 테이블 조회 오류:', err);
-    return jsonError({ 
-      success: false, 
-      error: err.message,
-      details: err.toString()
-    });
-  }
+		return jsonOk({
+			success: true,
+			data: result.recordset || [],
+			count: result.recordset ? result.recordset.length : 0
+		});
+	} catch (err) {
+		console.error('F30120 테이블 조회 오류:', err);
+		return jsonError({
+			success: false,
+			error: err.message,
+			details: err.toString()
+		});
+	}
 }
 
 export async function POST(req) {
-  try {
-    const searchParams = req.nextUrl.searchParams;
-    const ancd = searchParams.get('ancd'); // optional, 세션 검증용
+	try {
+		const searchParams = req.nextUrl.searchParams;
+		const ancd = searchParams.get('ancd');
 
-    const gate = assertAnCdMatchesSession(req, ancd || null);
-    if (!gate.ok) return gate.response;
+		const gate = assertAnCdMatchesSession(req, ancd || null);
+		if (!gate.ok) return gate.response;
 
-    const pool = await connPool;
-    if (!pool) {
-      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
-    }
+		const pool = await connPool;
+		if (!pool) {
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		}
+		await ensureO2SatColumn(pool);
 
-    const body = await req.json();
-    const { rsdt, pnums } = body || {};
+		const body = await req.json();
+		const { rsdt, pnums } = body || {};
 
-    if (!rsdt || !Array.isArray(pnums)) {
-      return jsonError({ success: false, error: 'rsdt와 pnums 배열이 필요합니다' }, 400);
-    }
+		if (!rsdt || !Array.isArray(pnums)) {
+			return jsonError({ success: false, error: 'rsdt와 pnums 배열이 필요합니다' }, 400);
+		}
 
-    const rsdtDigits = String(rsdt).includes('-') ? String(rsdt).replace(/-/g, '') : String(rsdt);
-    if (!/^\d{8}$/.test(rsdtDigits)) {
-      return jsonError({ success: false, error: 'rsdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }, 400);
-    }
+		const rsdtDigits = formatDateForDB(String(rsdt));
+		if (!rsdtDigits || !/^\d{8}$/.test(rsdtDigits)) {
+			return jsonError({ success: false, error: 'rsdt 형식이 올바르지 않습니다 (yyyy-mm-dd 또는 yyyymmdd)' }, 400);
+		}
 
-    const now = new Date();
-    const nowStr = now.toISOString().slice(0, 19).replace('T', ' ');
+		const now = new Date();
+		const nowStr = now.toISOString().slice(0, 19).replace('T', ' ');
 
-    const results = [];
-    for (let i = 0; i < pnums.length; i++) {
-      const pnum = pnums[i];
-      if (pnum == null || String(pnum).trim() === '') continue;
+		const results = [];
+		for (let i = 0; i < pnums.length; i++) {
+			const pnum = pnums[i];
+			if (pnum == null || String(pnum).trim() === '') continue;
 
-      const request = pool.request();
-      request.input('ANCD', gate.sessionAncd);
-      request.input('PNUM', String(pnum).trim());
-      request.input('RSDT', rsdtDigits);
-      request.input('INDT', nowStr);
+			const request = pool.request();
+			request.input('ANCD', gate.sessionAncd);
+			request.input('PNUM', String(pnum).trim());
+			request.input('RSDT', rsdtDigits);
+			request.input('INDT', nowStr);
 
-      // 공란(빈값)으로 생성. MATCHED는 유지(스킵)하여 기존 입력값을 덮어쓰지 않음.
-      const query = `
+			const query = `
         MERGE [돌봄시설DB].[dbo].[F30120] AS T
         USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, @RSDT AS RSDT) AS S
           ON (T.[ANCD] = S.[ANCD] AND CAST(T.[PNUM] AS VARCHAR) = CAST(S.[PNUM] AS VARCHAR) AND T.[RSDT] = S.[RSDT])
@@ -192,24 +206,157 @@ export async function POST(req) {
             [ANCD],[PNUM],[RSDT],
             [SBDS],[EBDS],[SBDP],[EBDP],[TMPBD],[PUCNT],[BRCNT],[WEIGHT],[HEIGHT],
             [BJYN],[BJDG],[BJPA],[NUDES],
-            [INDT]
+            [INDT],
+            [NS_MEDI_CHK],[NS_JUSA_CHK],[NS_ACT_CHK],[NS_FAL_CHK],[NS_DRY_CHK],[NS_DNG_CHK],
+            [NS_PAN_CHK],[NS_DLM_CHK],[NS_SORE_MNG],[NS_SORE_DESC],[NS_WRITE_NAME],
+            [WATER_INTAKE],[DRESSING_FLAG],[O2_SAT]
           )
           VALUES (
             @ANCD,@PNUM,@RSDT,
             NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
             NULL,NULL,NULL,'',
-            @INDT
+            @INDT,
+            NULL,NULL,NULL,NULL,NULL,NULL,
+            NULL,NULL,NULL,NULL,NULL,
+            NULL,NULL,NULL
           );
       `;
 
-      const result = await request.query(query);
-      results.push({ index: i, pnum: String(pnum).trim(), ok: true, rowsAffected: result.rowsAffected || [] });
-    }
+			const result = await request.query(query);
+			results.push({ index: i, pnum: String(pnum).trim(), ok: true, rowsAffected: result.rowsAffected || [] });
+		}
 
-    return jsonOk({ success: true, data: results, count: results.length });
-  } catch (err) {
-    console.error('F30120 저장(공란 생성) 오류:', err);
-    return jsonError({ success: false, error: err.message, details: err.toString() });
-  }
+		return jsonOk({ success: true, data: results, count: results.length });
+	} catch (err) {
+		console.error('F30120 저장(공란 생성) 오류:', err);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
+	}
 }
 
+/**
+ * 일상(daily) / 주기(periodic) 페이지별 부분 업데이트
+ * body: { rsdt, pnum, scope: 'daily'|'periodic', ...fields }
+ */
+export async function PUT(req) {
+	try {
+		const searchParams = req.nextUrl.searchParams;
+		const ancd = searchParams.get('ancd');
+		const gate = assertAnCdMatchesSession(req, ancd || null);
+		if (!gate.ok) return gate.response;
+
+		const pool = await connPool;
+		if (!pool) {
+			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		}
+		await ensureO2SatColumn(pool);
+
+		const body = await req.json();
+		const rsdtRaw = body?.rsdt ?? body?.RSDT;
+		const pnum = body?.pnum ?? body?.PNUM;
+		const scope = String(body?.scope || '').trim();
+
+		if (!rsdtRaw || pnum == null || String(pnum).trim() === '') {
+			return jsonError({ success: false, error: 'rsdt, pnum이 필요합니다' }, 400);
+		}
+		if (scope !== 'daily' && scope !== 'periodic') {
+			return jsonError({ success: false, error: "scope는 'daily' 또는 'periodic' 이어야 합니다" }, 400);
+		}
+
+		const rsdtDigits = formatDateForDB(String(rsdtRaw));
+		if (!rsdtDigits || !/^\d{8}$/.test(rsdtDigits)) {
+			return jsonError({ success: false, error: 'rsdt 형식이 올바르지 않습니다' }, 400);
+		}
+
+		const request = pool.request();
+		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
+		request.input('PNUM', sql.Int, Number(pnum));
+		request.input('RSDT', sql.VarChar(8), rsdtDigits);
+
+		let setClauses = [];
+
+		if (scope === 'daily') {
+			request.input('SBDP', sql.Int, body.SBDP ?? null);
+			request.input('EBDP', sql.Int, body.EBDP ?? null);
+			request.input('TMPBD', sql.Decimal(3, 1), body.TMPBD ?? null);
+			request.input('PUCNT', sql.Int, body.PUCNT ?? null);
+			request.input('BRCNT', sql.Int, body.BRCNT ?? null);
+			request.input('O2_SAT', sql.Decimal(4, 1), body.O2_SAT ?? null);
+			request.input('NUDES', sql.NVarChar(2000), body.NUDES ?? '');
+			request.input('INEMPNM', sql.VarChar(100), body.INEMPNM ?? null);
+			request.input('NS_WRITE_NAME', sql.NVarChar(20), body.NS_WRITE_NAME ?? body.INEMPNM ?? null);
+			setClauses = [
+				'[SBDP] = @SBDP',
+				'[EBDP] = @EBDP',
+				'[TMPBD] = @TMPBD',
+				'[PUCNT] = @PUCNT',
+				'[BRCNT] = @BRCNT',
+				'[O2_SAT] = @O2_SAT',
+				'[NUDES] = @NUDES',
+				'[INEMPNM] = @INEMPNM',
+				'[NS_WRITE_NAME] = @NS_WRITE_NAME'
+			];
+		} else {
+			request.input('WEIGHT', sql.Decimal(4, 1), body.WEIGHT ?? null);
+			request.input('BJYN', sql.Char(1), body.BJYN ?? null);
+			request.input('BJDG', sql.Char(1), body.BJDG ?? null);
+			request.input('BJPA', sql.NVarChar(100), body.BJPA ?? null);
+			request.input('NS_SORE_MNG', sql.Char(1), body.NS_SORE_MNG ?? null);
+			request.input('NS_SORE_DESC', sql.NVarChar(500), body.NS_SORE_DESC ?? null);
+			request.input('NS_MEDI_CHK', sql.Char(1), body.NS_MEDI_CHK ?? null);
+			request.input('NS_JUSA_CHK', sql.Char(1), body.NS_JUSA_CHK ?? null);
+			request.input('WATER_INTAKE', sql.Int, body.WATER_INTAKE ?? null);
+			request.input('NS_DNG_CHK', sql.Char(1), body.NS_DNG_CHK ?? null);
+			request.input('DRESSING_FLAG', sql.Char(1), body.DRESSING_FLAG ?? null);
+			request.input('NS_PAN_CHK', sql.Char(1), body.NS_PAN_CHK ?? null);
+			request.input('NS_FAL_CHK', sql.Char(1), body.NS_FAL_CHK ?? null);
+			request.input('NS_DRY_CHK', sql.Char(1), body.NS_DRY_CHK ?? null);
+			request.input('NS_DLM_CHK', sql.Char(1), body.NS_DLM_CHK ?? null);
+			request.input('NS_ACT_CHK', sql.Char(1), body.NS_ACT_CHK ?? null);
+			request.input('NUDES', sql.NVarChar(2000), body.NUDES ?? '');
+			request.input('INEMPNM', sql.VarChar(100), body.INEMPNM ?? null);
+			request.input('NS_WRITE_NAME', sql.NVarChar(20), body.NS_WRITE_NAME ?? body.INEMPNM ?? null);
+			setClauses = [
+				'[WEIGHT] = @WEIGHT',
+				'[BJYN] = @BJYN',
+				'[BJDG] = @BJDG',
+				'[BJPA] = @BJPA',
+				'[NS_SORE_MNG] = @NS_SORE_MNG',
+				'[NS_SORE_DESC] = @NS_SORE_DESC',
+				'[NS_MEDI_CHK] = @NS_MEDI_CHK',
+				'[NS_JUSA_CHK] = @NS_JUSA_CHK',
+				'[WATER_INTAKE] = @WATER_INTAKE',
+				'[NS_DNG_CHK] = @NS_DNG_CHK',
+				'[DRESSING_FLAG] = @DRESSING_FLAG',
+				'[NS_PAN_CHK] = @NS_PAN_CHK',
+				'[NS_FAL_CHK] = @NS_FAL_CHK',
+				'[NS_DRY_CHK] = @NS_DRY_CHK',
+				'[NS_DLM_CHK] = @NS_DLM_CHK',
+				'[NS_ACT_CHK] = @NS_ACT_CHK',
+				'[NUDES] = @NUDES',
+				'[INEMPNM] = @INEMPNM',
+				'[NS_WRITE_NAME] = @NS_WRITE_NAME'
+			];
+		}
+
+		const result = await request.query(`
+      UPDATE [돌봄시설DB].[dbo].[F30120]
+      SET ${setClauses.join(',\n          ')}
+      WHERE [ANCD] = @ANCD
+        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+        AND [RSDT] = @RSDT
+    `);
+
+		const affected = Array.isArray(result.rowsAffected)
+			? result.rowsAffected.reduce((a, b) => a + b, 0)
+			: 0;
+
+		if (affected === 0) {
+			return jsonError({ success: false, error: '수정할 행을 찾지 못했습니다' }, 404);
+		}
+
+		return jsonOk({ success: true, affected });
+	} catch (err) {
+		console.error('F30120 수정 오류:', err);
+		return jsonError({ success: false, error: err.message, details: err.toString() });
+	}
+}

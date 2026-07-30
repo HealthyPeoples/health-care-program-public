@@ -94,3 +94,40 @@ export async function attachLatestRoomNoByPnum<T extends { PNUM?: unknown; ROOM_
 		return members;
 	}
 }
+
+/**
+ * F30112(수급자 입력 기준정보)에서 PNUM별 최신 ROOM_NO 조회
+ */
+export async function fetchRoomNoMapFromF30112(
+	pnums: unknown[]
+): Promise<Map<string, string>> {
+	const map = new Map<string, string>();
+	const unique = Array.from(
+		new Set(
+			(Array.isArray(pnums) ? pnums : [])
+				.map((p) => normalizePnumKey(p))
+				.filter(Boolean)
+		)
+	);
+	if (unique.length === 0) return map;
+
+	try {
+		// URL 길이 제한 대비 청크
+		const chunkSize = 80;
+		for (let i = 0; i < unique.length; i += chunkSize) {
+			const chunk = unique.slice(i, i + chunkSize);
+			const res = await fetch(`/api/f30112?pnums=${encodeURIComponent(chunk.join(','))}`);
+			const json = await res.json().catch(() => ({}));
+			if (!json?.success || !Array.isArray(json.data)) continue;
+			json.data.forEach((row: any) => {
+				const key = normalizePnumKey(row?.PNUM);
+				if (!key) return;
+				const room = normalizeRoomNo(row?.ROOM_NO);
+				if (room) map.set(key, room);
+			});
+		}
+	} catch {
+		/* ignore */
+	}
+	return map;
+}
