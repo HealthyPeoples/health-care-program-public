@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f14040 — 프로그램 관련 F14040
+ *
+ * @description
+ * 프로그램 관련 F14040 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f14040/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

@@ -1,4 +1,12 @@
 /**
+ * @file 인지기능평가기록 — 유틸/타입/매퍼 (f51015Mapper.ts)
+ *
+ * @description
+ * 요양원 인지기능평가기록 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/cognitive-assessment-record
+ *
+ * @module component/nursing-home/pages/cognitive-assessment-record/f51015Mapper
+ */
+/**
  * F51015(인지상태평가 / MMSE-DS) 화면 상태 ↔ DB 컬럼 매핑
  * E01~E30: 0=맞음, 1=틀림 / E80 합계(맞음 개수) / E81 해석 / E90 의견 / E91 학력 / E99 입력완료
  */

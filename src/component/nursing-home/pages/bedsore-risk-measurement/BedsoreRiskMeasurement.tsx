@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 욕창위험도측정 — 화면 컴포넌트 (BedsoreRiskMeasurement.tsx)
+ *
+ * @description
+ * 요양원 욕창위험도측정 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/bedsore-risk-measurement
+ *
+ * @module component/nursing-home/pages/bedsore-risk-measurement/BedsoreRiskMeasurement
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

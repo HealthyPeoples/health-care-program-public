@@ -1,4 +1,12 @@
 /**
+ * @file 수급자정보 — 커스텀 훅 (useMemberInfo.test.js)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 커스텀 훅입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/useMemberInfo.test
+ */
+/**
  * useMemberInfo — 훅 export·state/handler·API·부모 연결 최소 검증
  * (비즈니스 로직/fetch 실행 테스트 아님)
  */

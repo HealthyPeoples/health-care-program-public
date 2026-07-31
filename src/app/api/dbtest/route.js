@@ -1,3 +1,11 @@
+/**
+ * @file API /api/dbtest — DB 연결 테스트(개발용)
+ *
+ * @description
+ * DB 연결 테스트(개발용) Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/dbtest/route
+ */
 import { connPool } from '../../../config/server';
 
 export async function GET(req) {

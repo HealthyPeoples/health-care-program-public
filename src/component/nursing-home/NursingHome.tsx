@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 요양원 앱 셸
+ *
+ * @description
+ * 요양원 영역 루트 컴포넌트(메뉴·탭 호스트 연결)입니다.
+ *
+ * @module component/nursing-home/NursingHome
+ */
 import NursingHomeMenu from './organisms/NursingHomeMenu';
 import DayNightCareMenu from './organisms/DayNightCareMenu';
 import ShortTermCareMenu from './organisms/ShortTermCareMenu';

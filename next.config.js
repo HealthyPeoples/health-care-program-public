@@ -1,3 +1,11 @@
+/**
+ * @file Next.js 앱 설정
+ *
+ * @description
+ * standalone 출력, ESLint/TS 빌드 무시, Windows 워치 옵션 등 Next.js 전역 설정입니다.
+ *
+ * @module next.config
+ */
 /** @type {import('next').NextConfig} */
 const isWin = process.platform === 'win32';
 

@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f14030 — 일지/케어 관련 F14030
+ *
+ * @description
+ * 일지/케어 관련 F14030 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f14030/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

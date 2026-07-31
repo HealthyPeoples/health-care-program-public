@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 월 급여명세서 — UI 부분 컴포넌트 (MonthlySalaryStatementGrid.tsx)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementGrid
+ */
 import React from "react";
 
 /** Grid 표시용 행 (부모 StatementRow와 구조적 호환) */

@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — seed-evaluation-checklists-table
+ *
+ * @description
+ * 평가 체크리스트 시드
+ *
+ * @module scripts/seed-evaluation-checklists-table
+ */
+/**
  * 전 기관 EVALUATION_CHECKLISTS_TABLE 시드
  * - 기관(ANCD) + 연도(YEAR) 당 표 형식 1건 (TASKS_JSON)
  * 사용: node scripts/seed-evaluation-checklists-table.js [year]

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file App Router 페이지 — login
+ *
+ * @description
+ * 경로 /login 의 page 엔트리입니다.
+ *
+ * @module app/login/page
+ */
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';

@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file App Router 페이지 — f00110-test
+ *
+ * @description
+ * 경로 /f00110-test 의 page 엔트리입니다.
+ *
+ * @module app/f00110-test/page
+ */
 import { useState, useEffect } from 'react';
 
 interface F00110Data {

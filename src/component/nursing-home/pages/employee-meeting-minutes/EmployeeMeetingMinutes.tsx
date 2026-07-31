@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 직원회의록 — 화면 컴포넌트 (EmployeeMeetingMinutes.tsx)
+ *
+ * @description
+ * 요양원 직원회의록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/employee-meeting-minutes
+ *
+ * @module component/nursing-home/pages/employee-meeting-minutes/EmployeeMeetingMinutes
+ */
 import React, { useEffect, useMemo, useState } from "react";
 import {
 	buildMeetingMinutesPrintHtml,

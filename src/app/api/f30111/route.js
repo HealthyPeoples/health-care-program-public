@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f30111 — 투약시간 F30111
+ *
+ * @description
+ * 투약시간 F30111 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f30111/route
+ */
 import { connPool } from "../../../config/server";
 import { getSessionAncd, ancdEquals } from "../../../config/sessionServer";
 

@@ -1,4 +1,12 @@
 /**
+ * @file 월 급여명세서 — UI 부분 컴포넌트 (MonthlySalaryStatementGrid.test.js)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementGrid.test
+ */
+/**
  * MonthlySalaryStatementGrid — 렌더링·이벤트 전달 최소 검증
  * (비즈니스 로직 테스트 없음. 신규 라이브러리 미추가 — typescript transpile + react-dom/server)
  *

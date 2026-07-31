@@ -1,3 +1,11 @@
+/**
+ * @file API /api/evaluation-checklists — 평가 체크리스트 API
+ *
+ * @description
+ * 평가 체크리스트 API Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/evaluation-checklists/route
+ */
 import { connPool } from '../../../config/server';
 import {
 	assertAnCdMatchesSession,

@@ -1,3 +1,11 @@
+/**
+ * @file 장기요양기록양식 — 모듈 (mapF14070.ts)
+ *
+ * @description
+ * 요양원 장기요양기록양식 기능의 모듈입니다. 폴더: component/nursing-home/pages/longterm-record-format
+ *
+ * @module component/nursing-home/pages/longterm-record-format/mapF14070
+ */
 /** F14070 행 → 장기요양급여 제공기록지 화면/출력 상태 */
 
 export type F14070Beneficiary = {

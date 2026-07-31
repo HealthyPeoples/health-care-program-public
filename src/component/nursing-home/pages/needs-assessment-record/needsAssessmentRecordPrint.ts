@@ -1,3 +1,11 @@
+/**
+ * @file 욕구사정기록 — 인쇄 헬퍼 (needsAssessmentRecordPrint.ts)
+ *
+ * @description
+ * 요양원 욕구사정기록 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/needs-assessment-record
+ *
+ * @module component/nursing-home/pages/needs-assessment-record/needsAssessmentRecordPrint
+ */
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {
 	PHYSICAL_ACTIVITY_ITEMS,

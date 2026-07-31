@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 직원근태 — 화면 컴포넌트 (EmployeeAttendance.tsx)
+ *
+ * @description
+ * 요양원 직원근태 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/employee-attendance
+ *
+ * @module component/nursing-home/pages/employee-attendance/EmployeeAttendance
+ */
 import React, { useState, useEffect } from "react";
 import { getCookie } from "@/utils/auth";
 import {

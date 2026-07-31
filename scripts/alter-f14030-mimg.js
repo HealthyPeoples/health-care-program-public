@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — alter-f14030-mimg
+ *
+ * @description
+ * F14030 MIMG 컬럼 ALTER
+ *
+ * @module scripts/alter-f14030-mimg
+ */
+/**
  * F14030.MIMG 컬럼을 NVARCHAR(MAX)로 확장 (사진 JSON 저장용)
  * 실행: node scripts/alter-f14030-mimg.js
  */

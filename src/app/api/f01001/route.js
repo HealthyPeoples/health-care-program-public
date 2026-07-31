@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f01001 — 공지 F01001
+ *
+ * @description
+ * 공지 F01001 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f01001/route
+ */
 import { connPool } from '../../../config/server';
 
 import { normalizeYmd } from '../../../utils/normalizeYmd';

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 월 급여명세서 — 화면 컴포넌트 (MonthlySalaryStatementToolbar.tsx)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementToolbar
+ */
 import React from "react";
 import MonthlySalaryStatementFilter from "./MonthlySalaryStatementFilter";
 

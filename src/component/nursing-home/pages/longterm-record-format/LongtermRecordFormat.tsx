@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 장기요양기록양식 — UI 부분 컴포넌트 (LongtermRecordFormat.tsx)
+ *
+ * @description
+ * 요양원 장기요양기록양식 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/longterm-record-format
+ *
+ * @module component/nursing-home/pages/longterm-record-format/LongtermRecordFormat
+ */
 import { useEffect, useMemo, useState } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

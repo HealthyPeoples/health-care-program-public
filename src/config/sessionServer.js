@@ -1,7 +1,23 @@
 /**
- * httpOnly user_info 쿠키 파싱 및 로그인 세션의 ANCD 조회 (API 라우트용)
+ * @file API 라우트용 세션(ANCD/UGR) 게이트
+ *
+ * @description
+ * `user_info` 쿠키(JSON)에서 기관코드(ANCD)·권한(UGR)을 읽어
+ * 요청 파라미터 ANCD와 일치하는지 검사합니다.
+ *
+ * @remarks
+ * - 쿠키 값에 서명/JWT 검증이 없습니다. `ancd` 필드만 신뢰합니다.
+ * - 로그인 API의 Vercel/TESTMODE 분기·클라이언트 mock 쿠키와 결합되면
+ *   위조 세션으로 쓰기 API를 호출할 수 있으므로 프로덕션에서는 별도 서명 세션이 필요합니다.
+ *
+ * @module sessionServer
  */
 
+/**
+ * user_info 쿠키 raw 문자열을 객체로 파싱합니다 (URL 디코드 최대 2회 시도).
+ * @param {string|undefined|null} raw
+ * @returns {object|null}
+ */
 function parseUserInfoCookieValue(raw) {
   if (!raw) return null;
   try {
@@ -19,11 +35,21 @@ function parseUserInfoCookieValue(raw) {
   }
 }
 
+/**
+ * 요청의 user_info 세션 객체를 반환합니다.
+ * @param {{ cookies: { get: (name: string) => { value?: string } | undefined } }} req
+ * @returns {object|null}
+ */
 function getSessionFromRequest(req) {
   const raw = req.cookies.get('user_info')?.value;
   return parseUserInfoCookieValue(raw);
 }
 
+/**
+ * 세션 ANCD (숫자 가능하면 number, 아니면 string). 없으면 null.
+ * @param {Parameters<typeof getSessionFromRequest>[0]} req
+ * @returns {number|string|null}
+ */
 function getSessionAncd(req) {
   const u = getSessionFromRequest(req);
   if (!u || u.ancd == null || u.ancd === '') return null;

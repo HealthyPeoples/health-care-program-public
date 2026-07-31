@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 수급자현황조회 — 화면 컴포넌트 (BeneficiaryStatusInquiry.tsx)
+ *
+ * @description
+ * 요양원 수급자현황조회 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/beneficiary-status-inquiry
+ *
+ * @module component/nursing-home/pages/beneficiary-status-inquiry/BeneficiaryStatusInquiry
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

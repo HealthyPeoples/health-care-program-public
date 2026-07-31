@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — postbuild
+ *
+ * @description
+ * standalone 빌드 후 static/public 복사
+ *
+ * @module scripts/postbuild
+ */
+/**
  * Cross-platform postbuild: copy static/public into Next standalone output.
  * Replaces .postbuild.sh so Windows local builds work without bash.
  */

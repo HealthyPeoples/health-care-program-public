@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 연계기록 — 화면 컴포넌트 (ConnectionRecord.tsx)
+ *
+ * @description
+ * 요양원 연계기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/connection-record
+ *
+ * @module component/nursing-home/pages/connection-record/ConnectionRecord
+ */
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 수급자정보 — 커스텀 훅 (useMemberInfo.ts)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 커스텀 훅입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/useMemberInfo
+ */
 import { useEffect, useRef, useState } from 'react';
 import {
 	NO_ROOM_VALUE,

@@ -1,3 +1,11 @@
+/**
+ * @file 공통 유틸 — email.js
+ *
+ * @description
+ * 날짜·응답·포맷 등 프로젝트 공통 유틸리티입니다.
+ *
+ * @module utils/email
+ */
 import nodemailer from 'nodemailer';
 
 /**

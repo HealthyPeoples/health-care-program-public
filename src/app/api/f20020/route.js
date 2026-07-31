@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f20020 — 욕구사정/평가 F20020
+ *
+ * @description
+ * 욕구사정/평가 F20020 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f20020/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';

@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 일 장기요양급여제공기록 — 화면 컴포넌트 (DailyLongtermCare.tsx)
+ *
+ * @description
+ * 요양원 일 장기요양급여제공기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/daily-longterm-care
+ *
+ * @module component/nursing-home/pages/daily-longterm-care/DailyLongtermCare
+ */
 import React, { useState, useEffect, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

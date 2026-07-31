@@ -1,3 +1,11 @@
+/**
+ * @file 공통 UI — CallNav.tsx
+ *
+ * @description
+ * 메인/블로그 스타일 공통 UI 컴포넌트입니다.
+ *
+ * @module component/main-/CallNav
+ */
 import React from 'react';
 import Image from 'next/image'
 

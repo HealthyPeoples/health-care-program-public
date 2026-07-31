@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f10010-columns — 수급자 컬럼 메타
+ *
+ * @description
+ * 수급자 컬럼 메타 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f10010-columns/route
+ */
 import { connPool } from '../../../config/server';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';

@@ -1,8 +1,26 @@
+/**
+ * @file F14020(일 실적) ↔ OUTING_INFO(외출·외박 대장) 동기화
+ *
+ * @description
+ * `/api/f14020` POST/DELETE 시 호출되어 외출·외박 대장을 upsert/해제합니다.
+ * UI의 IO_TM_INFO 형식(`HH:mm~HH:mm`, 외박 `HH:mm`, 복귀 `R:HH:mm`,
+ * 외박중 `ON:YYYY-MM-DD|HH:mm`)과 맞춰야 합니다.
+ *
+ * @remarks
+ * `parseIoTmInfo`가 `ON:`을 인식하지 못하면 gyn=2 저장 시
+ * `removeOutingLinksForDay`로 fall-through 되어 대장이 지워질 수 있습니다.
+ * UI(`DailyBeneficiaryPerformance`) 쪽 parseIoTmInfo와 형식을 동기화하세요.
+ *
+ * @module outingF14020Sync
+ */
 const sql = require('mssql');
 
+/** @type {string} 외출·외박 대장 테이블 */
 const OUTING_TABLE = '[돌봄시설DB].[dbo].[OUTING_INFO]';
+/** @type {string} 일 수급자급여실적 테이블 */
 const F14020_TABLE = '[돌봄시설DB].[dbo].[F14020]';
 
+/** 테이블 보장 쿼리 중복 실행 방지 */
 let ensureTablePromise = null;
 
 async function ensureOutingInfoTable(pool) {
@@ -112,6 +130,16 @@ function parseMinutes(t) {
 	return h * 60 + m;
 }
 
+/**
+ * IO_TM_INFO를 sync용 kind로 파싱합니다.
+ *
+ * @param {string|null|undefined} info
+ * @returns {{ kind: 'return'|'range'|'single'|'empty', start: string, end: string, returnTime: string }}
+ *
+ * @remarks
+ * UI와 달리 `ON:날짜|시각`(외박중)을 아직 처리하지 않습니다.
+ * ON: 값이 오면 kind=`empty`가 되어 대장 링크 삭제 경로로 갈 수 있습니다.
+ */
 function parseIoTmInfo(info) {
 	const s = String(info || '').trim();
 	const ret = /^R[:：]?\s*(\d{1,2}:\d{2})$/i.exec(s) || /^복귀\s*[:：]?\s*(\d{1,2}:\d{2})$/.exec(s);
@@ -448,8 +476,15 @@ async function removeOutingLinksForDay(pool, ancd, pnum, svdt) {
 }
 
 /**
- * F14020 → OUTING_INFO
- * gyn/ioTmInfo 기준으로 대장 등록·수정·삭제
+ * F14020 한 행 기준으로 OUTING_INFO를 등록·수정하거나, 해당 없으면 당일 링크를 해제합니다.
+ *
+ * @param {import('mssql').ConnectionPool} pool
+ * @param {number|string} ancd - 기관코드
+ * @param {{ pnum: number|string, svdt: string, gyn: string, ioTmInfo: string }} row
+ * @returns {Promise<void|number|null>}
+ *
+ * 분기: 외출 range → upsert / 외박 start → upsert(preserveEnd) / 복귀 R: → END_DT 갱신 /
+ * 그 외 → {@link removeOutingLinksForDay}
  */
 async function syncOutingFromF14020Row(pool, ancd, { pnum, svdt, gyn, ioTmInfo }) {
 	await ensureOutingInfoTable(pool);
@@ -542,7 +577,13 @@ async function syncOutingFromF14020Row(pool, ancd, { pnum, svdt, gyn, ioTmInfo }
 	await removeOutingLinksForDay(pool, ancd, p, day);
 }
 
-/** F14020 행 삭제 시 대장 정리 (삭제 전 GYN/IO 전달) */
+/**
+ * F14020 행 삭제 시 대장 정리. 삭제 전 GYN/IO를 넘겨 당일 연결을 해제합니다.
+ *
+ * @param {import('mssql').ConnectionPool} pool
+ * @param {number|string} ancd
+ * @param {{ pnum: number|string, svdt: string, prevGyn?: string, prevIoTmInfo?: string }} args
+ */
 async function syncOutingOnF14020Delete(pool, ancd, { pnum, svdt, prevGyn, prevIoTmInfo }) {
 	await ensureOutingInfoTable(pool);
 	const p = Number(pnum);

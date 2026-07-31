@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — migrate-evaluation-checklists-one-row
+ *
+ * @description
+ * 평가 체크리스트 1행 마이그레이션
+ *
+ * @module scripts/migrate-evaluation-checklists-one-row
+ */
+/**
  * EVALUATION_CHECKLISTS → 직원·연도당 1건(CHECKS_JSON) 마이그레이션
  * node scripts/migrate-evaluation-checklists-one-row.js
  */

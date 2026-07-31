@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 집중배설관찰 — 화면 컴포넌트 (IntensiveExcretionObservation.tsx)
+ *
+ * @description
+ * 요양원 집중배설관찰 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/intensive-excretion-observation
+ *
+ * @module component/nursing-home/pages/intensive-excretion-observation/IntensiveExcretionObservation
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';

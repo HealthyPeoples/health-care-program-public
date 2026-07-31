@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 보호자정보 — 화면 컴포넌트 (GuardianInfo.tsx)
+ *
+ * @description
+ * 요양원 보호자정보 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/guardian-info
+ *
+ * @module component/nursing-home/pages/guardian-info/GuardianInfo
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

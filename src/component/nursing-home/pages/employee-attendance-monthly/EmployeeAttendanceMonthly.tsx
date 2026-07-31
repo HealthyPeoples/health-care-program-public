@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 직원근태(월간) — 화면 컴포넌트 (EmployeeAttendanceMonthly.tsx)
+ *
+ * @description
+ * 요양원 직원근태(월간) 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/employee-attendance-monthly
+ *
+ * @module component/nursing-home/pages/employee-attendance-monthly/EmployeeAttendanceMonthly
+ */
 import React, { useState, useEffect, useCallback } from "react";
 import {
 	buildMonthlyAttendancePrintHtml,

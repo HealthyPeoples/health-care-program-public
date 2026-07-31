@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f10010/search — 수급자 기본정보 F10010
+ *
+ * @description
+ * 수급자 기본정보 F10010 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f10010/search/route
+ */
 import { connPool } from '../../../../config/server';
 import { NextRequest } from 'next/server';
 import { getSessionAncd } from '../../../../config/sessionServer';

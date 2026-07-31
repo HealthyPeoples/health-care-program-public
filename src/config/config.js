@@ -1,3 +1,11 @@
+/**
+ * @file 서버/앱 설정 — config.js
+ *
+ * @description
+ * DB 풀·세션·환경 등 서버 설정 모듈입니다.
+ *
+ * @module config/config
+ */
 require('dotenv').config();
 
 const dbServer = (process.env.DB_DEV_SERVER || '').trim();

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 공지등록 — 화면 컴포넌트 (NoticeRegistration.tsx)
+ *
+ * @description
+ * 요양원 공지등록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/notice-registration
+ *
+ * @module component/nursing-home/pages/notice-registration/NoticeRegistration
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	buildNoticePrintHtml,

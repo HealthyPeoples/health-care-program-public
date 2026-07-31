@@ -1,3 +1,11 @@
+/**
+ * @file 단체자원봉사실적 — 인쇄 헬퍼 (groupVolunteerPerformancePrint.ts)
+ *
+ * @description
+ * 요양원 단체자원봉사실적 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/group-volunteer-performance
+ *
+ * @module component/nursing-home/pages/group-volunteer-performance/groupVolunteerPerformancePrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export { openPrintPreviewWindow };

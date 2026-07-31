@@ -1,3 +1,11 @@
+/**
+ * @file CompanyInfoMain.tsx
+ *
+ * @description
+ * src/component/company-info/CompanyInfoMain.tsx 모듈입니다.
+ *
+ * @module component/company-info/CompanyInfoMain
+ */
 import React from 'react';
 import { MainContainer } from '../../containers'
 import { HeaderImg } from '../common'

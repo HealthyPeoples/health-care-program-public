@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f90030-columns — 등급별급여표 컬럼 메타
+ *
+ * @description
+ * 등급별급여표 컬럼 메타 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f90030-columns/route
+ */
 import { connPool } from '../../../config/server';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';

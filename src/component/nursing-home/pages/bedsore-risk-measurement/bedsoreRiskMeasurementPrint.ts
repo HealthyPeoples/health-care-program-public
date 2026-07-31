@@ -1,3 +1,11 @@
+/**
+ * @file 욕창위험도측정 — 인쇄 헬퍼 (bedsoreRiskMeasurementPrint.ts)
+ *
+ * @description
+ * 요양원 욕창위험도측정 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/bedsore-risk-measurement
+ *
+ * @module component/nursing-home/pages/bedsore-risk-measurement/bedsoreRiskMeasurementPrint
+ */
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {
 	A01_OPTIONS,

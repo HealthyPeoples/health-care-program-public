@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f00110 — 시설(기관) 기본정보 F00110
+ *
+ * @description
+ * 시설(기관) 기본정보 F00110 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f00110/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdAccess, assertAnCdMatchesSession, getSessionAncd } from '../../../config/sessionServer';
 

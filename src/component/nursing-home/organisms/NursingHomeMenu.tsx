@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 요양원 UI — NursingHomeMenu.tsx
+ *
+ * @description
+ * 요양원 공통 UI(메뉴·패널 등) 컴포넌트입니다.
+ *
+ * @module component/nursing-home/organisms/NursingHomeMenu
+ */
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { sections3 } from '../menuData';

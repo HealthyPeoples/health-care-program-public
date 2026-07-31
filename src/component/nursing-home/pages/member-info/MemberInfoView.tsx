@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 수급자정보 — UI 부분 컴포넌트 (MemberInfoView.tsx)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoView
+ */
 import React from 'react';
 import MemberInfoList from './MemberInfoList';
 import MemberInfoDetailHeader from './MemberInfoDetailHeader';

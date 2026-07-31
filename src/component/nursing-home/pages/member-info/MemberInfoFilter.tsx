@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 수급자정보 — 화면 컴포넌트 (MemberInfoFilter.tsx)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoFilter
+ */
 import React from 'react';
 
 export type MemberInfoFilterProps = {

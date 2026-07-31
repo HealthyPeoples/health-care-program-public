@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f71031 — 건강검진 F71031
+ *
+ * @description
+ * 건강검진 F71031 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f71031/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

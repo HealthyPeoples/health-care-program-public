@@ -1,4 +1,12 @@
 /**
+ * @file 수급자정보 — 유틸/타입/매퍼 (MemberInfoUtils.test.js)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoUtils.test
+ */
+/**
  * MemberInfoUtils — 순수 유틸 export·동작 최소 검증
  */
 const { describe, it, before, after } = require('node:test');

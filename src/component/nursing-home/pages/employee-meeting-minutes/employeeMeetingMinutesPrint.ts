@@ -1,3 +1,11 @@
+/**
+ * @file 직원회의록 — 인쇄 헬퍼 (employeeMeetingMinutesPrint.ts)
+ *
+ * @description
+ * 요양원 직원회의록 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/employee-meeting-minutes
+ *
+ * @module component/nursing-home/pages/employee-meeting-minutes/employeeMeetingMinutesPrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export type MeetingMinutesPrintData = {

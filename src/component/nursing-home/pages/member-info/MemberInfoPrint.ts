@@ -1,3 +1,11 @@
+/**
+ * @file 수급자정보 — 인쇄 헬퍼 (MemberInfoPrint.ts)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoPrint
+ */
 import {
 	escapeHtml,
 	fmtSex,

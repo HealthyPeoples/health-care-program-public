@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 상담기록 — 화면 컴포넌트 (CounselingRecord.tsx)
+ *
+ * @description
+ * 요양원 상담기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/counseling-record
+ *
+ * @module component/nursing-home/pages/counseling-record/CounselingRecord
+ */
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

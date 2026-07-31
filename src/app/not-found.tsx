@@ -1,3 +1,11 @@
+/**
+ * @file App Router 404
+ *
+ * @description
+ * 해당 세그먼트 not-found 페이지입니다.
+ *
+ * @module app/not-found
+ */
 import Link from 'next/link'
 
 export default function NotFound() {

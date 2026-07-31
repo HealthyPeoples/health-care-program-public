@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f33040 — 배설관찰 F33040
+ *
+ * @description
+ * 배설관찰 F33040 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f33040/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, parseUserInfoCookieValue } from '../../../config/sessionServer';
 

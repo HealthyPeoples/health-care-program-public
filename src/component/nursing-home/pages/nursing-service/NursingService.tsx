@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 간호서비스 — 화면 컴포넌트 (NursingService.tsx)
+ *
+ * @description
+ * 요양원 간호서비스 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/nursing-service
+ *
+ * @module component/nursing-home/pages/nursing-service/NursingService
+ */
 import React, { useEffect, useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
 import { useTabRefresh } from "../../hooks/useTabRefresh";

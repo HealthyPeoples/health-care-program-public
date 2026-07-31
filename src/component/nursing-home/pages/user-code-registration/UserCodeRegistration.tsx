@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 사용자코드등록 — 화면 컴포넌트 (UserCodeRegistration.tsx)
+ *
+ * @description
+ * 요양원 사용자코드등록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/user-code-registration
+ *
+ * @module component/nursing-home/pages/user-code-registration/UserCodeRegistration
+ */
 import React, { useMemo, useState } from "react";
 
 interface UserAccountRow {

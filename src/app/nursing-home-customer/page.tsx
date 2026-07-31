@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file App Router 페이지 — nursing-home-customer
+ *
+ * @description
+ * 경로 /nursing-home-customer 의 page 엔트리입니다.
+ *
+ * @module app/nursing-home-customer/page
+ */
 import { useState, useEffect } from 'react';
 
 interface CenterData {

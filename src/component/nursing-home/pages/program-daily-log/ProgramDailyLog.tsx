@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 프로그램일지 — 화면 컴포넌트 (ProgramDailyLog.tsx)
+ *
+ * @description
+ * 요양원 프로그램일지 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/program-daily-log
+ *
+ * @module component/nursing-home/pages/program-daily-log/ProgramDailyLog
+ */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 
 /** F14030 행 */

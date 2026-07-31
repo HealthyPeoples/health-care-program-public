@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 장기요양수급자현황 — 화면 컴포넌트 (LongtermBeneficiaryStatus.tsx)
+ *
+ * @description
+ * 요양원 장기요양수급자현황 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/longterm-beneficiary-status
+ *
+ * @module component/nursing-home/pages/longterm-beneficiary-status/LongtermBeneficiaryStatus
+ */
 import { useState, type ReactNode } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

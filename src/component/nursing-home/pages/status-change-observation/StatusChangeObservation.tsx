@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 상태변화관찰 — 화면 컴포넌트 (StatusChangeObservation.tsx)
+ *
+ * @description
+ * 요양원 상태변화관찰 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/status-change-observation
+ *
+ * @module component/nursing-home/pages/status-change-observation/StatusChangeObservation
+ */
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f11040 — 직원 매핑/배정 F11040
+ *
+ * @description
+ * 직원 매핑/배정 F11040 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f11040/route
+ */
 import { connPool } from '../../../config/server';
 import { NextRequest } from 'next/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';

@@ -1,3 +1,11 @@
+/**
+ * @file 시설일일일정 — 인쇄 헬퍼 (facilityDailySchedulePrint.ts)
+ *
+ * @description
+ * 요양원 시설일일일정 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/facility-daily-schedule
+ *
+ * @module component/nursing-home/pages/facility-daily-schedule/facilityDailySchedulePrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export type FacilitySchedulePrintRow = {

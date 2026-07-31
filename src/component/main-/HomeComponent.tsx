@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file 공통 UI — HomeComponent.tsx
+ *
+ * @description
+ * 메인/블로그 스타일 공통 UI 컴포넌트입니다.
+ *
+ * @module component/main-/HomeComponent
+ */
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { checkAuth } from '@/utils/auth';

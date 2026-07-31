@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — v30030rPrint.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/v30030rPrint
+ */
 /** V30030R 출력 HTML (간호일지 / 건강 관리 기록부) */
 
 function esc(v: unknown): string {

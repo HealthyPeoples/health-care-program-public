@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f60030 — 연간일정 F60030
+ *
+ * @description
+ * 연간일정 F60030 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f60030/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

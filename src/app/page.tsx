@@ -1,3 +1,11 @@
+/**
+ * @file App Router 페이지 — root
+ *
+ * @description
+ * 경로 / 의 page 엔트리입니다.
+ *
+ * @module app/page
+ */
 import { HomeComponent } from '../component/main-'
 
 import Image from 'next/image'

@@ -1,4 +1,12 @@
 /**
+ * @file 공통 유틸 — apiResponse.test.js
+ *
+ * @description
+ * 날짜·응답·포맷 등 프로젝트 공통 유틸리티입니다.
+ *
+ * @module utils/apiResponse.test
+ */
+/**
  * apiResponse (jsonOk / jsonError) 단위 테스트
  * 실행: npm test  또는  node --test src/utils/apiResponse.test.js
  *

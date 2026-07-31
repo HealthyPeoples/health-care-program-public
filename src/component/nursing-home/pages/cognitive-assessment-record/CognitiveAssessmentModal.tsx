@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 인지기능평가기록 — UI 부분 컴포넌트 (CognitiveAssessmentModal.tsx)
+ *
+ * @description
+ * 요양원 인지기능평가기록 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/cognitive-assessment-record
+ *
+ * @module component/nursing-home/pages/cognitive-assessment-record/CognitiveAssessmentModal
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
 	ASSESSMENT_ITEMS,

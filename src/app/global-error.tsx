@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file global-error.tsx
+ *
+ * @description
+ * src/app/global-error.tsx 모듈입니다.
+ *
+ * @module app/global-error
+ */
 import { useEffect } from 'react';
 
 export default function GlobalError({

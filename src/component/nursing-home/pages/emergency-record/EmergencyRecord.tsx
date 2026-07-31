@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 응급기록 — 화면 컴포넌트 (EmergencyRecord.tsx)
+ *
+ * @description
+ * 요양원 응급기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/emergency-record
+ *
+ * @module component/nursing-home/pages/emergency-record/EmergencyRecord
+ */
 import React, { useState } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

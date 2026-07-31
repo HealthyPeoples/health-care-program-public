@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 사실확인서 — 화면 컴포넌트 (FactVerification.tsx)
+ *
+ * @description
+ * 요양원 사실확인서 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/fact-verification
+ *
+ * @module component/nursing-home/pages/fact-verification/FactVerification
+ */
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

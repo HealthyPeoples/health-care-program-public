@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f11080 — 직원 교육/회의 F11080
+ *
+ * @description
+ * 직원 교육/회의 F11080 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f11080/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 유치도뇨 — 화면 컴포넌트 (IndwellingCatheter.tsx)
+ *
+ * @description
+ * 요양원 유치도뇨 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/indwelling-catheter
+ *
+ * @module component/nursing-home/pages/indwelling-catheter/IndwellingCatheter
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';

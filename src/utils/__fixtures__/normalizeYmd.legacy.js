@@ -1,4 +1,12 @@
 /**
+ * @file 공통 유틸 — normalizeYmd.legacy.js
+ *
+ * @description
+ * 날짜·응답·포맷 등 프로젝트 공통 유틸리티입니다.
+ *
+ * @module utils/__fixtures__/normalizeYmd.legacy
+ */
+/**
  * 공통화 이전 API route에 있던 normalizeYmd 구현 스냅샷 (동작 동등성 검증용).
  * 이 파일은 의도적으로 수정하지 않습니다.
  */

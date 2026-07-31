@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file 공통 유틸 — auth.ts
+ *
+ * @description
+ * 날짜·응답·포맷 등 프로젝트 공통 유틸리티입니다.
+ *
+ * @module utils/auth
+ */
 // 클라이언트에서 쿠키 읽기
 export function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;

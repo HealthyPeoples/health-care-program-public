@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 단체자원봉사실적 — 화면 컴포넌트 (GroupVolunteerPerformance.tsx)
+ *
+ * @description
+ * 요양원 단체자원봉사실적 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/group-volunteer-performance
+ *
+ * @module component/nursing-home/pages/group-volunteer-performance/GroupVolunteerPerformance
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	buildGroupVolunteerContentBatchPrintHtml,

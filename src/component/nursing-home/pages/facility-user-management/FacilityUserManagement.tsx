@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 시설사용자관리 — 화면 컴포넌트 (FacilityUserManagement.tsx)
+ *
+ * @description
+ * 요양원 시설사용자관리 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/facility-user-management
+ *
+ * @module component/nursing-home/pages/facility-user-management/FacilityUserManagement
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import FacilityUserLinkModal, {
 	EMPTY_LINK_DRAFT,

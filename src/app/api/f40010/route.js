@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f40010 — 물리치료 기준 F40010
+ *
+ * @description
+ * 물리치료 기준 F40010 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f40010/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

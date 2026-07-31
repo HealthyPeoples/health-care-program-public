@@ -1,3 +1,21 @@
+/**
+ * @file API `/api/f14020` — 일 수급자급여실적(F14020) CRUD 및 특수 액션
+ *
+ * @description
+ * 식사·케어 필드 MERGE, 전체추가(generate), 외박복귀(returnFromOvernight),
+ * 입퇴소 급여50% 동기화(syncAdmitDischargePay), 간식일괄(bulkSnack)을 처리합니다.
+ * 모든 핸들러는 `assertAnCdMatchesSession`으로 세션 ANCD를 검사합니다.
+ *
+ * @actions
+ * | method | action / 용도 |
+ * |--------|----------------|
+ * | GET    | 일자별 목록, overnightPending |
+ * | POST   | rows MERGE, generate, returnFromOvernight, syncAdmitDischargePay, bulkSnack |
+ * | DELETE | 행 삭제 + OUTING_INFO 동기화 |
+ *
+ * @see src/lib/outingF14020Sync.js
+ * @see DailyBeneficiaryPerformance.tsx
+ */
 import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
@@ -7,6 +25,8 @@ const {
 	syncOutingFromF14020Row,
 	syncOutingOnF14020Delete
 } = require('../../../lib/outingF14020Sync');
+
+/** @type {string[]} 일일 케어(요양·간호·재활 등) 컬럼 — DailyLongtermCare와 공유 */
 const CARE_COLUMNS = [
 	'PH_HEAD_HELP',
 	'PH_BATH_HELP',
@@ -50,6 +70,7 @@ const CARE_COLUMNS = [
 	'GINFO'
 ];
 
+/** @type {string[]} 식사·외출·급여50% 관련 컬럼 — 일 수급자급여실적 화면 */
 const MEAL_COLUMNS = [
 	'ST_PLAC',
 	'ST_KIND',
@@ -72,12 +93,18 @@ const MEAL_COLUMNS = [
 	'IO_TM_INFO'
 ];
 
+/** YYYY-MM-DD 또는 YYYYMMDD 형식인지 검사합니다. */
 function validateDate(dateStr) {
 	if (!dateStr) return false;
 	if (dateStr.includes('-')) return /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
 	return dateStr.length === 8 && !isNaN(dateStr);
 }
 
+/**
+ * SVDT용 날짜를 `YYYY-MM-DD`로 정규화합니다.
+ * @param {string|Date|null|undefined} dateStr
+ * @returns {string}
+ */
 function toSvdtIso(dateStr) {
 	if (dateStr == null || dateStr === '') return '';
 	if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
@@ -149,7 +176,14 @@ function extractLeaveTimeFromIo(info) {
 	return '';
 }
 
-/** 외박 복귀 대상: 당일 외박중(ON:) 또는 이전 실적 외박(GYN=2)인데 당일 행 없음 */
+/**
+ * 외박 복귀 모달용 대기 목록.
+ * 당일 외박중(ON:) 또는 이전 실적이 외박(GYN=2)인데 당일 행이 없는 수급자.
+ *
+ * @param {import('mssql').ConnectionPool} pool
+ * @param {number|string} ancd
+ * @param {string} svdtIso - YYYY-MM-DD
+ */
 async function fetchOvernightPending(pool, ancd, svdtIso) {
 	const request = pool.request();
 	request.input('ANCD', ancd);
@@ -328,7 +362,11 @@ function calcReturnPayComGu(_returnTime) {
 	return '0';
 }
 
-/** 입소 당일: 입소시각~24시 체류 ≤12h → PAY_COM_GU=1 */
+/**
+ * 입소 당일: 입소시각~24시 체류 ≤12h 이면 PAY_COM_GU=1(50%).
+ * @param {string} admitTime - HH:mm
+ * @returns {'0'|'1'}
+ */
 function calcAdmitPayComGu(admitTime) {
 	const t = padTime5Server(admitTime);
 	const m = /^(\d{1,2}):(\d{2})$/.exec(t);
@@ -339,7 +377,11 @@ function calcAdmitPayComGu(admitTime) {
 	return facilityHours <= 12 ? '1' : '0';
 }
 
-/** 퇴소 당일: 0시~퇴소시각 체류 ≤12h → PAY_COM_GU=1 */
+/**
+ * 퇴소 당일: 0시~퇴소시각 체류 ≤12h 이면 PAY_COM_GU=1(50%).
+ * @param {string} dischargeTime - HH:mm
+ * @returns {'0'|'1'}
+ */
 function calcDischargePayComGu(dischargeTime) {
 	const t = padTime5Server(dischargeTime);
 	const m = /^(\d{1,2}):(\d{2})$/.exec(t);
@@ -349,6 +391,10 @@ function calcDischargePayComGu(dischargeTime) {
 	return minutes / 60 <= 12 ? '1' : '0';
 }
 
+/**
+ * 일자별 F14020 목록 또는 overnightPending 조회.
+ * @param {Request} req - query: ancd, svdt, action?
+ */
 export async function GET(req) {
 	try {
 		const searchParams = req.nextUrl.searchParams;
@@ -442,6 +488,14 @@ export async function GET(req) {
 	}
 }
 
+/**
+ * 실적 저장(MERGE) 및 특수 액션(generate / returnFromOvernight / syncAdmitDischargePay / bulkSnack).
+ * 저장 후 {@link syncOutingFromF14020Row}로 외출대장을 동기화합니다.
+ *
+ * @param {Request} req
+ * @remarks
+ * returnFromOvernight의 WHEN MATCHED는 식사 컬럼을 '1'로 덮어쓸 수 있습니다.
+ */
 export async function POST(req) {
 	try {
 		const searchParams = req.nextUrl.searchParams;
@@ -821,6 +875,10 @@ export async function POST(req) {
 	}
 }
 
+/**
+ * F14020 행 삭제 후 외출대장 정리.
+ * @param {Request} req - query/body: ancd, pnum, svdt
+ */
 export async function DELETE(req) {
 	try {
 		const searchParams = req.nextUrl.searchParams;

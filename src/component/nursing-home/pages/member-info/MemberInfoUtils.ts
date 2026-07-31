@@ -1,3 +1,11 @@
+/**
+ * @file 수급자정보 — 유틸/타입/매퍼 (MemberInfoUtils.ts)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoUtils
+ */
 import { normalizePGrdForSelect } from '../../utils/careGrade';
 
 export interface MemberData {

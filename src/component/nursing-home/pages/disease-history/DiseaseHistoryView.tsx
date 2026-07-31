@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 질병력 — UI 부분 컴포넌트 (DiseaseHistoryView.tsx)
+ *
+ * @description
+ * 요양원 질병력 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/disease-history
+ *
+ * @module component/nursing-home/pages/disease-history/DiseaseHistoryView
+ */
 import React, { useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
 

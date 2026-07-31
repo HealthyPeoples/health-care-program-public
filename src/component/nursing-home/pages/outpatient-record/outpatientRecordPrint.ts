@@ -1,3 +1,11 @@
+/**
+ * @file 외래진료기록 — 인쇄 헬퍼 (outpatientRecordPrint.ts)
+ *
+ * @description
+ * 요양원 외래진료기록 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/outpatient-record
+ *
+ * @module component/nursing-home/pages/outpatient-record/outpatientRecordPrint
+ */
 /** 외래진료비(수급자별) 출력 HTML — R11010A / V11010B */
 
 export type V11010BPrintRow = {

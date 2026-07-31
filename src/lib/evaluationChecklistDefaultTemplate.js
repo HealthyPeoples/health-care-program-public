@@ -1,4 +1,12 @@
 /**
+ * @file 공유 라이브러리 — evaluationChecklistDefaultTemplate.js
+ *
+ * @description
+ * API·화면에서 공유하는 도메인 로직 모듈입니다.
+ *
+ * @module lib/evaluationChecklistDefaultTemplate
+ */
+/**
  * 평가 체크리스트 기본 표 형식 (이미지 기준)
  * EVALUATION_CHECKLISTS_TABLE 시드 / 화면 기본값 공용
  */

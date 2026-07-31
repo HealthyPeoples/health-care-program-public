@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 시설업무일지 — 화면 컴포넌트 (FacilityWorkLog.tsx)
+ *
+ * @description
+ * 요양원 시설업무일지 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/facility-work-log
+ *
+ * @module component/nursing-home/pages/facility-work-log/FacilityWorkLog
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	buildFacilityWorkLogPrintHtml,

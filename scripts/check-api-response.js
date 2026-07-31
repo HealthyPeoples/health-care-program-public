@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — check-api-response
+ *
+ * @description
+ * API 응답 헬퍼 사용 여부 점검
+ *
+ * @module scripts/check-api-response
+ */
+/**
  * jsonOk/jsonError 적용 후 점검:
  * - leftover new Response(JSON.stringify
  * - leftover NextResponse.json (쿠키 경로만 허용)

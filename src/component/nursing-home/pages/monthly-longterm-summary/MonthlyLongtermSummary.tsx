@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 월 장기요양 요약 — 화면 컴포넌트 (MonthlyLongtermSummary.tsx)
+ *
+ * @description
+ * 요양원 월 장기요양 요약 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-longterm-summary
+ *
+ * @module component/nursing-home/pages/monthly-longterm-summary/MonthlyLongtermSummary
+ */
 import React, { useState, useEffect } from 'react';
 
 interface ServicePerformanceData {

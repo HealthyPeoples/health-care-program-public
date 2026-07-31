@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 직원기본정보 — 화면 컴포넌트 (EmployeeBasicInfo.tsx)
+ *
+ * @description
+ * 요양원 직원기본정보 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/employee-basic-info
+ *
+ * @module component/nursing-home/pages/employee-basic-info/EmployeeBasicInfo
+ */
 import React, { useState, useEffect } from 'react';
 
 interface Employee {

@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 활력징후(정기) — 화면 컴포넌트 (VitalSignsPeriodic.tsx)
+ *
+ * @description
+ * 요양원 활력징후(정기) 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/vital-signs-periodic
+ *
+ * @module component/nursing-home/pages/vital-signs-periodic/VitalSignsPeriodic
+ */
 import React, { useState, useEffect } from 'react';
 import {
 	bjdgToLabel,

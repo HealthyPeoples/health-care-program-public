@@ -1,3 +1,11 @@
+/**
+ * @file menuData.ts
+ *
+ * @description
+ * src/component/nursing-home/menuData.ts 모듈입니다.
+ *
+ * @module component/nursing-home/menuData
+ */
 export const sections: Record<string, { name: string; link: string }[]> = {
   '수급자관리': [
     { name: '수급자기본정보관리', link: '/nursingHome/member-info' },

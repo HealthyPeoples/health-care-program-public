@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — excretionObservationFields.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/excretionObservationFields
+ */
 /** F33021 관찰시간구분(VTM_GU) — 1시간 단위 슬롯 */
 export const EXCRETION_TIME_SLOTS = [
 	{ vtmGu: '05', label: '05:00 - 06:00' },

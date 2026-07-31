@@ -1,3 +1,11 @@
+/**
+ * @file CodeRegisterModal.tsx
+ *
+ * @description
+ * src/component/common/CodeRegisterModal.tsx 모듈입니다.
+ *
+ * @module component/common/CodeRegisterModal
+ */
 import React from 'react';
 
 interface CodeRegisterModalProps {

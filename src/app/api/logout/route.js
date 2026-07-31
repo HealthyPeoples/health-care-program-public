@@ -1,3 +1,11 @@
+/**
+ * @file API /api/logout — 로그아웃
+ *
+ * @description
+ * 로그아웃 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/logout/route
+ */
 import { NextResponse } from 'next/server';
 
 import { jsonError } from '../../../utils/apiResponse';

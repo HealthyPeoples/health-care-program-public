@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 장기요양급여제공계획 — 화면 컴포넌트 (LongtermCareRegistration.tsx)
+ *
+ * @description
+ * 요양원 장기요양급여제공계획 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/longterm-care-registration
+ *
+ * @module component/nursing-home/pages/longterm-care-registration/LongtermCareRegistration
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum, normalizeRoomNo } from '../../utils/roomNoFloor';

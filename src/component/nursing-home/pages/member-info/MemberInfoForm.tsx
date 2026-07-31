@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 수급자정보 — UI 부분 컴포넌트 (MemberInfoForm.tsx)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoForm
+ */
 import React from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { formatDateTimeDisplay, toDateInputString, type MemberData } from './MemberInfoUtils';

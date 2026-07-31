@@ -1,3 +1,11 @@
+/**
+ * @file API /api/auth/user-info — 인증(세션 확인·연장·사용자정보)
+ *
+ * @description
+ * 인증(세션 확인·연장·사용자정보) Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/auth/user-info/route
+ */
 import { NextRequest } from 'next/server';
 import { connPool } from '../../../../config/server';
 import { parseUserInfoCookieValue } from '../../../../config/sessionServer';

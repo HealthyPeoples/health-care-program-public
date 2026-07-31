@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 체위변경기록 — 화면 컴포넌트 (PositionChangeRecord.tsx)
+ *
+ * @description
+ * 요양원 체위변경기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/position-change-record
+ *
+ * @module component/nursing-home/pages/position-change-record/PositionChangeRecord
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';

@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — positionChangeFields.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/positionChangeFields
+ */
 import { EXCRETION_TIME_SLOTS, formatDateYmd, labelToVtmGu, vtmGuToLabel } from './excretionObservationFields';
 
 /** F33040 변경시간구분(CHNG_GU) — 배설관찰과 동일 1시간 슬롯 */

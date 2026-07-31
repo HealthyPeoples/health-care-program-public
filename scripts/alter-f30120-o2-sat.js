@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — alter-f30120-o2-sat
+ *
+ * @description
+ * F30120 산소포화도 컬럼 ALTER
+ *
+ * @module scripts/alter-f30120-o2-sat
+ */
+/**
  * F30120.O2_SAT 컬럼 추가 (산소포화도)
  * 실행: node scripts/alter-f30120-o2-sat.js
  */

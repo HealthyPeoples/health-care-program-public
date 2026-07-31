@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file App Router 페이지 — f90030-test
+ *
+ * @description
+ * 경로 /f90030-test 의 page 엔트리입니다.
+ *
+ * @module app/f90030-test/page
+ */
 import { useState, useEffect } from 'react';
 
 interface F90030Data {

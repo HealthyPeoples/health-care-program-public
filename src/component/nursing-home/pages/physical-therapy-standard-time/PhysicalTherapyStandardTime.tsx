@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 물리치료기준시간 — 화면 컴포넌트 (PhysicalTherapyStandardTime.tsx)
+ *
+ * @description
+ * 요양원 물리치료기준시간 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/physical-therapy-standard-time
+ *
+ * @module component/nursing-home/pages/physical-therapy-standard-time/PhysicalTherapyStandardTime
+ */
 import React, { useEffect, useMemo, useState } from 'react';
 
 export default function PhysicalTherapyStandardTime() {

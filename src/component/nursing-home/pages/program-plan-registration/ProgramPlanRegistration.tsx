@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 프로그램계획등록 — 화면 컴포넌트 (ProgramPlanRegistration.tsx)
+ *
+ * @description
+ * 요양원 프로그램계획등록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/program-plan-registration
+ *
+ * @module component/nursing-home/pages/program-plan-registration/ProgramPlanRegistration
+ */
 import React, { useEffect, useMemo, useState } from 'react';
 
 type F14040ProgramRow = {

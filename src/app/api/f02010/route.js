@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f02010 — 사용자코드 F02010
+ *
+ * @description
+ * 사용자코드 F02010 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f02010/route
+ */
 import { connPool } from '../../../config/server';
 import { NextRequest } from 'next/server';
 import { getSessionAncd, ancdEquals } from '../../../config/sessionServer';

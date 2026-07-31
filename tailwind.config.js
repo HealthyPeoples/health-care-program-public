@@ -1,3 +1,11 @@
+/**
+ * @file Tailwind CSS 설정
+ *
+ * @description
+ * content 경로·테마 색/그라데이션 확장 등 Tailwind 설정입니다.
+ *
+ * @module tailwind.config
+ */
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [

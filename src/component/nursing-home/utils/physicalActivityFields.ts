@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — physicalActivityFields.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/physicalActivityFields
+ */
 export const BATH_METH_TO_LABEL: Record<string, string> = {
 	'1': '전신입욕',
 	'2': '샤워식',

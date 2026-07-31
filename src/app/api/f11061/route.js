@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f11061 — 직원 근태(월) F11061
+ *
+ * @description
+ * 직원 근태(월) F11061 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f11061/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 

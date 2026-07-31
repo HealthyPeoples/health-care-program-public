@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 욕창위험도측정 — UI 부분 컴포넌트 (BedsoreRiskAssessmentModal.tsx)
+ *
+ * @description
+ * 요양원 욕창위험도측정 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/bedsore-risk-measurement
+ *
+ * @module component/nursing-home/pages/bedsore-risk-measurement/BedsoreRiskAssessmentModal
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
 	ASSESSMENT_SECTIONS,

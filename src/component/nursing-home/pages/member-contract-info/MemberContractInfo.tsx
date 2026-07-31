@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 수급자계약정보 — 화면 컴포넌트 (MemberContractInfo.tsx)
+ *
+ * @description
+ * 요양원 수급자계약정보 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/member-contract-info
+ *
+ * @module component/nursing-home/pages/member-contract-info/MemberContractInfo
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

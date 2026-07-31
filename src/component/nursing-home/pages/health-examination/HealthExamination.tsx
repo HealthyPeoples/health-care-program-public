@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 건강검진 — 화면 컴포넌트 (HealthExamination.tsx)
+ *
+ * @description
+ * 요양원 건강검진 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/health-examination
+ *
+ * @module component/nursing-home/pages/health-examination/HealthExamination
+ */
 import React, { useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
 

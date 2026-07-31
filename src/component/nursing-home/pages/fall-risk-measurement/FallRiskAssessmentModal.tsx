@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 낙상위험도측정 — UI 부분 컴포넌트 (FallRiskAssessmentModal.tsx)
+ *
+ * @description
+ * 요양원 낙상위험도측정 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/fall-risk-measurement
+ *
+ * @module component/nursing-home/pages/fall-risk-measurement/FallRiskAssessmentModal
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
 	ASSESSMENT_SECTIONS,

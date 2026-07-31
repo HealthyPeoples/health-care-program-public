@@ -1,3 +1,11 @@
+/**
+ * @file API /api/v40100g — 월급여 상세 뷰 V40100G
+ *
+ * @description
+ * 월급여 상세 뷰 V40100G Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/v40100g/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

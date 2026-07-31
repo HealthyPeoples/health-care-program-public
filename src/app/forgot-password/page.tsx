@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file App Router 페이지 — forgot-password
+ *
+ * @description
+ * 경로 /forgot-password 의 page 엔트리입니다.
+ *
+ * @module app/forgot-password/page
+ */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';

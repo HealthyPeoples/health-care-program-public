@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — f30120Fields.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/f30120Fields
+ */
 /** F30120 공통 매핑 헬퍼 (일상/주기 활력증상) */
 
 export function toYmd(raw: unknown): string {

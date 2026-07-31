@@ -1,4 +1,12 @@
 /**
+ * @file 수급자정보 — 화면 컴포넌트 (MemberInfoGuardianCard.test.js)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoGuardianCard.test
+ */
+/**
  * MemberInfoGuardianCard — 관계 표시·수정 모드·스켈레톤 최소 검증
  */
 const { describe, it, before, after } = require('node:test');
