@@ -283,11 +283,20 @@ const initialDetailForm: SalaryDetailForm = {
 const DETAIL_ITEMS_PER_PAGE = 20;
 const DETAIL_PAGE_NUMBER_BLOCK = 5;
 
+/** 현재 월의 이전 월 (YYYY-MM, 로컬 시간 기준) */
+function previousYearMonth() {
+	const now = new Date();
+	const dt = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+	const y = dt.getFullYear();
+	const m = String(dt.getMonth() + 1).padStart(2, "0");
+	return `${y}-${m}`;
+}
+
 export default function MonthlySalaryData() {
 	const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
 
 	// 급여발생자료 (우측) — F40100
-	const [payYearMonth, setPayYearMonth] = useState("2026-01");
+	const [payYearMonth, setPayYearMonth] = useState(() => previousYearMonth());
 	const [payCalcUnit, setPayCalcUnit] = useState(true); // true: 십미만절사 (추후 계산로직 연동)
 	const [recipientFilter, setRecipientFilter] = useState("");
 	const [salaryRecords, setSalaryRecords] = useState<Record<string, unknown>[]>([]);
