@@ -1,0 +1,257 @@
+import { connPool, sql } from '../../../config/server';
+import { assertAnCdMatchesSession } from '../../../config/sessionServer';
+import { jsonOk, jsonError } from '../../../utils/apiResponse';
+
+const TABLE_NAME = '[돌봄시설DB].[dbo].[F30030]';
+
+function toYmd(v) {
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		const y = v.getFullYear();
+		const m = String(v.getMonth() + 1).padStart(2, '0');
+		const d = String(v.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	const s = String(v).trim();
+	if (!s) return '';
+	if (s.includes('T')) return s.split('T')[0].slice(0, 10);
+	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+	const parsed = Date.parse(s);
+	if (!Number.isNaN(parsed)) {
+		const dt = new Date(parsed);
+		const y = dt.getFullYear();
+		const m = String(dt.getMonth() + 1).padStart(2, '0');
+		const d = String(dt.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	return '';
+}
+
+function pick(body, k, fallback = null) {
+	if (!body || typeof body !== 'object') return fallback;
+	if (Object.prototype.hasOwnProperty.call(body, k)) return body[k];
+	const alt = k.toLowerCase();
+	if (alt !== k && Object.prototype.hasOwnProperty.call(body, alt)) return body[alt];
+	return fallback;
+}
+
+function mapRow(r) {
+	if (!r) return null;
+	return {
+		ANCD: r.ANCD,
+		PNUM: r.PNUM,
+		SEQ: r.SEQ,
+		JDES: r.JDES != null ? String(r.JDES) : '',
+		JDT: toYmd(r.JDT),
+		DEL: r.DEL != null ? String(r.DEL).trim() : '',
+		INDT: toYmd(r.INDT),
+		ETC: r.ETC != null ? String(r.ETC) : '',
+		INEMPNO: r.INEMPNO,
+		INEMPNM: r.INEMPNM != null ? String(r.INEMPNM) : '',
+	};
+}
+
+/** GET /api/f30030?pnum= */
+export async function GET(req) {
+	try {
+		const sp = req.nextUrl.searchParams;
+		const gate = assertAnCdMatchesSession(req, sp.get('ancd') || null);
+		if (!gate.ok) return gate.response;
+
+		const pnum = sp.get('pnum');
+		if (!pnum) {
+			return jsonError({ success: false, error: 'pnum 파라미터가 필요합니다' }, 400);
+		}
+
+		const pool = await connPool;
+		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+
+		const request = pool.request();
+		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
+		request.input('PNUM', sql.Int, Number(pnum));
+
+		const result = await request.query(`
+      SELECT *
+      FROM ${TABLE_NAME}
+      WHERE [ANCD] = @ANCD
+        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+        AND ISNULL([DEL], '') <> 'D'
+      ORDER BY [JDT] DESC, [SEQ] DESC
+    `);
+
+		const data = (result.recordset || []).map(mapRow);
+		return jsonOk({ success: true, data, count: data.length });
+	} catch (err) {
+		console.error('F30030 조회 오류:', err);
+		return jsonError({ success: false, error: err.message, details: String(err) });
+	}
+}
+
+/** POST /api/f30030 — 신규 추가 */
+export async function POST(req) {
+	try {
+		const sp = req.nextUrl.searchParams;
+		const gate = assertAnCdMatchesSession(req, sp.get('ancd') || null);
+		if (!gate.ok) return gate.response;
+
+		const body = await req.json().catch(() => ({}));
+		const pnum = pick(body, 'PNUM');
+		const jdes = String(pick(body, 'JDES', '') ?? '').trim();
+		const jdt = toYmd(pick(body, 'JDT'));
+
+		if (pnum == null || String(pnum).trim() === '') {
+			return jsonError({ success: false, error: 'PNUM은 필수입니다' }, 400);
+		}
+		if (!jdes) {
+			return jsonError({ success: false, error: '진단명(JDES)은 필수입니다' }, 400);
+		}
+		if (!jdt || !/^\d{4}-\d{2}-\d{2}$/.test(jdt)) {
+			return jsonError({ success: false, error: '진단일자(JDT)는 YYYY-MM-DD 형식이어야 합니다' }, 400);
+		}
+
+		const pool = await connPool;
+		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+
+		const now = new Date();
+		const indt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+		const seqReq = pool.request();
+		seqReq.input('ANCD', sql.Int, Number(gate.sessionAncd));
+		seqReq.input('PNUM', sql.Int, Number(pnum));
+		const seqResult = await seqReq.query(`
+      SELECT ISNULL(MAX([SEQ]), 0) + 1 AS NEXT_SEQ
+      FROM ${TABLE_NAME}
+      WHERE [ANCD] = @ANCD
+        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+    `);
+		const nextSeq = Number(seqResult.recordset?.[0]?.NEXT_SEQ || 1);
+
+		const request = pool.request();
+		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
+		request.input('PNUM', sql.Int, Number(pnum));
+		request.input('SEQ', sql.Int, nextSeq);
+		request.input('JDES', sql.VarChar(100), jdes.slice(0, 100));
+		request.input('JDT', sql.Date, jdt);
+		request.input('DEL', sql.Char(1), null);
+		request.input('INDT', sql.Date, indt);
+		request.input('ETC', sql.VarChar(100), pick(body, 'ETC', null));
+		request.input('INEMPNM', sql.VarChar(100), pick(body, 'INEMPNM', null));
+
+		await request.query(`
+      INSERT INTO ${TABLE_NAME}
+        ([ANCD],[PNUM],[SEQ],[JDES],[JDT],[DEL],[INDT],[ETC],[INEMPNM])
+      VALUES
+        (@ANCD,@PNUM,@SEQ,@JDES,@JDT,@DEL,@INDT,@ETC,@INEMPNM)
+    `);
+
+		return jsonOk({ success: true, data: { SEQ: nextSeq } });
+	} catch (err) {
+		console.error('F30030 추가 오류:', err);
+		return jsonError({ success: false, error: err.message, details: String(err) });
+	}
+}
+
+/** PUT /api/f30030 — 수정 */
+export async function PUT(req) {
+	try {
+		const sp = req.nextUrl.searchParams;
+		const gate = assertAnCdMatchesSession(req, sp.get('ancd') || null);
+		if (!gate.ok) return gate.response;
+
+		const body = await req.json().catch(() => ({}));
+		const pnum = pick(body, 'PNUM');
+		const seq = pick(body, 'SEQ');
+		const jdes = String(pick(body, 'JDES', '') ?? '').trim();
+		const jdt = toYmd(pick(body, 'JDT'));
+
+		if (pnum == null || seq == null || String(pnum).trim() === '' || String(seq).trim() === '') {
+			return jsonError({ success: false, error: 'PNUM, SEQ는 필수입니다' }, 400);
+		}
+		if (!jdes) {
+			return jsonError({ success: false, error: '진단명(JDES)은 필수입니다' }, 400);
+		}
+		if (!jdt || !/^\d{4}-\d{2}-\d{2}$/.test(jdt)) {
+			return jsonError({ success: false, error: '진단일자(JDT)는 YYYY-MM-DD 형식이어야 합니다' }, 400);
+		}
+
+		const pool = await connPool;
+		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+
+		const request = pool.request();
+		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
+		request.input('PNUM', sql.Int, Number(pnum));
+		request.input('SEQ', sql.Int, Number(seq));
+		request.input('JDES', sql.VarChar(100), jdes.slice(0, 100));
+		request.input('JDT', sql.Date, jdt);
+		request.input('ETC', sql.VarChar(100), pick(body, 'ETC', null));
+		request.input('INEMPNM', sql.VarChar(100), pick(body, 'INEMPNM', null));
+
+		const result = await request.query(`
+      UPDATE ${TABLE_NAME}
+      SET [JDES] = @JDES,
+          [JDT] = @JDT,
+          [ETC] = @ETC,
+          [INEMPNM] = COALESCE(@INEMPNM, [INEMPNM])
+      WHERE [ANCD] = @ANCD
+        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+        AND [SEQ] = @SEQ
+        AND ISNULL([DEL], '') <> 'D'
+    `);
+
+		const affected = Array.isArray(result.rowsAffected)
+			? result.rowsAffected.reduce((a, b) => a + b, 0)
+			: 0;
+		if (affected === 0) {
+			return jsonError({ success: false, error: '수정할 행을 찾지 못했습니다' }, 404);
+		}
+		return jsonOk({ success: true, affected });
+	} catch (err) {
+		console.error('F30030 수정 오류:', err);
+		return jsonError({ success: false, error: err.message, details: String(err) });
+	}
+}
+
+/** DELETE /api/f30030?pnum=&seq= — 논리삭제 DEL='D' */
+export async function DELETE(req) {
+	try {
+		const sp = req.nextUrl.searchParams;
+		const gate = assertAnCdMatchesSession(req, sp.get('ancd') || null);
+		if (!gate.ok) return gate.response;
+
+		const pnum = sp.get('pnum');
+		const seq = sp.get('seq');
+		if (!pnum || seq == null || String(seq).trim() === '') {
+			return jsonError({ success: false, error: 'pnum, seq가 필요합니다' }, 400);
+		}
+
+		const pool = await connPool;
+		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+
+		const request = pool.request();
+		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
+		request.input('PNUM', sql.Int, Number(pnum));
+		request.input('SEQ', sql.Int, Number(seq));
+		request.input('DEL', sql.Char(1), 'D');
+
+		const result = await request.query(`
+      UPDATE ${TABLE_NAME}
+      SET [DEL] = @DEL
+      WHERE [ANCD] = @ANCD
+        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+        AND [SEQ] = @SEQ
+        AND ISNULL([DEL], '') <> 'D'
+    `);
+
+		const affected = Array.isArray(result.rowsAffected)
+			? result.rowsAffected.reduce((a, b) => a + b, 0)
+			: 0;
+		if (affected === 0) {
+			return jsonError({ success: false, error: '삭제할 행을 찾지 못했습니다' }, 404);
+		}
+		return jsonOk({ success: true, affected });
+	} catch (err) {
+		console.error('F30030 삭제 오류:', err);
+		return jsonError({ success: false, error: err.message, details: String(err) });
+	}
+}

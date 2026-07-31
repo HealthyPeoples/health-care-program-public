@@ -9,12 +9,263 @@ interface PerformanceData {
 	birthDate: string;
 	ancd?: string;
 	pnum?: string;
+	svdt?: string; // 서비스일자 YYYY-MM-DD
+	admitDate?: string; // P_SDT
+	admitTime?: string; // P_SDT_TM HH:mm
+	dischargeDate?: string; // P_EDT
+	dischargeTime?: string; // P_EDT_TM HH:mm
 	mealLocation: string; // ST_PLAC
 	mealType: string; // ST_KIND
-	gyn: string; // GYN: '0'=외출, '1'=입원(외박)
+	gyn: string; // GYN: '0'=외출, '1'=입원, '2'=외박
+	gynStartTime: string; // 외출/외박 시작 (IO_TM_INFO)
+	gynEndTime: string; // 외출/외박 종료 (IO_TM_INFO)
+	returnTime: string; // 외박 복귀 시각 (IO_TM_INFO = R:HH:mm)
+	payComGu: string; // PAY_COM_GU: '1'=급여50%적용
+	overnightOngoing?: boolean; // 외박중(출발일 이후~복귀 전)
+	overnightLeaveDate?: string; // 외박 출발일
+	overnightLeaveTime?: string; // 외박 출발시각
 	mealStatus: { breakfast: string; lunch: string; dinner: string }; // MOST, LCST, DNST: '1'=양호, '2'=이상
 	specialNotes: string; // ST_ETC
 	snackStatus: { morning: string; afternoon: string }; // MGST, AGST: '1'=양호, '2'=이상
+}
+
+interface OvernightPendingItem {
+	ANCD?: string | number;
+	PNUM: string | number;
+	P_NM?: string;
+	P_BRDT?: string;
+	PREV_SVDT?: string;
+	PREV_IO_TM_INFO?: string;
+	returnTime: string;
+	selected: boolean;
+}
+
+function padTime5(t: string): string {
+	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
+	if (!m) return '';
+	return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
+}
+
+function parseIoTmInfo(info: string | null | undefined): {
+	start: string;
+	end: string;
+	returnTime: string;
+	overnightOngoing?: boolean;
+	overnightLeaveDate?: string;
+} {
+	const s = String(info || '').trim();
+	// 외박중(중간일): ON:YYYY-MM-DD|HH:mm (깨진 날짜 문자열도 보정)
+	const ongoingStrict = /^ON:(\d{4}-\d{2}-\d{2})\|(\d{1,2}:\d{2})$/i.exec(s);
+	if (ongoingStrict) {
+		return {
+			start: padTime5(ongoingStrict[2]),
+			end: '',
+			returnTime: '',
+			overnightOngoing: true,
+			overnightLeaveDate: ongoingStrict[1],
+		};
+	}
+	const ongoingLoose = /^ON:(.+)\|(\d{1,2}:\d{2})$/i.exec(s);
+	if (ongoingLoose) {
+		const leaveDate = toYmd(ongoingLoose[1]);
+		const leaveTime = padTime5(ongoingLoose[2]);
+		if (leaveDate && leaveTime) {
+			return {
+				start: leaveTime,
+				end: '',
+				returnTime: '',
+				overnightOngoing: true,
+				overnightLeaveDate: leaveDate,
+			};
+		}
+	}
+	const ret = /^R[:：]?\s*(\d{1,2}:\d{2})$/i.exec(s) || /^복귀\s*[:：]?\s*(\d{1,2}:\d{2})$/.exec(s);
+	if (ret) return { start: '', end: '', returnTime: padTime5(ret[1]) };
+	const range = /^(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})$/.exec(s);
+	if (range) return { start: padTime5(range[1]), end: padTime5(range[2]), returnTime: '' };
+	// 외박: 나간 시각만 저장된 경우 (예: "08:00", "08:00:00", "08:00~")
+	const single = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*[~\-–]?\s*$/.exec(s);
+	if (single) return { start: padTime5(`${single[1]}:${single[2]}`), end: '', returnTime: '' };
+	return { start: '', end: '', returnTime: '' };
+}
+
+function formatIoTmInfo(gyn: string, start: string, end: string, returnTime?: string): string {
+	const ret = padTime5(returnTime || '');
+	if (ret) return `R:${ret}`;
+	const a = padTime5(start);
+	const b = padTime5(end);
+	if (!a && !b) return '';
+	if (gyn === '2') return a; // 외박: 나간 시각만
+	if (!a || !b) return a || b;
+	return `${a}~${b}`;
+}
+
+/** 외박중 중간일 IO_TM_INFO */
+function formatOvernightOngoingIoTmInfo(leaveDate: string, leaveTime: string): string {
+	const d = toYmd(leaveDate);
+	const t = padTime5(leaveTime);
+	if (!d || !t) return '';
+	return `ON:${d}|${t}`;
+}
+
+/**
+ * 급여 적용: 외출=항상 100%(0), 외박 출발·외박중=항상 50%(1), 외박 복귀일=항상 100%(0)
+ */
+function calcPayComGu(gyn: string, _start?: string, _end?: string, returnTime?: string): string {
+	if (returnTime && (gyn === '1' || gyn === '')) return '0';
+	if (gyn === '0') return '0';
+	if (gyn === '2') return '1';
+	return '0';
+}
+
+function gynLabel(gyn: string): string {
+	if (gyn === '1') return '입원';
+	if (gyn === '0') return '외출';
+	if (gyn === '2') return '외박';
+	return '';
+}
+
+function toYmd(v: unknown): string {
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		const y = v.getFullYear();
+		const m = String(v.getMonth() + 1).padStart(2, '0');
+		const d = String(v.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	const s = String(v).trim();
+	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+	const parsed = Date.parse(s);
+	if (!Number.isNaN(parsed)) {
+		const dt = new Date(parsed);
+		const y = dt.getFullYear();
+		const m = String(dt.getMonth() + 1).padStart(2, '0');
+		const d = String(dt.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	return '';
+}
+
+function toHm(v: unknown): string {
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		return `${String(v.getHours()).padStart(2, '0')}:${String(v.getMinutes()).padStart(2, '0')}`;
+	}
+	const s = String(v).trim();
+	const colon = s.match(/^(\d{1,2}):(\d{2})/);
+	if (colon) return padTime5(`${colon[1]}:${colon[2]}`);
+	if (/^\d{4}$/.test(s)) return padTime5(`${s.slice(0, 2)}:${s.slice(2)}`);
+	const embedded = s.match(/[T\s](\d{1,2}):(\d{2})/);
+	if (embedded) return padTime5(`${embedded[1]}:${embedded[2]}`);
+	return '';
+}
+
+function getAdmitDischargeFlags(row: PerformanceData, dateYmd: string) {
+	const day = toYmd(dateYmd);
+	const isAdmitDay = !!day && !!row.admitDate && row.admitDate === day;
+	const isDischargeDay = !!day && !!row.dischargeDate && row.dischargeDate === day;
+	return { isAdmitDay, isDischargeDay, isAdmitOrDischargeDay: isAdmitDay || isDischargeDay };
+}
+
+function formatOvernightOngoingLabel(leaveDate?: string, leaveTime?: string): string {
+	const d = toYmd(leaveDate || '');
+	const t = padTime5(leaveTime || '');
+	if (d && t) return `외박중 ${d} ${t}`;
+	if (d) return `외박중 ${d}`;
+	if (t) return `외박중 ${t}`;
+	return '외박중';
+}
+
+function gynDisplayText(row: PerformanceData, dateYmd?: string): string {
+	const day = toYmd(dateYmd || row.svdt || '');
+	const { isAdmitDay, isDischargeDay } = getAdmitDischargeFlags(row, day);
+	const parts: string[] = [];
+	if (isAdmitDay) parts.push(row.admitTime ? `금일 입소 ${row.admitTime}` : '금일 입소');
+	if (isDischargeDay) parts.push(row.dischargeTime ? `금일 퇴소 ${row.dischargeTime}` : '금일 퇴소');
+	if (parts.length) return parts.join(' / ');
+	if (row.overnightOngoing) return formatOvernightOngoingLabel(row.overnightLeaveDate, row.overnightLeaveTime);
+	if (row.returnTime) return `복귀 ${row.returnTime}`;
+	return gynLabel(row.gyn);
+}
+
+function mapApiItemToPerformance(item: any, index: number): PerformanceData {
+	const times = parseIoTmInfo(item.IO_TM_INFO);
+	const gyn = String(item.GYN ?? '0').trim();
+	// 외출/외박/복귀는 신규칙으로 표시 (기존 DB 12시간 규칙 잔존값 무시)
+	const payComGu = calcPayComGu(gyn, times.start, times.end, times.returnTime);
+	const overnightOngoing = !!times.overnightOngoing && gyn === '2';
+	return {
+		id: index + 1,
+		serialNo: Number(item.MENUM) || index + 1,
+		name: item.P_NM || '',
+		birthDate: '',
+		ancd: item.ANCD || '',
+		pnum: item.PNUM || '',
+		svdt: toYmd(item.SVDT),
+		admitDate: toYmd(item.P_SDT),
+		admitTime: toHm(item.P_SDT_TM),
+		dischargeDate: toYmd(item.P_EDT),
+		dischargeTime: toHm(item.P_EDT_TM),
+		mealLocation: item.ST_PLAC || '',
+		mealType: item.ST_KIND || '1',
+		gyn,
+		gynStartTime: times.start,
+		gynEndTime: times.end,
+		returnTime: times.returnTime,
+		payComGu,
+		overnightOngoing,
+		overnightLeaveDate: overnightOngoing ? times.overnightLeaveDate || '' : '',
+		overnightLeaveTime: overnightOngoing ? times.start || '' : '',
+		mealStatus: {
+			breakfast: item.MOST || '1',
+			lunch: item.LCST || '1',
+			dinner: item.DNST || '1'
+		},
+		specialNotes: item.ST_ETC || '',
+		snackStatus: {
+			morning: item.MGST || '1',
+			afternoon: item.AGST || '1'
+		}
+	};
+}
+
+function buildMealSavePayload(r: PerformanceData) {
+	if (r.overnightOngoing) {
+		return {
+			pnum: r.pnum,
+			mealLocation: r.mealLocation,
+			mealType: r.mealType,
+			gyn: '2',
+			mealStatus: r.mealStatus,
+			snackStatus: r.snackStatus,
+			specialNotes: r.specialNotes,
+			payComGu: '1',
+			ioTmInfo: formatOvernightOngoingIoTmInfo(
+				r.overnightLeaveDate || '',
+				r.overnightLeaveTime || r.gynStartTime || ''
+			),
+		};
+	}
+	const isOuting = r.gyn === '0' || r.gyn === '2';
+	const endTime = r.gyn === '2' ? '' : r.gynEndTime;
+	const payComGu = calcPayComGu(r.gyn, r.gynStartTime, endTime, r.returnTime);
+	const ioTmInfo = r.returnTime
+		? formatIoTmInfo(r.gyn, '', '', r.returnTime)
+		: isOuting
+			? formatIoTmInfo(r.gyn, r.gynStartTime, endTime)
+			: '';
+	return {
+		pnum: r.pnum,
+		mealLocation: r.mealLocation,
+		mealType: r.mealType,
+		gyn: r.gyn,
+		mealStatus: r.mealStatus,
+		snackStatus: r.snackStatus,
+		specialNotes: r.specialNotes,
+		payComGu,
+		ioTmInfo
+	};
 }
 
 export default function DailyBeneficiaryPerformance() {
@@ -22,6 +273,7 @@ export default function DailyBeneficiaryPerformance() {
 	const [selectedMember, setSelectedMember] = useState<number | null>(null);
 	const [nextId, setNextId] = useState(1);
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
+	const [editingBackup, setEditingBackup] = useState<PerformanceData | null>(null);
 	const [searchResults, setSearchResults] = useState<{ [key: number | string]: any[] }>({});
 	const [showSearchResults, setShowSearchResults] = useState<{ [key: number | string]: boolean }>({});
 	const searchInputRefs = useRef<{ [key: number | string]: HTMLInputElement | null }>({});
@@ -50,6 +302,10 @@ export default function DailyBeneficiaryPerformance() {
 	const [loadingMemberData, setLoadingMemberData] = useState(false);
 	const [printingMonthly, setPrintingMonthly] = useState(false);
 	const [bulkAdding, setBulkAdding] = useState(false);
+	const [showOvernightReturnModal, setShowOvernightReturnModal] = useState(false);
+	const [overnightPendingList, setOvernightPendingList] = useState<OvernightPendingItem[]>([]);
+	const [loadingOvernightPending, setLoadingOvernightPending] = useState(false);
+	const [savingOvernightReturn, setSavingOvernightReturn] = useState(false);
 
 	// 날짜 변경 함수
 	const handleDateChange = (days: number) => {
@@ -86,27 +342,8 @@ export default function DailyBeneficiaryPerformance() {
 			if (result.success && Array.isArray(result.data)) {
 				// F14020 데이터를 combinedData 형식으로 변환
 				let transformedData: PerformanceData[] = result.data.map((item: any, index: number) => {
-					return {
-						id: index + 1,
-						serialNo: Number(item.MENUM) || index + 1,
-						name: item.P_NM || '',
-						birthDate: formatDate(item.P_BRDT),
-						ancd: item.ANCD || '',
-						pnum: item.PNUM || '',
-						mealLocation: item.ST_PLAC || '',
-						mealType: item.ST_KIND || '1',
-						gyn: item.GYN || '0', // '0'=외출, '1'=입원(외박)
-						mealStatus: {
-							breakfast: item.MOST || '1', // '1'=양호, '2'=이상
-							lunch: item.LCST || '1',
-							dinner: item.DNST || '1'
-						},
-						specialNotes: item.ST_ETC || '',
-						snackStatus: {
-							morning: item.MGST || '1', // '1'=양호, '2'=이상
-							afternoon: item.AGST || '1'
-						}
-					};
+					const row = mapApiItemToPerformance(item, index);
+					return { ...row, birthDate: formatDate(item.P_BRDT) };
 				});
 
 				// 수급자명 가나다순(오름차순) 정렬 후 연번 재부여
@@ -114,16 +351,22 @@ export default function DailyBeneficiaryPerformance() {
 					.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
 					.map((row, idx) => ({ ...row, serialNo: idx + 1 }));
 				
-				setCombinedData(transformedData);
+		setCombinedData(transformedData);
 				setNextId(transformedData.length > 0 ? Math.max(...transformedData.map(d => d.id)) + 1 : 1);
+				setEditingRowId(null);
+				setEditingBackup(null);
 			} else {
 				setCombinedData([]);
 				setNextId(1);
+				setEditingRowId(null);
+				setEditingBackup(null);
 			}
 		} catch (err) {
 			console.error('실적 데이터 조회 오류:', err);
 			setCombinedData([]);
 			setNextId(1);
+			setEditingRowId(null);
+			setEditingBackup(null);
 		} finally {
 			setLoading(false);
 		}
@@ -155,26 +398,86 @@ export default function DailyBeneficiaryPerformance() {
 
 	// 행 삭제 함수
 	const handleDeleteRow = (id: number) => {
-		// 수정 중인 행이 있고 저장하지 않은 경우 경고
-		if (editingRowId === id) {
-			if (confirm('작성한 내용은 저장되지 않습니다. 정말 삭제하시겠습니까?')) {
-				setCombinedData(combinedData.filter(row => row.id !== id));
+		if (confirm('정말 삭제하시겠습니까?')) {
+			setCombinedData(combinedData.filter(row => row.id !== id));
+			if (editingRowId === id) {
 				setEditingRowId(null);
-			}
-		} else {
-			if (confirm('정말 삭제하시겠습니까?')) {
-				setCombinedData(combinedData.filter(row => row.id !== id));
+				setEditingBackup(null);
 			}
 		}
 	};
 
-	// 수정 모드 토글
-	const handleEditClick = (id: number) => {
+	// 수정 취소: 진입 시점 값으로 복원
+	const handleCancelEdit = (id: number) => {
+		if (editingBackup && editingBackup.id === id) {
+			setCombinedData((prev) => prev.map((r) => (r.id === id ? editingBackup : r)));
+		}
+		setEditingRowId(null);
+		setEditingBackup(null);
+		setShowSearchResults((prev) => ({ ...prev, [id]: false }));
+		setSearchResults((prev) => ({ ...prev, [id]: [] }));
+	};
+
+	// 수정 모드 토글 (+ 저장 시 F14020 업서트)
+	const handleEditClick = async (id: number) => {
 		if (editingRowId === id) {
-			// 수정 완료
-			setEditingRowId(null);
+			const row = combinedData.find((r) => r.id === id);
+			if (!row) {
+				setEditingRowId(null);
+				setEditingBackup(null);
+				return;
+			}
+			if (!row.pnum) {
+				alert('수급자를 선택해주세요.');
+				return;
+			}
+			if (row.gyn === '0' && (!row.gynStartTime || !row.gynEndTime)) {
+				alert('외출 시 시작·종료 시간을 입력해주세요.');
+				return;
+			}
+			if (row.gyn === '2' && !row.gynStartTime) {
+				alert('외박 시 나간 시간을 입력해주세요.');
+				return;
+			}
+			const payload = buildMealSavePayload(row);
+			try {
+				const saveRes = await fetch('/api/f14020', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ svdt: selectedDate, rows: [payload] })
+				});
+				const saveJson = await saveRes.json();
+				if (!saveJson?.success) {
+					alert(`저장 실패: ${saveJson?.error || '알 수 없는 오류'}`);
+					return;
+				}
+				setCombinedData((prev) =>
+					prev.map((r) =>
+						r.id === id
+							? {
+									...r,
+									payComGu: payload.payComGu,
+									gynStartTime: row.gyn === '0' || row.gyn === '2' ? r.gynStartTime : '',
+									gynEndTime: row.gyn === '0' ? r.gynEndTime : '',
+									returnTime: row.returnTime || ''
+								}
+							: r
+					)
+				);
+				setEditingRowId(null);
+				setEditingBackup(null);
+				alert('저장되었습니다');
+			} catch (e) {
+				console.error('저장 오류:', e);
+				alert('저장 중 오류가 발생했습니다.');
+			}
 		} else {
-			// 수정 모드 진입
+			const row = combinedData.find((r) => r.id === id);
+			if (row) {
+				setEditingBackup(JSON.parse(JSON.stringify(row)) as PerformanceData);
+			} else {
+				setEditingBackup(null);
+			}
 			setEditingRowId(id);
 		}
 	};
@@ -198,7 +501,11 @@ export default function DailyBeneficiaryPerformance() {
 			birthDate: '',
 			mealLocation: '',
 			mealType: '1',
-			gyn: '0', // 기본값: 외출
+			gyn: '1', // 기본값: 입원
+			gynStartTime: '',
+			gynEndTime: '',
+			returnTime: '',
+			payComGu: '0',
 			mealStatus: { breakfast: '1', lunch: '1', dinner: '1' }, // 기본값: 양호
 			specialNotes: '',
 			snackStatus: { morning: '1', afternoon: '1' } // 기본값: 양호
@@ -213,142 +520,169 @@ export default function DailyBeneficiaryPerformance() {
 		setCombinedData([newRow, ...updatedData]); // 맨 위에 추가
 		setNextId(prev => prev + 1);
 		setEditingRowId(newRow.id); // 새로 추가된 행을 수정 모드로 설정
+		setEditingBackup(JSON.parse(JSON.stringify(newRow)) as PerformanceData);
 		setCurrentPage(1); // 첫 페이지로 이동
 	};
 
-	const buildDefaultRowForMember = (member: any, mealTypeDefault: string | undefined): PerformanceData => {
-		return {
-			id: 0, // 임시 (추가 시 재부여)
-			serialNo: 0, // 임시 (추가 시 재부여)
-			name: member.P_NM || '',
-			birthDate: formatDate(member.P_BRDT),
-			ancd: member.ANCD || '',
-			pnum: member.PNUM || '',
-			mealLocation: '식장',
-			mealType: mealTypeDefault || '1',
-			gyn: '1', // 기본: 입원(외박)
-			mealStatus: { breakfast: '1', lunch: '1', dinner: '1' },
-			specialNotes: '',
-			snackStatus: { morning: '1', afternoon: '1' }
-		};
+	const applyGynChange = (rowId: number, nextGyn: string) => {
+		setCombinedData((prev) =>
+			prev.map((r) => {
+				if (r.id !== rowId) return r;
+				const gyn = nextGyn;
+				const gynStartTime = gyn === '0' || gyn === '2' ? r.gynStartTime : '';
+				const gynEndTime = gyn === '0' ? r.gynEndTime : '';
+				const returnTime = '';
+				return {
+					...r,
+					gyn,
+					gynStartTime,
+					gynEndTime,
+					returnTime,
+					payComGu: calcPayComGu(gyn, gynStartTime, gynEndTime, returnTime)
+				};
+			})
+		);
 	};
 
-	// 전체추가: 입소중 수급자 일괄 등록 + 디폴트 값 세팅 + 전체저장
+	const applyGynTimeChange = (rowId: number, field: 'gynStartTime' | 'gynEndTime', value: string) => {
+		setCombinedData((prev) =>
+			prev.map((r) => {
+				if (r.id !== rowId) return r;
+				const next = { ...r, [field]: value };
+				return {
+					...next,
+					payComGu: calcPayComGu(next.gyn, next.gynStartTime, next.gynEndTime, next.returnTime)
+				};
+			})
+		);
+	};
+
+	const formatOvernightAlertNames = (list: any[]) => {
+		const names = (list || [])
+			.map((x) => String(x.P_NM || '').trim())
+			.filter(Boolean);
+		if (names.length === 0) return '';
+		if (names.length <= 10) return names.join(', ');
+		return `${names.slice(0, 10).join(', ')} 외 ${names.length - 10}명`;
+	};
+
+	// 전체추가: Usp_P14020으로 해당일자 출석부(및 약물/목욕) 일괄 생성
 	const handleBulkAddAdmittedMembers = async () => {
 		if (bulkAdding) return;
 		setBulkAdding(true);
 		try {
-			// 1) 입소중 수급자 목록 조회 (세션 ANCD 기준)
-			const memberRes = await fetch('/api/f10010');
-			const memberJson = await memberRes.json();
-			if (!memberJson?.success || !Array.isArray(memberJson.data)) {
-				alert('입소중 수급자 목록을 조회할 수 없습니다.');
-				return;
-			}
-
-			const admitted = memberJson.data
-				.filter((m: any) => String(m.P_ST || '').trim() === '1')
-				.sort((a: any, b: any) => String(a.P_NM || '').localeCompare(String(b.P_NM || ''), 'ko'));
-
-			if (admitted.length === 0) {
-				alert('현재 입소중인 수급자가 없습니다.');
-				return;
-			}
-
-			// 2) F30112 기준정보로 식사종류(ST_KIND) 디폴트 조회 (PNUM 배치)
-			const pnums = admitted.map((m: any) => String(m.PNUM || '').trim()).filter(Boolean);
-			const 기준Res = await fetch(`/api/f30112?pnums=${encodeURIComponent(pnums.join(','))}`);
-			const 기준Json = await 기준Res.json();
-			const byPnum = new Map<string, any>();
-			if (기준Json?.success && Array.isArray(기준Json.data)) {
-				기준Json.data.forEach((row: any) => {
-					const key = String(row.PNUM ?? '').trim();
-					if (key) byPnum.set(key, row);
-				});
-			}
-
-			// 3) 기존에 이미 등록된 PNUM은 중복 추가 방지
-			const existingPnums = new Set(combinedData.map((r) => String(r.pnum || '').trim()).filter(Boolean));
-
-			// 4) 디폴트 행 생성
-			const newRowsRaw: PerformanceData[] = admitted
-				.filter((m: any) => {
-					const p = String(m.PNUM || '').trim();
-					return p && !existingPnums.has(p);
-				})
-				.map((m: any) => {
-					const 기준 = byPnum.get(String(m.PNUM || '').trim());
-					const mealTypeDefault = 기준?.ST_KIND != null ? String(기준.ST_KIND) : undefined;
-					return buildDefaultRowForMember(m, mealTypeDefault);
-				});
-
-			if (newRowsRaw.length === 0) {
-				alert('이미 모두 등록되어 있습니다.');
-				return;
-			}
-
-			// 5) 화면에 반영 (가나다순 유지 + 연번 재부여)
-			const merged = [...combinedData, ...newRowsRaw]
-				.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
-				.map((row, idx) => ({
-					...row,
-					id: idx + 1,
-					serialNo: idx + 1
-				}));
-			setCombinedData(merged);
-			setNextId(merged.length + 1);
-			setEditingRowId(null);
-			setCurrentPage(1);
-
-			// 6) 전체저장 (F14020 업서트)
 			const saveRes = await fetch('/api/f14020', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					svdt: selectedDate,
-					rows: newRowsRaw.map((r) => ({
-						pnum: r.pnum,
-						mealLocation: r.mealLocation,
-						mealType: r.mealType,
-						gyn: r.gyn,
-						mealStatus: r.mealStatus,
-						snackStatus: r.snackStatus,
-						specialNotes: r.specialNotes
-					}))
+					action: 'generate',
+					svdt: selectedDate
 				})
 			});
 			const saveJson = await saveRes.json();
 			if (!saveJson?.success) {
-				alert(`전체저장 실패: ${saveJson?.error || '알 수 없는 오류'}`);
+				alert(`전체추가 실패: ${saveJson?.error || '알 수 없는 오류'}`);
 				return;
 			}
 
-			// 6-1) 활력증상(F30120) 공란 데이터 자동 생성 (해당 날짜, 신규 추가된 수급자들)
-			try {
-				const vsRes = await fetch('/api/f30120', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						rsdt: selectedDate,
-						pnums: newRowsRaw.map((r) => r.pnum).filter(Boolean)
-					})
-				});
-				const vsJson = await vsRes.json();
-				if (!vsJson?.success) {
-					console.warn('활력증상 공란 생성 실패:', vsJson);
-				}
-			} catch (e) {
-				console.warn('활력증상 공란 생성 오류:', e);
-			}
-
-			// 7) DB 기준으로 새로고침
 			await fetchPerformanceData(selectedDate);
-			alert(`전체추가 완료 (${newRowsRaw.length}명)`);
+
+			const pending = Array.isArray(saveJson.overnightPending) ? saveJson.overnightPending : [];
+			if (pending.length > 0) {
+				alert(
+					`전체추가 완료\n\n외박 중인 수급자 ${pending.length}명 (복귀 처리 필요):\n${formatOvernightAlertNames(pending)}`
+				);
+			} else {
+				alert('전체추가 완료 (이미 있는 자료는 유지하고 없는 수급자만 추가)');
+			}
 		} catch (e) {
 			console.error('전체추가 오류:', e);
 			alert('전체추가 중 오류가 발생했습니다.');
 		} finally {
 			setBulkAdding(false);
+		}
+	};
+
+	const handleOpenOvernightReturnModal = async () => {
+		setShowOvernightReturnModal(true);
+		setLoadingOvernightPending(true);
+		setOvernightPendingList([]);
+		try {
+			const res = await fetch(
+				`/api/f14020?svdt=${encodeURIComponent(selectedDate)}&overnightPending=1`
+			);
+			const json = await res.json();
+			if (!json?.success || !Array.isArray(json.data)) {
+				alert(json?.error || '외박 수급자 목록을 조회할 수 없습니다.');
+				return;
+			}
+			setOvernightPendingList(
+				json.data.map((row: any) => ({
+					ANCD: row.ANCD,
+					PNUM: row.PNUM,
+					P_NM: row.P_NM || '',
+					P_BRDT: row.P_BRDT || '',
+					PREV_SVDT: row.PREV_SVDT,
+					PREV_IO_TM_INFO: row.PREV_IO_TM_INFO || '',
+					returnTime: '',
+					selected: false
+				}))
+			);
+		} catch (e) {
+			console.error('외박 대기 목록 조회 오류:', e);
+			alert('외박 수급자 목록 조회 중 오류가 발생했습니다.');
+		} finally {
+			setLoadingOvernightPending(false);
+		}
+	};
+
+	const handleCloseOvernightReturnModal = () => {
+		if (savingOvernightReturn) return;
+		setShowOvernightReturnModal(false);
+		setOvernightPendingList([]);
+	};
+
+	const handleSaveOvernightReturn = async () => {
+		const targets = overnightPendingList.filter((x) => x.selected);
+		if (targets.length === 0) {
+			alert('복귀 처리할 수급자를 선택해주세요.');
+			return;
+		}
+		const missing = targets.filter((x) => !x.returnTime);
+		if (missing.length > 0) {
+			alert(`복귀 시간을 입력해주세요: ${missing.map((x) => x.P_NM || x.PNUM).join(', ')}`);
+			return;
+		}
+
+		setSavingOvernightReturn(true);
+		try {
+			const res = await fetch('/api/f14020', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					action: 'returnFromOvernight',
+					svdt: selectedDate,
+					rows: targets.map((x) => ({
+						pnum: x.PNUM,
+						returnTime: x.returnTime
+					}))
+				})
+			});
+			const json = await res.json();
+			if (!json?.success) {
+				alert(`복귀 처리 실패: ${json?.error || '알 수 없는 오류'}`);
+				return;
+			}
+			const okCount = Number(json.count || 0);
+			await fetchPerformanceData(selectedDate);
+			setShowOvernightReturnModal(false);
+			setOvernightPendingList([]);
+			alert(`외박 복귀 처리 완료 (${okCount}명)`);
+		} catch (e) {
+			console.error('외박 복귀 저장 오류:', e);
+			alert('외박 복귀 처리 중 오류가 발생했습니다.');
+		} finally {
+			setSavingOvernightReturn(false);
 		}
 	};
 
@@ -512,7 +846,7 @@ export default function DailyBeneficiaryPerformance() {
 		}
 		return rows
 			.map((row) => {
-				const gynText = row.gyn === '1' ? '입원' : row.gyn === '0' ? '외출' : '';
+				const gynText = gynDisplayText(row, row.svdt || selectedDate);
 				const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
 				const lunch = row.mealStatus.lunch === '1' ? '○' : '';
 				const dinner = row.mealStatus.dinner === '1' ? '○' : '';
@@ -564,7 +898,7 @@ export default function DailyBeneficiaryPerformance() {
 						<tr>
 							<th>수급자명</th>
 							<th>생일</th>
-							<th>입원/외출</th>
+							<th>입원/외출/외박</th>
 							<th>아침</th>
 							<th>점심</th>
 							<th>저녁</th>
@@ -661,25 +995,8 @@ export default function DailyBeneficiaryPerformance() {
 				const d = normalizeSvdtToYmd(item.SVDT);
 				if (!d) return;
 				const row: PerformanceData = {
-					id: index + 1,
-					serialNo: Number(item.MENUM) || index + 1,
-					name: item.P_NM || '',
-					birthDate: formatDate(item.P_BRDT),
-					ancd: item.ANCD || '',
-					pnum: item.PNUM || '',
-					mealLocation: item.ST_PLAC || '',
-					mealType: item.ST_KIND || '1',
-					gyn: item.GYN || '0',
-					mealStatus: {
-						breakfast: item.MOST || '1',
-						lunch: item.LCST || '1',
-						dinner: item.DNST || '1'
-					},
-					specialNotes: item.ST_ETC || '',
-					snackStatus: {
-						morning: item.MGST || '1',
-						afternoon: item.AGST || '1'
-					}
+					...mapApiItemToPerformance(item, index),
+					birthDate: formatDate(item.P_BRDT)
 				};
 				if (!byDate.has(d)) byDate.set(d, []);
 				byDate.get(d)!.push(row);
@@ -858,25 +1175,8 @@ export default function DailyBeneficiaryPerformance() {
 			if (result.success && Array.isArray(result.data)) {
 				// 데이터 변환
 				let transformedData: PerformanceData[] = result.data.map((item: any, index: number) => ({
-					id: index + 1,
-					serialNo: index + 1,
-					name: item.P_NM || '',
-					birthDate: formatDate(item.P_BRDT),
-					ancd: item.ANCD || '',
-					pnum: item.PNUM || '',
-					mealLocation: item.ST_PLAC || '',
-					mealType: item.ST_KIND || '1',
-					gyn: item.GYN || '0',
-					mealStatus: {
-						breakfast: item.MOST || '1',
-						lunch: item.LCST || '1',
-						dinner: item.DNST || '1'
-					},
-					specialNotes: item.ST_ETC || '',
-					snackStatus: {
-						morning: item.MGST || '1',
-						afternoon: item.AGST || '1'
-					}
+					...mapApiItemToPerformance(item, index),
+					birthDate: formatDate(item.P_BRDT)
 				}));
 
 				// 출력 데이터도 수급자명 가나다순 정렬
@@ -1025,7 +1325,7 @@ export default function DailyBeneficiaryPerformance() {
 						<tr>
 							<th>수급자명</th>
 							<th>생일</th>
-							<th>외박여부</th>
+							<th>입원/외출/외박</th>
 							<th>아</th>
 							<th>정</th>
 							<th>저</th>
@@ -1036,7 +1336,7 @@ export default function DailyBeneficiaryPerformance() {
 					</thead>
 					<tbody>
 						${memberPrintData.map(row => {
-							const gynText = row.gyn === '1' ? '입원' : row.gyn === '0' ? '외출' : '';
+							const gynText = gynDisplayText(row, row.svdt);
 							const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
 							const lunch = row.mealStatus.lunch === '1' ? '○' : '';
 							const dinner = row.mealStatus.dinner === '1' ? '○' : '';
@@ -1090,7 +1390,12 @@ export default function DailyBeneficiaryPerformance() {
 					name: member.P_NM || '',
 					birthDate: formatDate(member.P_BRDT),
 					ancd: member.ANCD || '',
-					pnum: member.PNUM || ''
+					pnum: member.PNUM || '',
+					svdt: row.svdt || selectedDate,
+					admitDate: toYmd(member.P_SDT),
+					admitTime: toHm(member.P_SDT_TM),
+					dischargeDate: toYmd(member.P_EDT),
+					dischargeTime: toHm(member.P_EDT_TM),
 				};
 			}
 			return row;
@@ -1111,7 +1416,7 @@ export default function DailyBeneficiaryPerformance() {
 							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
 						>
 							<span>◀</span>
-							<span>이전일</span>
+							{/* <span>이전일</span> */}
 						</button>
 						<div className="flex items-center gap-2">
 							<input
@@ -1125,7 +1430,7 @@ export default function DailyBeneficiaryPerformance() {
 							onClick={() => handleDateChange(1)}
 							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
 						>
-							<span>다음일</span>
+							{/* <span>다음일</span> */}
 							<span>▶</span>
 						</button>
 					</div>
@@ -1139,22 +1444,34 @@ export default function DailyBeneficiaryPerformance() {
 						>
 							{bulkAdding ? '전체추가 중...' : '전체추가'}
 						</button>
-						<button 
+						<button
+							type="button"
+							onClick={handleOpenOvernightReturnModal}
+							disabled={loading || bulkAdding || savingOvernightReturn || combinedData.length === 0}
+							className="px-4 py-1.5 text-sm border border-amber-500 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							외박 수급자 복귀 처리
+						</button>
+						<button
+							type="button"
 							onClick={handlePrintDaily}
-							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+							disabled={loading || combinedData.length === 0}
+							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							일자별 출력
 						</button>
-						<button 
+						<button
+							type="button"
 							onClick={handleOpenMemberPrintModal}
-							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+							disabled={loading || combinedData.length === 0}
+							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							수급자별 출력
 						</button>
 						<button
 							type="button"
 							onClick={handlePrintMonthly}
-							disabled={printingMonthly}
+							disabled={loading || printingMonthly || combinedData.length === 0}
 							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							{printingMonthly ? '조회 중...' : '월식사상태 출력'}
@@ -1175,7 +1492,7 @@ export default function DailyBeneficiaryPerformance() {
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">수급자명(생년월일)</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">식사장소</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-28">식사종류</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">입원/외출</th>
+									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 min-w-[320px]">입원/외출/외박</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">식사상태</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">간식상태</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-80">특이사항</th>
@@ -1196,11 +1513,21 @@ export default function DailyBeneficiaryPerformance() {
 										</td>
 									</tr>
 								) : (
-									currentData.map((row, idx) => (
+									currentData.map((row) => {
+									const { isAdmitDay, isDischargeDay, isAdmitOrDischargeDay } =
+										getAdmitDischargeFlags(row, selectedDate);
+									const isOvernightOngoing = !!row.overnightOngoing;
+									return (
 									<tr 
 										key={row.id} 
-										className={`border-b border-blue-50 hover:bg-blue-50 ${
-											selectedMember === row.id ? 'bg-blue-100' : ''
+										className={`border-b border-blue-50 ${
+											isAdmitOrDischargeDay
+												? 'bg-yellow-100 hover:bg-yellow-200'
+												: isOvernightOngoing
+													? 'bg-green-100 hover:bg-green-200'
+													: selectedMember === row.id
+														? 'bg-blue-100 hover:bg-blue-50'
+														: 'hover:bg-blue-50'
 										}`}
 										onClick={() => setSelectedMember(row.id)}
 									>
@@ -1331,39 +1658,118 @@ export default function DailyBeneficiaryPerformance() {
 												<option value="3">유동식(미음)</option>
 											</select>
 										</td>
-										{/* 입원/외출 (GYN) */}
-										<td className="text-center px-3 py-3 border-r border-blue-100">
-											<div className="flex justify-center gap-1" onClick={(e) => e.stopPropagation()}>
-												<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.gyn === '0'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, gyn: e.target.checked ? '0' : '' } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '0' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">외출</span>
-												</label>
-												<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.gyn === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, gyn: e.target.checked ? '1' : '' } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">입원</span>
-												</label>
+										{/* 입원/외출/외박 (GYN) — 입·퇴소/외박중은 문구만 표시 */}
+										<td className="text-center px-3 py-3 border-r border-blue-100 min-w-[320px]">
+											<div className="flex flex-col items-center gap-1" onClick={(e) => e.stopPropagation()}>
+												{isAdmitOrDischargeDay ? (
+													<>
+														{isAdmitDay && (
+															<div className="flex items-center gap-2 whitespace-nowrap">
+																<span className="text-sm font-semibold text-amber-900">금일 입소</span>
+																{row.admitTime ? (
+																	<span className="text-sm text-amber-900 tabular-nums">{row.admitTime}</span>
+																) : null}
+															</div>
+														)}
+														{isDischargeDay && (
+															<div className="flex items-center gap-2 whitespace-nowrap">
+																<span className="text-sm font-semibold text-amber-900">금일 퇴소</span>
+																{row.dischargeTime ? (
+																	<span className="text-sm text-amber-900 tabular-nums">{row.dischargeTime}</span>
+																) : null}
+															</div>
+														)}
+													</>
+												) : isOvernightOngoing ? (
+													<div className="flex flex-col items-center gap-0.5">
+														<span className="text-sm font-semibold text-green-900">
+															{formatOvernightOngoingLabel(row.overnightLeaveDate, row.overnightLeaveTime)}
+														</span>
+													</div>
+												) : (
+													<>
+														<div className="flex justify-center gap-1 flex-wrap">
+															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+																<input
+																	type="checkbox"
+																	checked={row.gyn === '0'}
+																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '0' : '')}
+																	disabled={editingRowId !== row.id}
+																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '0' ? "disabled-checked-blue" : ""}`}
+																/>
+																<span className="text-xs">외출</span>
+															</label>
+															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+																<input
+																	type="checkbox"
+																	checked={row.gyn === '1'}
+																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '1' : '')}
+																	disabled={editingRowId !== row.id}
+																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '1' ? "disabled-checked-blue" : ""}`}
+																/>
+																<span className="text-xs">입원</span>
+															</label>
+															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+																<input
+																	type="checkbox"
+																	checked={row.gyn === '2'}
+																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '2' : '')}
+																	disabled={editingRowId !== row.id}
+																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '2' ? "disabled-checked-blue" : ""}`}
+																/>
+																<span className="text-xs">외박</span>
+															</label>
+														</div>
+														{row.gyn === '0' && (
+															<div className="flex flex-col items-center gap-0.5">
+																<div className="flex items-center gap-1 whitespace-nowrap">
+																	<input
+																		type="time"
+																		value={row.gynStartTime || ''}
+																		onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
+																		disabled={editingRowId !== row.id}
+																		className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																			editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																		}`}
+																	/>
+																	<span className="text-xs text-blue-900/70 shrink-0">~</span>
+																	<input
+																		type="time"
+																		value={row.gynEndTime || ''}
+																		onChange={(e) => applyGynTimeChange(row.id, 'gynEndTime', e.target.value)}
+																		disabled={editingRowId !== row.id}
+																		className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																			editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																		}`}
+																	/>
+																</div>
+															</div>
+														)}
+														{row.gyn === '2' && (
+															<div className="flex items-center gap-1 whitespace-nowrap">
+																<span className="text-xs text-blue-900/70 shrink-0">나감</span>
+																<input
+																	type="time"
+																	value={row.gynStartTime || ''}
+																	onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
+																	disabled={editingRowId !== row.id}
+																	className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																		editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																	}`}
+																/>
+															</div>
+														)}
+														{row.gyn === '1' && row.returnTime && (
+															<div className="flex items-center gap-1 whitespace-nowrap">
+																<span className="text-xs text-blue-900/70 shrink-0">복귀</span>
+																<span className="text-xs text-blue-900 font-medium">{row.returnTime}</span>
+															</div>
+														)}
+													</>
+												)}
+												{row.payComGu === '1' && (
+													<span className="text-xs font-semibold text-red-600">급여50%적용</span>
+												)}
 											</div>
 										</td>
 										{/* 식사상태 */}
@@ -1481,16 +1887,28 @@ export default function DailyBeneficiaryPerformance() {
 												>
 													{editingRowId === row.id ? '저장' : '수정'}
 												</button>
-												<button
-													onClick={() => handleDeleteRow(row.id)}
-													className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
-												>
-													삭제
-												</button>
+												{editingRowId === row.id ? (
+													<button
+														type="button"
+														onClick={() => handleCancelEdit(row.id)}
+														className="px-3 py-1 text-xs border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
+													>
+														취소
+													</button>
+												) : (
+													<button
+														type="button"
+														onClick={() => handleDeleteRow(row.id)}
+														className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
+													>
+														삭제
+													</button>
+												)}
 											</div>
 										</td>
 									</tr>
-									))
+									);
+									})
 								)}
 							</tbody>
 						</table>
@@ -1696,6 +2114,127 @@ export default function DailyBeneficiaryPerformance() {
 									조회된 데이터: {memberPrintData.length}건
 								</div>
 							)}
+						</div>
+					</div>
+				</div>
+			)}
+			{showOvernightReturnModal && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+					onClick={handleCloseOvernightReturnModal}
+				>
+					<div
+						className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-50 px-4 py-3">
+							<h3 className="text-lg font-semibold text-blue-900">외박 수급자 복귀 처리</h3>
+							<button
+								type="button"
+								onClick={handleCloseOvernightReturnModal}
+								disabled={savingOvernightReturn}
+								className="text-blue-900/70 hover:text-blue-900 text-xl leading-none px-2"
+							>
+								×
+							</button>
+						</div>
+						<div className="p-4 overflow-y-auto flex-1">
+							<p className="text-sm font-medium text-blue-900 mb-1">
+								복귀하는 수급자를 선택하고 복귀 시간을 입력하세요
+							</p>
+							<p className="text-sm text-blue-900/80 mb-3">
+								선택일({selectedDate}) 기준, 가장 최근 실적이 외박이고 아직 복귀 처리되지 않은 수급자입니다.
+							</p>
+							{loadingOvernightPending ? (
+								<div className="text-center py-8 text-blue-900/60">조회 중...</div>
+							) : overnightPendingList.length === 0 ? (
+								<div className="text-center py-8 text-blue-900/60">외박 중인 수급자가 없습니다.</div>
+							) : (
+								<table className="w-full text-sm border border-blue-200">
+									<thead className="bg-blue-50">
+										<tr>
+											<th className="px-2 py-2 border-r border-blue-200 w-12">선택</th>
+											<th className="px-2 py-2 border-r border-blue-200">수급자명</th>
+											<th className="px-2 py-2 border-r border-blue-200">생년월일</th>
+											<th className="px-2 py-2 border-r border-blue-200">외박 일시</th>
+											<th className="px-2 py-2">복귀 시간</th>
+										</tr>
+									</thead>
+									<tbody>
+										{overnightPendingList.map((item, idx) => {
+											const leaveParsed = parseIoTmInfo(item.PREV_IO_TM_INFO);
+											const leaveTime = leaveParsed.start || String(item.PREV_IO_TM_INFO || '').trim();
+											const leaveDate = formatDate(item.PREV_SVDT);
+											const leaveDateTime =
+												leaveDate && leaveTime
+													? `${leaveDate} ${leaveTime}`
+													: leaveDate || leaveTime || '-';
+											return (
+												<tr key={`${item.PNUM}-${idx}`} className="border-t border-blue-100">
+													<td className="px-2 py-2 text-center border-r border-blue-100">
+														<input
+															type="checkbox"
+															checked={item.selected}
+															onChange={(e) => {
+																const checked = e.target.checked;
+																setOvernightPendingList((prev) =>
+																	prev.map((row, i) =>
+																		i === idx ? { ...row, selected: checked } : row
+																	)
+																);
+															}}
+															disabled={savingOvernightReturn}
+														/>
+													</td>
+													<td className="px-2 py-2 text-center border-r border-blue-100 text-blue-900">
+														{item.P_NM || '-'}
+													</td>
+													<td className="px-2 py-2 text-center border-r border-blue-100 text-blue-900">
+														{formatDate(item.P_BRDT) || '-'}
+													</td>
+													<td className="px-2 py-2 text-center border-r border-blue-100 text-blue-900 whitespace-nowrap">
+														{leaveDateTime}
+													</td>
+													<td className="px-2 py-2 text-center">
+														<input
+															type="time"
+															value={item.returnTime}
+															onChange={(e) => {
+																const value = e.target.value;
+																setOvernightPendingList((prev) =>
+																	prev.map((row, i) =>
+																		i === idx ? { ...row, returnTime: value } : row
+																	)
+																);
+															}}
+															disabled={savingOvernightReturn || !item.selected}
+															className="min-w-[9rem] w-[9rem] px-1 py-1 text-xs border border-blue-300 rounded bg-white disabled:bg-gray-100"
+														/>
+													</td>
+												</tr>
+											);
+										})}
+									</tbody>
+								</table>
+							)}
+						</div>
+						<div className="flex justify-end gap-2 border-t border-blue-200 px-4 py-3 bg-white">
+							<button
+								type="button"
+								onClick={handleCloseOvernightReturnModal}
+								disabled={savingOvernightReturn}
+								className="px-4 py-1.5 text-sm border border-blue-300 rounded bg-white hover:bg-blue-50 text-blue-900"
+							>
+								취소
+							</button>
+							<button
+								type="button"
+								onClick={handleSaveOvernightReturn}
+								disabled={savingOvernightReturn || loadingOvernightPending || overnightPendingList.length === 0}
+								className="px-4 py-1.5 text-sm border border-amber-500 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium disabled:opacity-50"
+							>
+								{savingOvernightReturn ? '저장 중...' : '복귀 저장'}
+							</button>
 						</div>
 					</div>
 				</div>

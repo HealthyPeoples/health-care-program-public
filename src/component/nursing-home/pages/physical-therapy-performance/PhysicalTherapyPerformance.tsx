@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import BeneficiaryListPanel, { BeneficiaryMember } from '../../components/BeneficiaryListPanel';
+import { formatDateYmd } from '../../utils/excretionObservationFields';
 
 interface MemberData {
 	ANCD: string;
@@ -117,7 +118,9 @@ export default function PhysicalTherapyPerformance() {
 			if (result.success) {
 				const list: TherapyRecordData[] = result.data || [];
 				setTreatmentRecords(list);
-				setTreatmentDates(list.map((r) => r.TDT).filter(Boolean));
+				setTreatmentDates(
+					list.map((r) => formatDateYmd(r.TDT)).filter(Boolean)
+				);
 				setSelectedDateIndex(null);
 				setDatePage(1);
 			} else {
@@ -149,27 +152,15 @@ export default function PhysicalTherapyPerformance() {
 				...prev,
 				...selectedRecord,
 				JHEMP: String((selectedRecord as any).JHEMP ?? ''),
-				TDT: selectedRecord.TDT || selectedDate || prev.TDT,
+				TDT: formatDateYmd(selectedRecord.TDT || selectedDate || prev.TDT),
 			}));
 		} else {
 			setFormData(createEmptyForm(selectedDate || undefined));
 		}
 	};
 
-	// 날짜 형식 변환 함수
-	const formatDateDisplay = (dateStr: string) => {
-		if (!dateStr) return '';
-		if (dateStr.includes('T')) {
-			dateStr = dateStr.split('T')[0];
-		}
-		if (dateStr.includes('-') && dateStr.length >= 10) {
-			return dateStr.substring(0, 10);
-		}
-		if (dateStr.length === 8 && !dateStr.includes('-') && !dateStr.includes('년')) {
-			return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-		}
-		return dateStr;
-	};
+	// 날짜 형식 변환 함수 (YYYY-MM-DD)
+	const formatDateDisplay = (dateStr: string) => formatDateYmd(dateStr);
 
 	// 저장 함수
 	const handleSave = async () => {
@@ -299,6 +290,8 @@ export default function PhysicalTherapyPerformance() {
 	const dateStartIndex = (datePage - 1) * dateItemsPerPage;
 	const dateEndIndex = dateStartIndex + dateItemsPerPage;
 	const currentDateItems = treatmentDates.slice(dateStartIndex, dateEndIndex);
+	const isRightLocked = !loadingRecords && selectedDateIndex === null && !isEditMode;
+	const showEmptyDataOverlay = isRightLocked && !!selectedMember && treatmentDates.length === 0;
 
 	// 치료 항목 렌더링 함수
 	const renderTreatmentItem = (chkKey: string, valKey: string, label: string) => {
@@ -465,28 +458,36 @@ export default function PhysicalTherapyPerformance() {
 
 				{/* 우측 패널: 입력 폼 */}
 				<div className="relative flex-1 p-4 overflow-y-auto bg-white">
-					{selectedMember && !loadingRecords && treatmentDates.length === 0 && !isEditMode && (
-						<div className="absolute inset-0 z-20 flex items-start justify-center pt-10 bg-white/65 backdrop-blur-[1px]">
-							<div className="w-[min(520px,90%)] px-4 py-3 text-sm text-blue-900 bg-white border border-blue-200 rounded shadow-sm">
-								<div className="font-medium">데이터가 없습니다.</div>
-								<div className="mt-2 flex justify-end">
-									<button
-										onClick={handleClear}
-										className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-300 rounded hover:bg-blue-300"
-									>
-										신규등록
-									</button>
+					{isRightLocked && (
+						<div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 backdrop-blur-[1px]">
+							{showEmptyDataOverlay ? (
+								<div className="w-[min(520px,90%)] px-4 py-3 text-sm text-blue-900 bg-white border border-blue-200 rounded shadow-sm">
+									<div className="font-medium">데이터가 없습니다.</div>
+									<div className="mt-2 flex justify-end">
+										<button
+											type="button"
+											onClick={handleClear}
+											className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-300 rounded hover:bg-blue-300"
+										>
+											신규등록
+										</button>
+									</div>
 								</div>
-							</div>
+							) : (
+								<div className="px-5 py-3 text-sm font-medium text-blue-900 bg-white border border-blue-200 rounded shadow-sm">
+									수급자 선택 후 치료일자를 선택해주세요
+								</div>
+							)}
 						</div>
 					)}
 
-					{/* 상단: 수급자, 치료일자, 담당자 */}
 					<div
-						className={`flex flex-wrap items-center gap-4 mb-4 ${
-							selectedMember && !loadingRecords && treatmentDates.length === 0 && !isEditMode ? 'pointer-events-none opacity-70' : ''
-						}`}
+						className={
+							isRightLocked ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+						}
 					>
+					{/* 상단: 수급자, 치료일자, 담당자 */}
+					<div className="flex flex-wrap items-center gap-4 mb-4">
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">수급자</label>
 							<input
@@ -534,11 +535,7 @@ export default function PhysicalTherapyPerformance() {
 					</div>
 
 					{/* 메인 컨텐츠: 4개 컬럼 */}
-					<div
-						className={`flex gap-4 mb-4 ${
-							selectedMember && !loadingRecords && treatmentDates.length === 0 && !isEditMode ? 'pointer-events-none opacity-70' : ''
-						}`}
-					>
+					<div className="flex gap-4 mb-4">
 						{/* Column 1: 운동치료 - 기구이용 */}
 						<div className="flex-1 border border-blue-300 rounded-lg p-4 bg-white">
 							<div className="mb-4 pb-2 border-b border-blue-200">
@@ -606,11 +603,7 @@ export default function PhysicalTherapyPerformance() {
 					</div>
 
 					{/* 하단: 기타 (가로 널찍하게) */}
-					<div
-						className={`border border-blue-300 rounded-lg p-4 bg-white mb-6 ${
-							selectedMember && !loadingRecords && treatmentDates.length === 0 && !isEditMode ? 'pointer-events-none opacity-70' : ''
-						}`}
-					>
+					<div className="border border-blue-300 rounded-lg p-4 bg-white mb-6">
 						<div className="mb-4 pb-2 border-b border-blue-200 flex items-center justify-between">
 							<h3 className="text-base font-semibold text-blue-900">기타</h3>
 						</div>
@@ -675,11 +668,7 @@ export default function PhysicalTherapyPerformance() {
 					</div>
 
 					{/* 하단 버튼 영역 */}
-					<div
-						className={`flex justify-end gap-2 ${
-							selectedMember && !loadingRecords && treatmentDates.length === 0 && !isEditMode ? 'pointer-events-none opacity-70' : ''
-						}`}
-					>
+					<div className="flex justify-end gap-2">
 						<button
 							onClick={handleSave}
 							className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
@@ -716,6 +705,7 @@ export default function PhysicalTherapyPerformance() {
 						>
 							계획 및 평가
 						</button>
+					</div>
 					</div>
 				</div>
 			</div>

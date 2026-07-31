@@ -1,6 +1,6 @@
-import MedicationRegistration from '../../../component/nursing-home/pages/medication-registration/MedicationRegistration'
+import MedicationRegistrationStub from '../../../component/nursing-home/pages/medication-registration/MedicationRegistrationStub'
 
 export default function MedicationRegistrationPage() {
-  return <MedicationRegistration />
+  return <MedicationRegistrationStub />
 }
 

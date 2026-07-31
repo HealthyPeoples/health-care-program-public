@@ -1,436 +1,513 @@
 "use client";
-import React, { useState, useRef } from 'react';
 
-interface CombinedData {
-	id: number;
-	serialNo: number;
-	name: string;
-	gender: string;
-	birthDate: string;
-	bloodPressure: string;
-	pulse: string;
-	bodyTemperature: string;
-	bloodSugar: string;
-	weight: string;
-	nursingHistory: string;
-	editing: boolean;
-}
+import React, { useState } from "react";
+import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
 
-// 날짜 포맷팅 함수 (yyyy-mm-dd)
-const formatDate = (dateStr: string | null | undefined) => {
-	if (!dateStr) return '';
-	try {
-		const date = new Date(dateStr);
-		if (isNaN(date.getTime())) return dateStr;
-		const year = date.getFullYear();
-		const month = String(date.getMonth() + 1).padStart(2, '0');
-		const day = String(date.getDate()).padStart(2, '0');
-		return `${year}-${month}-${day}`;
-	} catch {
-		return dateStr;
-	}
+type DiseaseRow = {
+	ANCD?: number | string;
+	PNUM?: number | string;
+	SEQ: number;
+	JDES: string;
+	JDT: string;
+	ETC?: string;
 };
 
+type DiseaseForm = {
+	SEQ: number | null;
+	JDES: string;
+	JDT: string;
+};
+
+function todayYmd() {
+	return new Date().toISOString().slice(0, 10);
+}
+
+function emptyForm(): DiseaseForm {
+	return { SEQ: null, JDES: "", JDT: todayYmd() };
+}
+
 export default function DiseaseHistoryView() {
-	const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-	const [searchResults, setSearchResults] = useState<{ [key: number]: any[] }>({});
-	const [showSearchResults, setShowSearchResults] = useState<{ [key: number]: boolean }>({});
-	const searchInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
-	const [combinedData, setCombinedData] = useState<CombinedData[]>([
-		{
-			id: 1,
-			serialNo: 1,
-			name: '홍길동',
-			gender: '남',
-			birthDate: '1940-01-15',
-			bloodPressure: '',
-			pulse: '',
-			bodyTemperature: '',
-			bloodSugar: '',
-			weight: '',
-			nursingHistory: '',
-			editing: false
-		},
-		{
-			id: 2,
-			serialNo: 2,
-			name: '김영희',
-			gender: '여',
-			birthDate: '1935-05-22',
-			bloodPressure: '',
-			pulse: '',
-			bodyTemperature: '',
-			bloodSugar: '',
-			weight: '',
-			nursingHistory: '',
-			editing: false
+	const [selectedMember, setSelectedMember] = useState<BeneficiaryMember | null>(null);
+	const [rows, setRows] = useState<DiseaseRow[]>([]);
+	const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
+	const [formData, setFormData] = useState<DiseaseForm>(() => emptyForm());
+	const [loading, setLoading] = useState(false);
+	const [saving, setSaving] = useState(false);
+	const [isEditMode, setIsEditMode] = useState(false);
+	const [editingBackup, setEditingBackup] = useState<DiseaseForm | null>(null);
+
+	const [showAddModal, setShowAddModal] = useState(false);
+	const [modalForm, setModalForm] = useState<DiseaseForm>(() => emptyForm());
+	const [modalSaving, setModalSaving] = useState(false);
+
+	const exitEditMode = () => {
+		setIsEditMode(false);
+		setEditingBackup(null);
+	};
+
+	const fetchList = async (pnum: string, preferSeq?: number | null) => {
+		setLoading(true);
+		try {
+			const res = await fetch(`/api/f30030?pnum=${encodeURIComponent(pnum)}`, { cache: "no-store" });
+			const json = await res.json();
+			const list: DiseaseRow[] = Array.isArray(json?.data) ? json.data : [];
+			setRows(list);
+
+			if (list.length === 0) {
+				setSelectedSeq(null);
+				setFormData(emptyForm());
+				return;
+			}
+
+			const targetSeq =
+				preferSeq != null && list.some((r) => Number(r.SEQ) === Number(preferSeq))
+					? Number(preferSeq)
+					: Number(list[0].SEQ);
+			const target = list.find((r) => Number(r.SEQ) === targetSeq) || list[0];
+			setSelectedSeq(Number(target.SEQ));
+			setFormData({
+				SEQ: Number(target.SEQ),
+				JDES: target.JDES || "",
+				JDT: target.JDT || todayYmd(),
+			});
+		} catch (e) {
+			console.error("질병내역 조회 오류:", e);
+			setRows([]);
+			setSelectedSeq(null);
+			setFormData(emptyForm());
+		} finally {
+			setLoading(false);
 		}
-	]);
-
-	// 날짜 변경 함수
-	const handleDateChange = (days: number) => {
-		const date = new Date(selectedDate);
-		date.setDate(date.getDate() + days);
-		setSelectedDate(date.toISOString().split('T')[0]);
 	};
 
-	// 날짜 포맷팅 (yyyy-mm-dd -> yyyy. mm. dd)
-	const formatDate = (dateStr: string) => {
-		const date = new Date(dateStr);
-		const year = date.getFullYear();
-		const month = String(date.getMonth() + 1).padStart(2, '0');
-		const day = String(date.getDate()).padStart(2, '0');
-		return `${year}. ${month}. ${day}`;
+	const handleSelectMember = (member: BeneficiaryMember) => {
+		exitEditMode();
+		setShowAddModal(false);
+		setSelectedMember(member);
+		fetchList(String(member.PNUM));
 	};
 
-	// 수급자 검색 함수
-	const handleSearchMember = async (id: number, searchValue: string) => {
-		if (!searchValue || searchValue.trim().length === 0) {
-			setSearchResults(prev => ({ ...prev, [id]: [] }));
-			setShowSearchResults(prev => ({ ...prev, [id]: false }));
+	const handleSelectRow = (row: DiseaseRow) => {
+		if (isEditMode && !confirm("수정 중인 내용이 저장되지 않습니다. 이동할까요?")) return;
+		exitEditMode();
+		setSelectedSeq(Number(row.SEQ));
+		setFormData({
+			SEQ: Number(row.SEQ),
+			JDES: row.JDES || "",
+			JDT: row.JDT || todayYmd(),
+		});
+	};
+
+	const handleFieldChange = (key: keyof DiseaseForm, value: string) => {
+		if (!isEditMode) return;
+		setFormData((prev) => ({ ...prev, [key]: value }));
+	};
+
+	const openAddModal = () => {
+		if (!selectedMember) {
+			alert("수급자를 선택해주세요.");
+			return;
+		}
+		if (isEditMode && !confirm("수정 중인 내용이 저장되지 않습니다. 신규 등록을 진행할까요?")) {
+			return;
+		}
+		exitEditMode();
+		setModalForm(emptyForm());
+		setShowAddModal(true);
+	};
+
+	const closeAddModal = () => {
+		if (modalSaving) return;
+		setShowAddModal(false);
+		setModalForm(emptyForm());
+	};
+
+	const handleModalSave = async () => {
+		if (!selectedMember) {
+			alert("수급자를 선택해주세요.");
+			return;
+		}
+		const jdes = modalForm.JDES.trim();
+		if (!jdes) {
+			alert("진단명을 입력해주세요.");
+			return;
+		}
+		if (!modalForm.JDT) {
+			alert("진단일자를 입력해주세요.");
 			return;
 		}
 
+		setModalSaving(true);
 		try {
-			const response = await fetch(`/api/f10010/search?q=${encodeURIComponent(searchValue.trim())}`);
-			const data = await response.json();
-			
-			if (data.success && data.data) {
-				setSearchResults(prev => ({ ...prev, [id]: data.data }));
-				setShowSearchResults(prev => ({ ...prev, [id]: true }));
-			} else {
-				setSearchResults(prev => ({ ...prev, [id]: [] }));
-				setShowSearchResults(prev => ({ ...prev, [id]: false }));
+			const res = await fetch("/api/f30030", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					PNUM: selectedMember.PNUM,
+					JDES: jdes,
+					JDT: modalForm.JDT,
+				}),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`저장 실패: ${json?.error || "알 수 없는 오류"}`);
+				return;
 			}
-		} catch (error) {
-			console.error('수급자 검색 오류:', error);
-			setSearchResults(prev => ({ ...prev, [id]: [] }));
-			setShowSearchResults(prev => ({ ...prev, [id]: false }));
+			alert("저장되었습니다");
+			setShowAddModal(false);
+			setModalForm(emptyForm());
+			await fetchList(String(selectedMember.PNUM), Number(json?.data?.SEQ));
+		} catch (e) {
+			console.error(e);
+			alert("저장 중 오류가 발생했습니다.");
+		} finally {
+			setModalSaving(false);
 		}
 	};
 
-	// 수급자 선택 함수
-	const handleSelectMember = (id: number, member: any) => {
-		const formattedBirthDate = formatDate(member.P_BRDT);
-		// P_SEX가 '1'이면 '남', '2'이면 '여', 그 외는 빈 문자열
-		const gender = member.P_SEX === '1' ? '남' : member.P_SEX === '2' ? '여' : '';
-		setCombinedData(prev => prev.map(item => 
-			item.id === id ? { 
-				...item, 
-				name: member.P_NM || '',
-				birthDate: formattedBirthDate,
-				gender: gender
-			} : item
-		));
-		setSearchResults(prev => ({ ...prev, [id]: [] }));
-		setShowSearchResults(prev => ({ ...prev, [id]: false }));
-	};
+	const handleEditOrSave = async () => {
+		if (!selectedMember) {
+			alert("수급자를 선택해주세요.");
+			return;
+		}
 
-	// 데이터 변경 함수
-	const handleDataChange = (id: number, field: string, value: string) => {
-		setCombinedData(prev => prev.map(item => 
-			item.id === id ? { ...item, [field]: value } : item
-		));
-	};
+		if (!isEditMode) {
+			if (selectedSeq == null) {
+				alert("수정할 항목을 목록에서 선택해주세요.");
+				return;
+			}
+			setEditingBackup(JSON.parse(JSON.stringify(formData)) as DiseaseForm);
+			setIsEditMode(true);
+			return;
+		}
 
-	// 수정 버튼 클릭
-	const handleEditClick = (id: number) => {
-		setCombinedData(prev => prev.map(item => 
-			item.id === id ? { ...item, editing: !item.editing } : item
-		));
-	};
+		const jdes = formData.JDES.trim();
+		if (!jdes) {
+			alert("진단명을 입력해주세요.");
+			return;
+		}
+		if (!formData.JDT) {
+			alert("진단일자를 입력해주세요.");
+			return;
+		}
+		if (formData.SEQ == null) {
+			alert("수정할 항목이 없습니다.");
+			return;
+		}
 
-	// 삭제 버튼 클릭
-	const handleDeleteClick = (id: number) => {
-		setCombinedData(prev => prev.filter(item => item.id !== id));
-	};
-
-	// 추가 버튼 클릭
-	const handleAddClick = () => {
-		const newId = Math.max(...combinedData.map(d => d.id), 0) + 1;
-		const newSerialNo = Math.max(...combinedData.map(d => d.serialNo), 0) + 1;
-		setCombinedData(prev => [...prev, {
-			id: newId,
-			serialNo: newSerialNo,
-			name: '',
-			gender: '',
-			birthDate: '',
-			bloodPressure: '',
-			pulse: '',
-			bodyTemperature: '',
-			bloodSugar: '',
-			weight: '',
-			nursingHistory: '',
-			editing: true
-		}]);
-	};
-
-	// 전체 삭제 버튼 클릭
-	const handleDeleteAllClick = () => {
-		if (confirm('전체 데이터를 삭제하시겠습니까?')) {
-			setCombinedData([]);
+		setSaving(true);
+		try {
+			const res = await fetch("/api/f30030", {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					PNUM: selectedMember.PNUM,
+					SEQ: formData.SEQ,
+					JDES: jdes,
+					JDT: formData.JDT,
+				}),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`저장 실패: ${json?.error || "알 수 없는 오류"}`);
+				return;
+			}
+			alert("저장되었습니다");
+			const keepSeq = formData.SEQ;
+			exitEditMode();
+			await fetchList(String(selectedMember.PNUM), keepSeq);
+		} catch (e) {
+			console.error(e);
+			alert("저장 중 오류가 발생했습니다.");
+		} finally {
+			setSaving(false);
 		}
 	};
+
+	const handleCancelEdit = () => {
+		if (editingBackup) {
+			setFormData(JSON.parse(JSON.stringify(editingBackup)) as DiseaseForm);
+			if (editingBackup.SEQ != null) {
+				setSelectedSeq(editingBackup.SEQ);
+			}
+		} else if (selectedSeq != null) {
+			const row = rows.find((r) => Number(r.SEQ) === Number(selectedSeq));
+			if (row) {
+				setFormData({
+					SEQ: Number(row.SEQ),
+					JDES: row.JDES || "",
+					JDT: row.JDT || todayYmd(),
+				});
+			}
+		}
+		exitEditMode();
+	};
+
+	const handleDelete = async (seq: number, e?: React.MouseEvent) => {
+		e?.stopPropagation();
+		if (!selectedMember) {
+			alert("수급자를 선택해주세요.");
+			return;
+		}
+		if (!confirm("선택한 질병내역을 삭제할까요?")) return;
+
+		setSaving(true);
+		try {
+			const res = await fetch(
+				`/api/f30030?pnum=${encodeURIComponent(String(selectedMember.PNUM))}&seq=${encodeURIComponent(String(seq))}`,
+				{ method: "DELETE" }
+			);
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`삭제 실패: ${json?.error || "알 수 없는 오류"}`);
+				return;
+			}
+			alert("삭제되었습니다.");
+			if (selectedSeq === seq) exitEditMode();
+			await fetchList(String(selectedMember.PNUM));
+		} catch (err) {
+			console.error(err);
+			alert("삭제 중 오류가 발생했습니다.");
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	const fieldsDisabled = !selectedMember || !isEditMode;
+	const rightLocked = !selectedMember;
 
 	return (
-		<div className="min-h-screen text-black bg-white">
-			<div className="mx-auto max-w-[1600px] p-4">
-			<span>기존 메뉴명 찾을 수 없음</span>
-				{/* 상단: 날짜 네비게이션 및 액션 버튼 */}
-				<div className="relative flex items-center pb-3 mb-4 border-b border-blue-200">
-					{/* 가운데: 날짜 네비게이션 */}
-					<div className="absolute flex items-center gap-4 transform -translate-x-1/2 left-1/2">
-						<button 
-							onClick={() => handleDateChange(-1)}
-							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
-						>
-							<span>◀</span>
-							<span>이전일</span>
-						</button>
-						<div className="flex items-center gap-2">
-							{/* <span className="text-sm text-blue-900">{formatDate(selectedDate)}</span> */}
-							<input
-								type="date"
-								value={selectedDate}
-								onChange={(e) => setSelectedDate(e.target.value)}
-								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white text-blue-900"
-							/>
+		<div className="flex flex-col min-h-screen text-black bg-white">
+			<div className="flex h-[calc(100vh-56px)]">
+				<BeneficiaryListPanel
+					selectedMember={selectedMember}
+					onSelect={handleSelectMember}
+					className="w-1/4"
+				/>
+
+				<div className="relative flex flex-1 overflow-hidden bg-slate-50">
+					{rightLocked && (
+						<div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+							<p className="text-sm font-medium text-blue-900/70">수급자를 선택해주세요</p>
 						</div>
-						<button 
-							onClick={() => handleDateChange(1)}
-							className="flex items-center gap-1 px-3 py-1.5 text-sm border borㅎ햐gder-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
-						>
-							<span>다음일</span>
-							<span>▶</span>
-						</button>
-					</div>
-					{/* 오른쪽: 저장, 출력 버튼 */}
-					<div className="flex items-center gap-2 ml-auto">
-						<button className="px-4 py-1.5 text-sm border border-orange-400 rounded bg-orange-200 hover:bg-orange-300 text-orange-900 font-medium">
-							저장
-						</button>
-						<button className="px-4 py-1.5 text-sm border border-orange-400 rounded bg-orange-200 hover:bg-orange-300 text-orange-900 font-medium">
-							출력
-						</button>
-					</div>
-				</div>
+					)}
 
-				{/* 메인 컨텐츠 영역 - 통합 테이블 */}
-				<div className="overflow-hidden bg-white border border-blue-300 rounded-lg shadow-sm">
-					<div className="overflow-x-auto">
-						<table className="w-full text-sm">
-							<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
-								<tr>
-									<th className="w-16 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
-									<th className="w-32 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
-									<th className="w-16 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">성별</th>
-									<th className="w-20 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">혈압</th>
-									<th className="w-20 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">맥박</th>
-									<th className="w-20 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">체온</th>
-									<th className="w-20 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">혈당</th>
-									<th className="w-20 px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">체중</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 min-w-[200px]">간호내용</th>
-									<th className="w-24 px-2 py-2 font-semibold text-center text-blue-900">작업</th>
-								</tr>
-							</thead>
-							<tbody>
-								{combinedData.map((row) => (
-									<tr key={row.id} className="border-b border-blue-50 hover:bg-blue-50">
-										<td className="px-3 py-3 text-center border-r border-blue-100">
-											{row.serialNo}
-										</td>
-										<td className="relative px-3 py-3 text-center border-r border-blue-100">
-											{row.editing ? (
-												<div className="flex flex-col">
-													<input 
-														ref={(el) => {
-															if (el) {
-																searchInputRefs.current[row.id] = el;
-															}
-														}}
-														type="text" 
-														value={row.name} 
-														onChange={(e) => {
-															handleDataChange(row.id, 'name', e.target.value);
-															if (e.target.value.trim().length > 0) {
-																handleSearchMember(row.id, e.target.value);
-															} else {
-																setSearchResults(prev => ({ ...prev, [row.id]: [] }));
-																setShowSearchResults(prev => ({ ...prev, [row.id]: false }));
-															}
-														}}
-														onFocus={() => {
-															if (row.name && row.name.trim().length > 0) {
-																handleSearchMember(row.id, row.name);
-															}
-														}}
-														onBlur={() => {
-															setTimeout(() => {
-																setShowSearchResults(prev => ({ ...prev, [row.id]: false }));
-															}, 200);
-														}}
-														placeholder="수급자명 검색"
-														className="w-full px-2 py-1 text-center bg-white border border-blue-300 rounded" 
-													/>
-													{row.birthDate && (
-														<span className="mt-1 text-xs text-gray-500">({row.birthDate})</span>
-													)}
-													{showSearchResults[row.id] && searchResults[row.id] && searchResults[row.id].length > 0 && searchInputRefs.current[row.id] && (() => {
-														const input = searchInputRefs.current[row.id];
-														const rect = input?.getBoundingClientRect();
-														return (
-															<div 
-																className="fixed z-[9999] bg-white border border-blue-300 rounded shadow-lg max-h-60 overflow-y-auto"
-																style={{
-																	top: rect ? `${rect.bottom + window.scrollY}px` : '0',
-																	left: rect ? `${rect.left + window.scrollX}px` : '0',
-																	width: rect ? `${rect.width}px` : 'auto',
-																	minWidth: '200px'
-																}}
-															>
-																{searchResults[row.id].map((member: any, memberIdx: number) => (
-																	<div
-																		key={memberIdx}
-																		onMouseDown={(e) => {
-																			e.preventDefault();
-																			e.stopPropagation();
-																			handleSelectMember(row.id, member);
-																		}}
-																		className="px-3 py-2 border-b border-blue-100 cursor-pointer hover:bg-blue-50 last:border-b-0"
-																	>
-																		<div className="font-medium">{member.P_NM}</div>
-																		<div className="text-xs text-gray-500">
-																			{member.P_BRDT && `(${formatDate(member.P_BRDT)})`}
-																		</div>
-																	</div>
-																))}
-															</div>
-														);
-													})()}
-												</div>
-											) : (
-												<div className="flex flex-col">
-													<span>{row.name}</span>
-													{row.birthDate && (
-														<span className="text-xs text-gray-500">({row.birthDate})</span>
-													)}
-												</div>
-											)}
-										</td>
-										<td className="px-3 py-3 text-center border-r border-blue-100">
-										<span>{row.gender}</span>
-										</td>
-										<td className="px-2 py-3 text-center border-r border-blue-100">
-											<input 
-												type="text" 
-												value={row.bloodPressure} 
-												onChange={(e) => handleDataChange(row.id, 'bloodPressure', e.target.value)}
-												placeholder="120/80"
-												disabled={!row.editing}
-												className={`w-full px-1 py-1 border border-blue-300 rounded text-center text-xs ${
-													row.editing ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
-											/>
-										</td>
-										<td className="px-2 py-3 text-center border-r border-blue-100">
-											<input 
-												type="text" 
-												value={row.pulse} 
-												onChange={(e) => handleDataChange(row.id, 'pulse', e.target.value)}
-												placeholder="72"
-												disabled={!row.editing}
-												className={`w-full px-1 py-1 border border-blue-300 rounded text-center text-xs ${
-													row.editing ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
-											/>
-										</td>
-										<td className="px-2 py-3 text-center border-r border-blue-100">
-											<input 
-												type="text" 
-												value={row.bodyTemperature} 
-												onChange={(e) => handleDataChange(row.id, 'bodyTemperature', e.target.value)}
-												placeholder="36.5"
-												disabled={!row.editing}
-												className={`w-full px-1 py-1 border border-blue-300 rounded text-center text-xs ${
-													row.editing ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
-											/>
-										</td>
-										<td className="px-2 py-3 text-center border-r border-blue-100">
-											<input 
-												type="text" 
-												value={row.bloodSugar} 
-												onChange={(e) => handleDataChange(row.id, 'bloodSugar', e.target.value)}
-												placeholder="95"
-												disabled={!row.editing}
-												className={`w-full px-1 py-1 border border-blue-300 rounded text-center text-xs ${
-													row.editing ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
-											/>
-										</td>
-										<td className="px-2 py-3 text-center border-r border-blue-100">
-											<input 
-												type="text" 
-												value={row.weight} 
-												onChange={(e) => handleDataChange(row.id, 'weight', e.target.value)}
-												placeholder="65.2"
-												disabled={!row.editing}
-												className={`w-full px-1 py-1 border border-blue-300 rounded text-center text-xs ${
-													row.editing ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
-											/>
-										</td>
-										<td className="px-3 py-3 text-center border-r border-blue-100">
-											<textarea
-												value={row.nursingHistory}
-												onChange={(e) => handleDataChange(row.id, 'nursingHistory', e.target.value)}
-												disabled={!row.editing}
-												placeholder="간호내용을 입력하세요"
-												rows={2}
-												className={`w-full px-2 py-1 border border-blue-300 rounded text-sm resize-none ${
-													row.editing ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
-											/>
-										</td>
-										<td className="px-3 py-3 text-center">
-											<div className="flex items-center justify-center gap-2">
-												<button
-													onClick={() => handleEditClick(row.id)}
-													className="px-2 py-1 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
-												>
-													{row.editing ? '저장' : '수정'}
-												</button>
-												<button
-													onClick={() => handleDeleteClick(row.id)}
-													className="px-2 py-1 text-xs font-medium text-red-900 bg-red-200 border border-red-400 rounded hover:bg-red-300"
-												>
-													삭제
-												</button>
-											</div>
-										</td>
+					{/* 진단 목록 */}
+					<div className="flex flex-col w-1/2 min-w-[320px] border-r border-blue-200 bg-white">
+						<div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-50">
+							<h2 className="text-sm font-semibold text-blue-900">질병내역 목록</h2>
+							<button
+								type="button"
+								onClick={openAddModal}
+								disabled={!selectedMember || saving || modalSaving}
+								className="px-3 py-1 text-xs font-medium border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 disabled:opacity-40"
+							>
+								추가
+							</button>
+						</div>
+						<div className="flex-1 overflow-auto">
+							<table className="w-full text-sm">
+								<thead className="sticky top-0 bg-blue-50 border-b border-blue-200">
+									<tr>
+										<th className="px-3 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
+											진단명
+										</th>
+										<th className="w-28 px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">
+											진단일자
+										</th>
+										<th className="w-16 px-2 py-2 font-semibold text-center text-blue-900">
+											삭제
+										</th>
 									</tr>
-								))}
-							</tbody>
-						</table>
+								</thead>
+								<tbody>
+									{loading ? (
+										<tr>
+											<td colSpan={3} className="px-3 py-6 text-center text-blue-900/60">
+												로딩 중...
+											</td>
+										</tr>
+									) : rows.length === 0 ? (
+										<tr>
+											<td colSpan={3} className="px-3 py-6 text-center text-blue-900/60">
+												등록된 질병내역이 없습니다
+											</td>
+										</tr>
+									) : (
+										rows.map((row) => (
+											<tr
+												key={row.SEQ}
+												onClick={() => handleSelectRow(row)}
+												className={`border-b border-blue-50 cursor-pointer hover:bg-blue-50 ${
+													selectedSeq === Number(row.SEQ) ? "bg-blue-100" : ""
+												}`}
+											>
+												<td className="px-3 py-2.5 border-r border-blue-100 break-words">
+													{row.JDES || "-"}
+												</td>
+												<td className="px-3 py-2.5 text-center whitespace-nowrap border-r border-blue-100">
+													{row.JDT || "-"}
+												</td>
+												<td className="px-2 py-2 text-center">
+													<button
+														type="button"
+														onClick={(e) => handleDelete(Number(row.SEQ), e)}
+														disabled={saving || isEditMode}
+														className="px-2 py-1 text-xs font-medium border border-red-400 rounded bg-red-100 hover:bg-red-200 text-red-900 disabled:opacity-40"
+													>
+														삭제
+													</button>
+												</td>
+											</tr>
+										))
+									)}
+								</tbody>
+							</table>
+						</div>
 					</div>
-				</div>
 
-				{/* 하단 액션 버튼 */}
-				<div className="flex justify-center gap-4 mt-4">
-					<button
-						onClick={handleAddClick}
-						className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
-					>
-						추가
-					</button>
-					<button
-						onClick={handleDeleteAllClick}
-						className="px-6 py-2 text-sm font-medium text-orange-900 bg-orange-200 border border-orange-400 rounded hover:bg-orange-300"
-					>
-						전체 삭제
-					</button>
+					{/* 우측 상세 폼 */}
+					<div className="flex flex-col flex-1 min-w-[280px] bg-white">
+						<div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-50">
+							<h2 className="text-sm font-semibold text-blue-900">질병내역 상세</h2>
+							<div className="flex items-center gap-2">
+								<button
+									type="button"
+									onClick={handleEditOrSave}
+									disabled={!selectedMember || saving || (!isEditMode && selectedSeq == null)}
+									className={`px-3 py-1 text-xs font-medium border rounded disabled:opacity-40 ${
+										isEditMode
+											? "border-green-400 bg-green-100 hover:bg-green-200 text-green-900"
+											: "border-blue-400 bg-blue-100 hover:bg-blue-200 text-blue-900"
+									}`}
+								>
+									{isEditMode ? (saving ? "저장중" : "저장") : "수정"}
+								</button>
+								{isEditMode && (
+									<button
+										type="button"
+										onClick={handleCancelEdit}
+										disabled={saving}
+										className="px-3 py-1 text-xs font-medium border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-40"
+									>
+										취소
+									</button>
+								)}
+							</div>
+						</div>
+						<div className="flex-1 p-5 overflow-y-auto">
+							<div className="mb-5">
+								<label className="block mb-1.5 text-sm font-medium text-blue-900">수급자</label>
+								<div className="px-3 py-2 text-sm border border-blue-200 rounded bg-blue-50 text-blue-900">
+									{selectedMember?.P_NM || "-"}
+								</div>
+							</div>
+
+							<div className="pt-4 mb-4 border-t border-blue-100" />
+
+							<div className="mb-4">
+								<label className="block mb-1.5 text-sm font-medium text-blue-900" htmlFor="jdes">
+									진단명
+								</label>
+								<input
+									id="jdes"
+									type="text"
+									value={formData.JDES}
+									onChange={(e) => handleFieldChange("JDES", e.target.value)}
+									disabled={fieldsDisabled}
+									maxLength={100}
+									placeholder="진단명을 입력하세요"
+									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
+								/>
+							</div>
+
+							<div className="mb-4">
+								<label className="block mb-1.5 text-sm font-medium text-blue-900" htmlFor="jdt">
+									진단일자
+								</label>
+								<input
+									id="jdt"
+									type="date"
+									value={formData.JDT}
+									onChange={(e) => handleFieldChange("JDT", e.target.value)}
+									disabled={fieldsDisabled}
+									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
+								/>
+							</div>
+
+							{isEditMode && (
+								<p className="mt-6 text-xs text-blue-900/50">
+									수정 모드입니다. 저장을 누르면 선택한 항목이 갱신됩니다.
+								</p>
+							)}
+						</div>
+					</div>
 				</div>
 			</div>
+
+			{/* 신규 등록 모달 */}
+			{showAddModal && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+					<div className="w-full max-w-md p-5 bg-white border border-blue-300 rounded-lg shadow-xl">
+						<h3 className="mb-4 text-lg font-semibold text-blue-900">질병내역 신규 등록</h3>
+
+						<div className="mb-3">
+							<label className="block mb-1.5 text-sm font-medium text-blue-900">수급자</label>
+							<div className="px-3 py-2 text-sm border border-blue-200 rounded bg-blue-50 text-blue-900">
+								{selectedMember?.P_NM || "-"}
+							</div>
+						</div>
+
+						<div className="mb-3">
+							<label className="block mb-1.5 text-sm font-medium text-blue-900" htmlFor="modal-jdes">
+								진단명
+							</label>
+							<input
+								id="modal-jdes"
+								type="text"
+								value={modalForm.JDES}
+								onChange={(e) => setModalForm((prev) => ({ ...prev, JDES: e.target.value }))}
+								maxLength={100}
+								placeholder="진단명을 입력하세요"
+								className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded"
+								autoFocus
+							/>
+						</div>
+
+						<div className="mb-5">
+							<label className="block mb-1.5 text-sm font-medium text-blue-900" htmlFor="modal-jdt">
+								진단일자
+							</label>
+							<input
+								id="modal-jdt"
+								type="date"
+								value={modalForm.JDT}
+								onChange={(e) => setModalForm((prev) => ({ ...prev, JDT: e.target.value }))}
+								className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded"
+							/>
+						</div>
+
+						<div className="flex justify-end gap-2">
+							<button
+								type="button"
+								onClick={handleModalSave}
+								disabled={modalSaving}
+								className="px-4 py-1.5 text-sm font-medium border border-green-400 rounded bg-green-100 hover:bg-green-200 text-green-900 disabled:opacity-50"
+							>
+								{modalSaving ? "저장중" : "저장"}
+							</button>
+							<button
+								type="button"
+								onClick={closeAddModal}
+								disabled={modalSaving}
+								className="px-4 py-1.5 text-sm font-medium border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-50"
+							>
+								닫기
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

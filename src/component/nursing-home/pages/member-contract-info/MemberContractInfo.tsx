@@ -5,7 +5,7 @@ import {
 	NO_ROOM_VALUE,
 	attachLatestRoomNoByPnum,
 	availableFloorsFromMembers,
-	extractFloorFromRoomNo,
+	extractMemberFloor,
 	normalizeRoomNo
 } from '../../utils/roomNoFloor';
 
@@ -624,7 +624,7 @@ export default function MemberContractInfo() {
 			if (selectedFloor === NO_ROOM_VALUE) {
 				if (normalizeRoomNo((member as any).ROOM_NO) !== '') return false;
 			} else {
-				const memberFloor = extractFloorFromRoomNo((member as any).ROOM_NO);
+				const memberFloor = extractMemberFloor(member as any);
 				const selectedFloorNum = Number(String(selectedFloor).trim());
 				if (!Number.isFinite(selectedFloorNum) || memberFloor !== selectedFloorNum) return false;
 			}

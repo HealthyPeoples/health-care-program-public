@@ -6,7 +6,7 @@ import {
 	attachLatestRoomNoByPnum,
 	availableFloorsFromMembers,
 } from '../../utils/roomNoFloor';
-import { matchesSelectedFloorByRoomNo } from '../../utils/roomNoFloorFilter';
+import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
 	emptySnapshot,
 	hydrateFromF51012Row,
@@ -210,7 +210,7 @@ export default function NeedsAssessmentRecord() {
 			}
 		}
 		
-		if (!matchesSelectedFloorByRoomNo(member.ROOM_NO, selectedFloor)) {
+		if (!matchesSelectedFloor(member, selectedFloor)) {
 			return false;
 		}
 		

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import BeneficiaryListPanel, { BeneficiaryMember } from '../../components/BeneficiaryListPanel';
+import { formatDateYmd } from '../../utils/excretionObservationFields';
 
 interface MemberData {
 	ANCD: string;
@@ -44,11 +45,12 @@ type PlanForm = {
 export default function PhysicalTherapyPlanEvaluation() {
 	const [selectedMember, setSelectedMember] = useState<BeneficiaryMember | null>(null);
 
-	const [showDevNotice, setShowDevNotice] = useState(true);
+	const [showDevNotice, setShowDevNotice] = useState(false);
 
 	const [planRecords, setPlanRecords] = useState<PlanRecordData[]>([]);
 	const [loadingRecords, setLoadingRecords] = useState(false);
 	const [selectedPlanIndex, setSelectedPlanIndex] = useState<number | null>(null);
+	const [isNewMode, setIsNewMode] = useState(false);
 
 	const extractFloorFromRoomNo = (roomNo: unknown): number | null => {
 		const s = String(roomNo ?? '').trim();
@@ -72,15 +74,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 		}
 	};
 
-	const formatDateDisplay = (dateStr: string) => {
-		if (!dateStr) return '';
-		if (dateStr.includes('T')) dateStr = dateStr.split('T')[0];
-		if (dateStr.includes('-') && dateStr.length >= 10) return dateStr.substring(0, 10);
-		if (dateStr.length === 8 && !dateStr.includes('-')) {
-			return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-		}
-		return dateStr;
-	};
+	const formatDateDisplay = (dateStr: string) => formatDateYmd(dateStr);
 
 	const createEmptyForm = (sdt?: string, edt?: string) => ({
 		SDT: sdt || new Date().toISOString().slice(0, 10),
@@ -117,6 +111,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 				const list: PlanRecordData[] = result.data || [];
 				setPlanRecords(list);
 				setSelectedPlanIndex(null);
+				setIsNewMode(false);
 			} else {
 				setPlanRecords([]);
 			}
@@ -131,11 +126,13 @@ export default function PhysicalTherapyPlanEvaluation() {
 		setSelectedMember(member);
 		setFormData(createEmptyForm());
 		setSelectedPlanIndex(null);
+		setIsNewMode(false);
 		fetchPlans(String(member.PNUM));
 	};
 
 	const handleSelectPlan = (idx: number) => {
 		setSelectedPlanIndex(idx);
+		setIsNewMode(false);
 		const row = planRecords[idx];
 		if (!row) return;
 		const rowMap = row as Record<string, unknown>;
@@ -156,6 +153,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 
 	const handleNewPlan = () => {
 		setSelectedPlanIndex(null);
+		setIsNewMode(true);
 		setFormData(createEmptyForm());
 	};
 
@@ -274,6 +272,9 @@ export default function PhysicalTherapyPlanEvaluation() {
 		[]
 	);
 
+	const isRightLocked = !loadingRecords && selectedPlanIndex === null && !isNewMode;
+	const showEmptyDataOverlay = isRightLocked && !!selectedMember && planRecords.length === 0;
+
 	return (
 		<div className="flex flex-col min-h-screen text-black bg-white">
 			<div className="flex h-[calc(100vh-56px)]">
@@ -318,7 +319,35 @@ export default function PhysicalTherapyPlanEvaluation() {
 				</div>
 
 				{/* 우측 패널: 입력 폼 */}
-				<div className="flex-1 p-4 overflow-y-auto bg-white">
+				<div className="relative flex-1 p-4 overflow-y-auto bg-white">
+					{isRightLocked && (
+						<div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 backdrop-blur-[1px]">
+							{showEmptyDataOverlay ? (
+								<div className="w-[min(520px,90%)] px-4 py-3 text-sm text-blue-900 bg-white border border-blue-200 rounded shadow-sm">
+									<div className="font-medium">데이터가 없습니다.</div>
+									<div className="mt-2 flex justify-end">
+										<button
+											type="button"
+											onClick={handleNewPlan}
+											className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-300 rounded hover:bg-blue-300"
+										>
+											신규등록
+										</button>
+									</div>
+								</div>
+							) : (
+								<div className="px-5 py-3 text-sm font-medium text-blue-900 bg-white border border-blue-200 rounded shadow-sm">
+									수급자 선택 후 계획기간을 선택해주세요
+								</div>
+							)}
+						</div>
+					)}
+
+					<div
+						className={
+							isRightLocked ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+						}
+					>
 					<div className="flex flex-wrap items-center gap-4 mb-4">
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">수급자</label>
@@ -337,6 +366,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 								value={String(formData.SDT || '').slice(0, 10)}
 								onChange={(e) => {
 									setSelectedPlanIndex(null);
+									setIsNewMode(true);
 									setFormData((prev) => ({ ...prev, SDT: e.target.value }));
 								}}
 								disabled={!selectedMember}
@@ -350,6 +380,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 								value={String(formData.EDT || '').slice(0, 10)}
 								onChange={(e) => {
 									setSelectedPlanIndex(null);
+									setIsNewMode(true);
 									setFormData((prev) => ({ ...prev, EDT: e.target.value }));
 								}}
 								disabled={!selectedMember}
@@ -529,6 +560,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 						>
 							삭제
 						</button>
+					</div>
 					</div>
 				</div>
 			</div>

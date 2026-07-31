@@ -1,13 +1,30 @@
 "use client";
 import React, { useState, useEffect } from 'react';
+import {
+	bjdgToLabel,
+	bjynToBool,
+	boolToBjyn,
+	boolToFlag01,
+	boolToFlagNy,
+	flag01ToBool,
+	flagNyToBool,
+	labelToBjdg,
+	toNullableDecimal,
+	toNullableNumber,
+} from '../../utils/f30120Fields';
+import {
+	extractFloorFromRoomNo,
+	fetchRoomNoMapFromF30112,
+	normalizePnumKey,
+} from '../../utils/roomNoFloor';
+import { buildHealthRecordHtml, openPrintWindow } from '../../utils/v30030rPrint';
 
 interface VitalSignsPeriodicData {
 	id: number;
-	checked: boolean;
-	number: number;
 	status: string;
 	beneficiaryName: string;
 	weight: string;
+	waterIntake: string;
 	livingRoom: string;
 	edema: boolean;
 	edemaArea: string;
@@ -15,6 +32,7 @@ interface VitalSignsPeriodicData {
 	bedsore: boolean;
 	bedsoreArea: string;
 	medication: boolean;
+	injection: boolean;
 	incontinence: boolean;
 	dressing: boolean;
 	painVAS: string;
@@ -33,11 +51,25 @@ export default function VitalSignsPeriodic() {
 	const [selectedStatus, setSelectedStatus] = useState<string>('입소');
 	const [selectedLivingRoom, setSelectedLivingRoom] = useState<string>('');
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
+	const [editingBackup, setEditingBackup] = useState<VitalSignsPeriodicData | null>(null);
+	const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
 	const [loading, setLoading] = useState(false);
+	const [saving, setSaving] = useState(false);
 	const [vitalSignsData, setVitalSignsData] = useState<VitalSignsPeriodicData[]>([]);
 	const [nextId, setNextId] = useState(1);
 	const [currentPage, setCurrentPage] = useState(1);
-	const itemsPerPage = 10;
+	const itemsPerPage = 5;
+
+	// 출력 모달 관련 상태
+	const [showPrintModal, setShowPrintModal] = useState(false);
+	const [memberSearchTerm, setMemberSearchTerm] = useState('');
+	const [memberSearchResults, setMemberSearchResults] = useState<any[]>([]);
+	const [showMemberSearchResults, setShowMemberSearchResults] = useState(false);
+	const [selectedMemberForPrint, setSelectedMemberForPrint] = useState<any>(null);
+	const [startDate, setStartDate] = useState('');
+	const [endDate, setEndDate] = useState('');
+	const [printData, setPrintData] = useState<any[]>([]);
+	const [loadingPrintData, setLoadingPrintData] = useState(false);
 
 	// F30120 데이터 조회 함수
 	const fetchVitalSignsData = async (rsdt: string) => {
@@ -48,51 +80,63 @@ export default function VitalSignsPeriodic() {
 			const result = await response.json();
 			
 			if (result.success && Array.isArray(result.data)) {
-				// F30120 데이터를 vitalSignsData 형식으로 변환
-				const transformedData: VitalSignsPeriodicData[] = result.data.map((item: any, index: number) => {
-					// 현황 (P_ST: '1'=입소, '9'=퇴소)
+				const roomMap = await fetchRoomNoMapFromF30112(result.data.map((item: any) => item.PNUM));
+				const transformedData: VitalSignsPeriodicData[] = result.data
+					.map((item: any, index: number) => {
 					const status = item.P_ST === '1' ? '입소' : item.P_ST === '9' ? '퇴소' : '';
-					
-					// 부종유무 (BJYN: '1' 또는 'Y' = true, 그 외 = false)
-					const edema = item.BJYN === '1' || item.BJYN === 'Y' || item.BJYN === 'y';
-					
+					const pain = String(item.NS_PAN_CHK ?? '').trim();
+					const roomNo = roomMap.get(normalizePnumKey(item.PNUM)) || '';
 					return {
 						id: index + 1,
-						checked: false,
-						number: index + 1,
-						status: status,
+						status,
 						beneficiaryName: item.P_NM || '',
-						weight: item.WEIGHT || '',
-						livingRoom: '', // F30120에 생활실 정보가 없음
-						edema: edema,
-						edemaArea: item.BJPA || '',
-						edemaDegree: item.BJDG || '',
-						bedsore: false, // F30120에 욕창 정보가 없음
-						bedsoreArea: '',
-						medication: false, // F30120에 약물투여 정보가 없음
-						incontinence: false, // F30120에 실금 정보가 없음
-						dressing: false, // F30120에 드레싱 정보가 없음
-						painVAS: '', // F30120에 통증 VAS 정보가 없음
-						nursingHistory: item.NUDES || '',
-						author: item.INEMPNM || '',
-						fall: false, // F30120에 낙상 정보가 없음
-						dehydration: false, // F30120에 탈수 정보가 없음
-						delirium: false, // F30120에 섬망 정보가 없음
-						problemBehavior: false, // F30120에 문제행동 정보가 없음
-						ancd: item.ANCD || '',
-						pnum: item.PNUM || ''
+						weight: item.WEIGHT != null && item.WEIGHT !== '' ? String(item.WEIGHT) : '',
+						waterIntake:
+							item.WATER_INTAKE != null && item.WATER_INTAKE !== ''
+								? String(item.WATER_INTAKE)
+								: '',
+						livingRoom: roomNo,
+						edema: bjynToBool(item.BJYN),
+						edemaArea: String(item.BJPA ?? ''),
+						edemaDegree: bjdgToLabel(item.BJDG),
+						bedsore: flag01ToBool(item.NS_SORE_MNG),
+						bedsoreArea: String(item.NS_SORE_DESC ?? ''),
+						medication: flag01ToBool(item.NS_MEDI_CHK),
+						injection: flag01ToBool(item.NS_JUSA_CHK),
+						incontinence: flagNyToBool(item.NS_DNG_CHK),
+						dressing: flagNyToBool(item.DRESSING_FLAG),
+						painVAS: pain,
+						nursingHistory: String(item.NUDES ?? ''),
+						author: String(item.NS_WRITE_NAME || item.INEMPNM || ''),
+						fall: flagNyToBool(item.NS_FAL_CHK),
+						dehydration: flagNyToBool(item.NS_DRY_CHK),
+						delirium: flagNyToBool(item.NS_DLM_CHK),
+						problemBehavior: flagNyToBool(item.NS_ACT_CHK),
+						ancd: item.ANCD != null ? String(item.ANCD) : '',
+						pnum: item.PNUM != null ? String(item.PNUM) : ''
 					};
-				});
+				})
+					.sort((a, b) => (a.beneficiaryName || '').localeCompare(b.beneficiaryName || '', 'ko'))
+					.map((row, idx) => ({ ...row, id: idx + 1 }));
 				
 				setVitalSignsData(transformedData);
+				setSelectedRowId(null);
+				setEditingRowId(null);
+				setEditingBackup(null);
 				setNextId(transformedData.length > 0 ? Math.max(...transformedData.map(d => d.id)) + 1 : 1);
 			} else {
 				setVitalSignsData([]);
+				setSelectedRowId(null);
+				setEditingRowId(null);
+				setEditingBackup(null);
 				setNextId(1);
 			}
 		} catch (err) {
 			console.error('활력증상 데이터 조회 오류:', err);
 			setVitalSignsData([]);
+			setSelectedRowId(null);
+			setEditingRowId(null);
+			setEditingBackup(null);
 			setNextId(1);
 		} finally {
 			setLoading(false);
@@ -112,13 +156,6 @@ export default function VitalSignsPeriodic() {
 		setSelectedDate(date.toISOString().split('T')[0]);
 	};
 
-	// 체크박스 토글
-	const handleCheckboxChange = (id: number) => {
-		setVitalSignsData(prev => prev.map(item => 
-			item.id === id ? { ...item, checked: !item.checked } : item
-		));
-	};
-
 	// 데이터 업데이트
 	const handleDataChange = (id: number, field: string, value: string | boolean) => {
 		setVitalSignsData(prev => prev.map(item => 
@@ -126,15 +163,79 @@ export default function VitalSignsPeriodic() {
 		));
 	};
 
-	// 수정 모드 토글
-	const handleEditClick = (id: number) => {
+	// 수정 모드 토글 (+ 저장 시 F30120 주기 필드 업데이트)
+	const handleEditClick = async (id: number) => {
 		if (editingRowId === id) {
-			// 수정 완료
-			setEditingRowId(null);
+			const row = vitalSignsData.find((r) => r.id === id);
+			if (!row) {
+				setEditingRowId(null);
+				setEditingBackup(null);
+				return;
+			}
+			if (!row.pnum) {
+				alert('수급자 정보가 없어 저장할 수 없습니다.');
+				return;
+			}
+			setSaving(true);
+			try {
+				const pain = String(row.painVAS ?? '').trim();
+				const payload = {
+					scope: 'periodic',
+					rsdt: selectedDate,
+					pnum: row.pnum,
+					WEIGHT: toNullableDecimal(row.weight),
+					WATER_INTAKE: toNullableNumber(row.waterIntake),
+					BJYN: boolToBjyn(!!row.edema),
+					BJDG: labelToBjdg(row.edemaDegree),
+					BJPA: row.edemaArea || null,
+					NS_SORE_MNG: boolToFlag01(!!row.bedsore),
+					NS_SORE_DESC: row.bedsoreArea || null,
+					NS_MEDI_CHK: boolToFlag01(!!row.medication),
+					NS_JUSA_CHK: boolToFlag01(!!row.injection),
+					NS_DNG_CHK: boolToFlagNy(!!row.incontinence),
+					DRESSING_FLAG: boolToFlagNy(!!row.dressing),
+					NS_PAN_CHK: pain ? pain.slice(0, 1) : null,
+					NS_FAL_CHK: boolToFlagNy(!!row.fall),
+					NS_DRY_CHK: boolToFlagNy(!!row.dehydration),
+					NS_DLM_CHK: boolToFlagNy(!!row.delirium),
+					NS_ACT_CHK: boolToFlagNy(!!row.problemBehavior),
+					NUDES: row.nursingHistory || '',
+					INEMPNM: row.author || null,
+					NS_WRITE_NAME: row.author || null,
+				};
+				const res = await fetch('/api/f30120', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(payload),
+				});
+				const json = await res.json().catch(() => ({}));
+				if (!res.ok || !json?.success) {
+					alert(`저장 실패: ${json?.error || '알 수 없는 오류'}`);
+					return;
+				}
+				setEditingRowId(null);
+				setEditingBackup(null);
+				alert('저장되었습니다');
+			} catch (e) {
+				console.error(e);
+				alert('저장 중 오류가 발생했습니다.');
+			} finally {
+				setSaving(false);
+			}
 		} else {
-			// 수정 모드 진입
+			const row = vitalSignsData.find((r) => r.id === id);
 			setEditingRowId(id);
+			setEditingBackup(row ? (JSON.parse(JSON.stringify(row)) as VitalSignsPeriodicData) : null);
 		}
+	};
+
+	// 수정 취소: 진입 시점 값으로 복원
+	const handleCancelEdit = (id: number) => {
+		if (editingBackup && editingBackup.id === id) {
+			setVitalSignsData((prev) => prev.map((r) => (r.id === id ? editingBackup : r)));
+		}
+		setEditingRowId(null);
+		setEditingBackup(null);
 	};
 
 	// 삭제 함수
@@ -143,6 +244,7 @@ export default function VitalSignsPeriodic() {
 			setVitalSignsData(prev => prev.filter(item => item.id !== id));
 			if (editingRowId === id) {
 				setEditingRowId(null);
+				setEditingBackup(null);
 			}
 		}
 	};
@@ -154,9 +256,14 @@ export default function VitalSignsPeriodic() {
 			return false;
 		}
 		
-		// 생활실 필터링
-		if (selectedLivingRoom && row.livingRoom !== selectedLivingRoom) {
-			return false;
+		// 생활실 필터링 (ROOM_NO 또는 층수)
+		if (selectedLivingRoom) {
+			const floorMatch = /^(\d+)층$/.exec(selectedLivingRoom);
+			if (floorMatch) {
+				if (extractFloorFromRoomNo(row.livingRoom) !== Number(floorMatch[1])) return false;
+			} else if (row.livingRoom !== selectedLivingRoom) {
+				return false;
+			}
 		}
 		
 		return true;
@@ -180,17 +287,12 @@ export default function VitalSignsPeriodic() {
 
 	// 행 추가 함수
 	const handleAddRow = () => {
-		const newNumber = vitalSignsData.length > 0 
-			? Math.max(...vitalSignsData.map(row => row.number)) + 1 
-			: 1;
-		
 		const newRow: VitalSignsPeriodicData = {
 			id: nextId,
-			checked: false,
-			number: newNumber,
 			status: '',
 			beneficiaryName: '',
 			weight: '',
+			waterIntake: '',
 			livingRoom: '',
 			edema: false,
 			edemaArea: '',
@@ -198,6 +300,7 @@ export default function VitalSignsPeriodic() {
 			bedsore: false,
 			bedsoreArea: '',
 			medication: false,
+			injection: false,
 			incontinence: false,
 			dressing: false,
 			painVAS: '',
@@ -211,7 +314,9 @@ export default function VitalSignsPeriodic() {
 		
 		setVitalSignsData(prev => [...prev, newRow]);
 		setNextId(prev => prev + 1);
-		setEditingRowId(newRow.id); // 새로 추가된 행을 수정 모드로 설정
+		setSelectedRowId(newRow.id);
+		setEditingRowId(newRow.id);
+		setEditingBackup(JSON.parse(JSON.stringify(newRow)) as VitalSignsPeriodicData);
 	};
 
 	// 날짜 포맷팅 (yyyy-mm-dd -> yyyy. mm. dd)
@@ -221,6 +326,102 @@ export default function VitalSignsPeriodic() {
 		const month = String(date.getMonth() + 1).padStart(2, '0');
 		const day = String(date.getDate()).padStart(2, '0');
 		return `${year}. ${month}. ${day}`;
+	};
+
+	const handleSearchMemberForPrint = async (searchValue: string) => {
+		if (!searchValue || searchValue.trim().length < 1) {
+			setMemberSearchResults([]);
+			setShowMemberSearchResults(false);
+			return;
+		}
+		try {
+			const response = await fetch(`/api/f10010?name=${encodeURIComponent(searchValue.trim())}`);
+			if (!response.ok) throw new Error('검색 요청 실패');
+			const data = await response.json();
+			if (data.success && data.data) {
+				setMemberSearchResults(data.data);
+				setShowMemberSearchResults(data.data.length > 0);
+			} else {
+				setMemberSearchResults([]);
+				setShowMemberSearchResults(false);
+			}
+		} catch (error) {
+			console.error('수급자 검색 오류:', error);
+			setMemberSearchResults([]);
+			setShowMemberSearchResults(false);
+		}
+	};
+
+	const handleSelectMemberForPrint = (member: any) => {
+		setSelectedMemberForPrint(member);
+		setMemberSearchTerm(member.P_NM || '');
+		setShowMemberSearchResults(false);
+		setMemberSearchResults([]);
+	};
+
+	const handleLoadPrintData = async () => {
+		if (!selectedMemberForPrint || !startDate || !endDate) {
+			alert('수급자와 기간을 선택해주세요.');
+			return;
+		}
+		if (startDate > endDate) {
+			alert('시작일이 종료일보다 늦을 수 없습니다.');
+			return;
+		}
+		setLoadingPrintData(true);
+		try {
+			const url = `/api/v30030r?pnum=${encodeURIComponent(selectedMemberForPrint.PNUM)}&ancd=${encodeURIComponent(selectedMemberForPrint.ANCD || '')}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
+			const response = await fetch(url);
+			const result = await response.json();
+			if (result.success && Array.isArray(result.data)) {
+				setPrintData(result.data);
+				if (result.data.length === 0) {
+					alert('조회된 데이터가 없습니다.');
+				}
+			} else {
+				setPrintData([]);
+				alert(`데이터를 조회할 수 없습니다.${result?.error ? `\n${result.error}` : ''}`);
+			}
+		} catch (err) {
+			console.error('출력 데이터 조회 오류:', err);
+			alert('데이터 조회 중 오류가 발생했습니다.');
+			setPrintData([]);
+		} finally {
+			setLoadingPrintData(false);
+		}
+	};
+
+	const handlePrint = () => {
+		if (printData.length === 0) {
+			alert('출력할 데이터가 없습니다. 먼저 데이터를 조회해주세요.');
+			return;
+		}
+		const rrnRaw = selectedMemberForPrint?.P_JUMIN || selectedMemberForPrint?.P_BRDT || '';
+		const rrnMasked =
+			typeof rrnRaw === 'string' && rrnRaw.length >= 7
+				? rrnRaw.replace(/(\d{6})[-]?(\d).*/, '$1-$2******')
+				: String(rrnRaw || '');
+		const html = buildHealthRecordHtml(printData, {
+			startDate,
+			endDate,
+			fallback: {
+				facilityCode: selectedMemberForPrint?.ANCD != null ? String(selectedMemberForPrint.ANCD) : '',
+				name: selectedMemberForPrint?.P_NM || '',
+				rrn: rrnMasked,
+			},
+		});
+		openPrintWindow(html);
+	};
+
+	const handleClosePrintModal = () => {
+		setShowPrintModal(false);
+		setSelectedMemberForPrint(null);
+		setMemberSearchTerm('');
+		setStartDate('');
+		setEndDate('');
+		setPrintData([]);
+		setMemberSearchResults([]);
+		setShowMemberSearchResults(false);
 	};
 
 	return (
@@ -255,7 +456,10 @@ export default function VitalSignsPeriodic() {
 					</div>
 					{/* 오른쪽: 출력 버튼 */}
 					<div className="ml-auto flex flex-col items-end gap-1">
-						<button className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium">
+						<button
+							onClick={() => setShowPrintModal(true)}
+							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+						>
 							출력
 						</button>
 					</div>
@@ -264,7 +468,7 @@ export default function VitalSignsPeriodic() {
 				{/* 메인 콘텐츠 영역 */}
 				<div className="flex flex-col gap-4">
 					{/* 상단 필터 패널 - 가로 배치 */}
-					<div className="flex gap-4 items-end">
+					{/* <div className="flex gap-4 items-end">
 						<div className="border border-blue-300 rounded-lg p-3 bg-blue-50">
 							<label className="block text-sm font-semibold text-blue-900 mb-2">현황</label>
 							<select
@@ -290,7 +494,7 @@ export default function VitalSignsPeriodic() {
 								<option value="3층">3층</option>
 							</select>
 						</div>
-					</div>
+					</div> */}
 
 					{/* 우측 메인 테이블 */}
 					<div className="flex-1 border border-blue-300 rounded-lg bg-white shadow-sm">
@@ -301,20 +505,18 @@ export default function VitalSignsPeriodic() {
 							<table className="w-full text-sm">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-12">
-											<input type="checkbox" className="cursor-pointer" />
-										</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">번호</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">현황</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">수급자명</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">생활실</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">체중</th>
+										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">물 섭취량</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종 부위</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종 정도</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">욕창</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">욕창 부위</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">약물투여</th>
+										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">주사제투여</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">소변/대변실금</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">드레싱 실시</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">통증 (VAS)</th>
@@ -340,16 +542,12 @@ export default function VitalSignsPeriodic() {
 									) : (
 										paginatedData.map((row) => (
 										<React.Fragment key={row.id}>
-											<tr className="border-b border-blue-50 hover:bg-blue-50">
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.checked}
-														onChange={() => handleCheckboxChange(row.id)}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">{row.number}</td>
+											<tr
+												onClick={() => setSelectedRowId(row.id)}
+												className={`border-b border-blue-50 cursor-pointer hover:bg-blue-50 ${
+													selectedRowId === row.id ? 'bg-blue-100' : ''
+												}`}
+											>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
 													<input
 														type="text"
@@ -393,6 +591,18 @@ export default function VitalSignsPeriodic() {
 															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 														}`}
 														placeholder="체중 입력"
+													/>
+												</td>
+												<td className="text-center px-3 py-3 border-r border-blue-100">
+													<input
+														type="text"
+														value={row.waterIntake}
+														onChange={(e) => handleDataChange(row.id, 'waterIntake', e.target.value)}
+														disabled={editingRowId !== row.id}
+														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
+															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+														}`}
+														placeholder="ml"
 													/>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
@@ -455,6 +665,15 @@ export default function VitalSignsPeriodic() {
 														type="checkbox"
 														checked={row.medication}
 														onChange={(e) => handleDataChange(row.id, 'medication', e.target.checked)}
+														disabled={editingRowId !== row.id}
+														className="cursor-pointer"
+													/>
+												</td>
+												<td className="text-center px-3 py-3 border-r border-blue-100">
+													<input
+														type="checkbox"
+														checked={row.injection}
+														onChange={(e) => handleDataChange(row.id, 'injection', e.target.checked)}
 														disabled={editingRowId !== row.id}
 														className="cursor-pointer"
 													/>
@@ -529,9 +748,13 @@ export default function VitalSignsPeriodic() {
 												</td>
 											</tr>
 											{/* 두 번째 줄: 작성자, 간호내역, 작업 */}
-											<tr className="border-b border-blue-50 bg-blue-25">
-												<td colSpan={2} className="px-3 py-2 border-r border-blue-100"></td>
-												<td colSpan={17} className="px-3 py-2">
+											<tr
+												onClick={() => setSelectedRowId(row.id)}
+												className={`border-b border-blue-50 cursor-pointer ${
+													selectedRowId === row.id ? 'bg-blue-100' : 'bg-blue-25'
+												}`}
+											>
+												<td colSpan={19} className="px-3 py-2">
 													<div className="flex items-center gap-4 w-full">
 													<div className="flex items-center gap-2 flex-shrink-0">
 														<label className="text-xs text-blue-900 font-medium whitespace-nowrap">작성자</label>
@@ -562,20 +785,32 @@ export default function VitalSignsPeriodic() {
 															<div className="flex gap-2">
 																<button
 																	onClick={() => handleEditClick(row.id)}
-																	className={`px-3 py-1 text-xs border rounded font-medium ${
+																	disabled={saving}
+																	className={`px-3 py-1 text-xs border rounded font-medium disabled:opacity-50 ${
 																		editingRowId === row.id
 																			? 'border-green-400 bg-green-200 hover:bg-green-300 text-green-900'
 																			: 'border-blue-400 bg-blue-200 hover:bg-blue-300 text-blue-900'
 																	}`}
 																>
-																	{editingRowId === row.id ? '저장' : '수정'}
+																	{editingRowId === row.id ? (saving ? '저장중' : '저장') : '수정'}
 																</button>
-																<button
-																	onClick={() => handleDeleteClick(row.id)}
-																	className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
-																>
-																	삭제
-																</button>
+																{editingRowId === row.id ? (
+																	<button
+																		type="button"
+																		onClick={() => handleCancelEdit(row.id)}
+																		className="px-3 py-1 text-xs border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
+																	>
+																		취소
+																	</button>
+																) : (
+																	<button
+																		type="button"
+																		onClick={() => handleDeleteClick(row.id)}
+																		className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
+																	>
+																		삭제
+																	</button>
+																)}
 															</div>
 														</div>
 													</div>
@@ -656,6 +891,104 @@ export default function VitalSignsPeriodic() {
 					</div>
 				</div>
 			</div>
+
+			{/* 출력 모달 */}
+			{showPrintModal && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+					<div className="bg-white rounded-lg border border-blue-400 w-[600px] max-h-[90vh] overflow-y-auto p-6 shadow-xl">
+						<div className="mb-4">
+							<h2 className="text-xl font-semibold text-blue-900 mb-4">건강 관리 기록부 출력</h2>
+
+							<div className="mb-4">
+								<label className="block text-sm font-semibold text-blue-900 mb-2">수급자 검색</label>
+								<div className="relative">
+									<input
+										type="text"
+										value={memberSearchTerm}
+										onChange={(e) => {
+											setMemberSearchTerm(e.target.value);
+											handleSearchMemberForPrint(e.target.value);
+										}}
+										onFocus={() => {
+											if (memberSearchResults.length > 0) {
+												setShowMemberSearchResults(true);
+											}
+										}}
+										placeholder="수급자명을 입력하세요"
+										className="w-full px-3 py-2 border border-blue-300 rounded"
+									/>
+									{showMemberSearchResults && memberSearchResults.length > 0 && (
+										<div className="absolute z-10 w-full mt-1 bg-white border border-blue-300 rounded shadow-lg max-h-40 overflow-y-auto">
+											{memberSearchResults.map((member, index) => (
+												<div
+													key={index}
+													onClick={() => handleSelectMemberForPrint(member)}
+													className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-blue-100"
+												>
+													{member.P_NM} ({member.PNUM})
+												</div>
+											))}
+										</div>
+									)}
+								</div>
+								{selectedMemberForPrint && (
+									<div className="mt-2 text-sm text-blue-700">
+										선택된 수급자: {selectedMemberForPrint.P_NM}
+									</div>
+								)}
+							</div>
+
+							<div className="mb-4">
+								<label className="block text-sm font-semibold text-blue-900 mb-2">조사기간</label>
+								<div className="flex items-center gap-2">
+									<input
+										type="date"
+										value={startDate}
+										onChange={(e) => setStartDate(e.target.value)}
+										className="flex-1 px-3 py-2 border border-blue-300 rounded"
+									/>
+									<span>~</span>
+									<input
+										type="date"
+										value={endDate}
+										onChange={(e) => setEndDate(e.target.value)}
+										className="flex-1 px-3 py-2 border border-blue-300 rounded"
+									/>
+								</div>
+							</div>
+
+							{printData.length > 0 && (
+								<div className="mb-4 p-3 bg-blue-50 rounded text-sm text-blue-900">
+									조회된 데이터: {printData.length}건
+								</div>
+							)}
+
+							<div className="flex gap-2 justify-end">
+								<button
+									onClick={handleLoadPrintData}
+									disabled={!selectedMemberForPrint || !startDate || !endDate || loadingPrintData}
+									className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									{loadingPrintData ? '조회 중...' : '조회'}
+								</button>
+								<button
+									onClick={handlePrint}
+									disabled={printData.length === 0}
+									className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									출력
+								</button>
+								<button
+									onClick={handleClosePrintModal}
+									className="px-4 py-2 text-sm border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
+								>
+									닫기
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

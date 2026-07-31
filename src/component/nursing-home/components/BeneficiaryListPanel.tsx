@@ -2,6 +2,13 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { formatCareGradeLabel } from "../utils/careGrade";
+import {
+  NO_ROOM_VALUE,
+  attachLatestRoomNoByPnum,
+  availableFloorsFromMembers,
+  extractMemberFloor,
+  normalizeRoomNo,
+} from "../utils/roomNoFloor";
 
 export interface BeneficiaryMember {
   ANCD: string;
@@ -12,6 +19,7 @@ export interface BeneficiaryMember {
   P_BRDT?: string;
   P_ST?: string;
   ROOM_NO?: unknown;
+  P_FLOOR?: unknown;
   [key: string]: unknown;
 }
 
@@ -21,18 +29,6 @@ type Props = {
   onSelect: (m: BeneficiaryMember) => void;
   className?: string;
 };
-
-const NO_ROOM_VALUE = "__NO_ROOM__";
-
-function extractFloorFromRoomNo(roomNo: unknown): number | null {
-  const s = String(roomNo ?? "").trim();
-  if (!s) return null;
-  const digits = s.replace(/\D/g, "");
-  if (!digits) return null;
-  const n = parseInt(digits, 10);
-  if (!Number.isFinite(n) || Number.isNaN(n) || n < 0) return null;
-  return Math.floor(n / 100);
-}
 
 function calculateAge(birthDate: unknown) {
   const s = String(birthDate ?? "").trim();
@@ -69,27 +65,8 @@ export default function BeneficiaryListPanel({
       const result = await response.json();
       if (!result.success) return;
 
-      let mergedMembers: BeneficiaryMember[] = result.data || [];
-      try {
-        const f14090Res = await fetch(`/api/f14090`);
-        const f14090Json = await f14090Res.json();
-        if (f14090Json?.success && Array.isArray(f14090Json.data)) {
-          const roomByPnum = new Map<string, unknown>();
-          f14090Json.data.forEach((row: any) => {
-            const pnumKey = String(row?.PNUM ?? "").trim();
-            if (!pnumKey) return;
-            roomByPnum.set(pnumKey, row?.ROOM_NO ?? null);
-          });
-          mergedMembers = mergedMembers.map((m) => {
-            const pnumKey = String(m?.PNUM ?? "").trim();
-            const roomNo = roomByPnum.get(pnumKey);
-            return { ...m, ROOM_NO: roomNo ?? m.ROOM_NO ?? null };
-          });
-        }
-      } catch {
-        // ROOM_NO는 부가정보이므로 실패해도 기본 목록 유지
-      }
-
+      const list = (result.data || []) as BeneficiaryMember[];
+      const mergedMembers = await attachLatestRoomNoByPnum(list);
       setMemberList(mergedMembers);
     } catch (err) {
       console.error("수급자 목록 조회 오류:", err);
@@ -114,15 +91,7 @@ export default function BeneficiaryListPanel({
     setCurrentPage(1);
   }, [selectedStatus, selectedGrade, selectedFloor, searchTerm]);
 
-  const floorOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        memberList
-          .map((m) => extractFloorFromRoomNo(m.ROOM_NO))
-          .filter((f): f is number => f !== null && f !== undefined)
-      )
-    ).sort((a, b) => a - b);
-  }, [memberList]);
+  const floorOptions = useMemo(() => availableFloorsFromMembers(memberList), [memberList]);
 
   const filteredMembers = useMemo(() => {
     return memberList
@@ -140,10 +109,9 @@ export default function BeneficiaryListPanel({
 
         if (selectedFloor) {
           if (selectedFloor === NO_ROOM_VALUE) {
-            const roomNo = String(member?.ROOM_NO ?? "").trim();
-            if (roomNo !== "") return false;
+            if (normalizeRoomNo(member?.ROOM_NO) !== "") return false;
           } else {
-            const memberFloor = extractFloorFromRoomNo(member.ROOM_NO);
+            const memberFloor = extractMemberFloor(member);
             const selectedFloorNum = Number(String(selectedFloor).trim());
             if (!Number.isFinite(selectedFloorNum) || memberFloor !== selectedFloorNum) return false;
           }
@@ -267,7 +235,7 @@ export default function BeneficiaryListPanel({
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">{String(member.P_NM ?? "-")}</td>
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">{formatCareGradeLabel(String(member.P_GRD ?? ""))}</td>
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">
-                      {extractFloorFromRoomNo(member.ROOM_NO) !== null ? `${extractFloorFromRoomNo(member.ROOM_NO)}층` : "-"}
+                      {extractMemberFloor(member) !== null ? `${extractMemberFloor(member)}층` : "-"}
                     </td>
                     <td className="px-2 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>
                   </tr>

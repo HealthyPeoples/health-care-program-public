@@ -97,4 +97,4 @@ export function createEmptyCatheterForm(beneficiaryName = '', observer = ''): Ca
 	};
 }
 
-export { formatDateYmd, isCheckedFlag };
+export { formatDateYmd, formatDateYyMmDd, isCheckedFlag } from './excretionObservationFields';

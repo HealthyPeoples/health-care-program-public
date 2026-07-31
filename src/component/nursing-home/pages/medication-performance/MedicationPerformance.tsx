@@ -1,16 +1,8 @@
 "use client";
 
-export default function MedicationPerformance() {
-	return (
-		<div className="w-full text-black bg-white">
-			<div className="flex items-center justify-center min-h-screen py-8">
-				<div className="text-center">
-					<h1 className="mb-4 text-6xl font-bold text-blue-900">개발 진행중</h1>
-					<p className="text-xl text-gray-600">약물복용실적 등록 페이지</p>
-					<p className="text-xl text-gray-600">약물복용실적 등록 페이지 기존 메뉴명 찾을 수 없음</p>
-				</div>
-			</div>
-		</div>
-	);
-}
+import MedicationRegistration from "../medication-registration/MedicationRegistration";
 
+/** 약물복용실적 등록 — 기존 수급자 복용약물 등록 화면을 사용 */
+export default function MedicationPerformance() {
+	return <MedicationRegistration />;
+}

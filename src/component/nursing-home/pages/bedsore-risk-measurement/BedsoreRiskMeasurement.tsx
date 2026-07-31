@@ -6,7 +6,7 @@ import {
 	attachLatestRoomNoByPnum,
 	availableFloorsFromMembers,
 } from '../../utils/roomNoFloor';
-import { matchesSelectedFloorByRoomNo } from '../../utils/roomNoFloorFilter';
+import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
 	A01_OPTIONS,
 	A02_OPTIONS,
@@ -146,7 +146,7 @@ export default function BedsoreRiskMeasurement() {
 			if (selectedGrade) {
 				if (String(member.P_GRD || '').trim() !== String(selectedGrade).trim()) return false;
 			}
-			if (!matchesSelectedFloorByRoomNo(member.ROOM_NO, selectedFloor)) return false;
+			if (!matchesSelectedFloor(member, selectedFloor)) return false;
 			if (searchTerm && searchTerm.trim() !== '') {
 				if (!member.P_NM?.toLowerCase().includes(searchTerm.toLowerCase().trim())) return false;
 			}

@@ -3,12 +3,13 @@ import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
-import { matchesSelectedFloorByRoomNo } from '../../utils/roomNoFloorFilter';
+import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
 	CATHETER_TIME_SLOTS,
 	catheterFormToPayload,
 	createEmptyCatheterForm,
 	formatDateYmd,
+	formatDateYyMmDd,
 	isCheckedFlag,
 	rowToCatheterForm,
 	type CatheterFormData,
@@ -116,7 +117,7 @@ export default function IndwellingCatheter() {
 		}
 		
 		if (selectedFloor) {
-			if (!matchesSelectedFloorByRoomNo((member as any).ROOM_NO, selectedFloor)) return false;
+			if (!matchesSelectedFloor(member, selectedFloor)) return false;
 		}
 		
 		if (searchTerm && searchTerm.trim() !== '') {
@@ -195,7 +196,7 @@ export default function IndwellingCatheter() {
 			const list = Array.isArray(result.data) ? result.data : [];
 			const mapped: CatheterData[] = list.map((r: F33050Row) => ({
 				...r,
-				MGDT: formatDateYmd(r.VDT),
+				MGDT: r.VDT != null && r.VDT !== '' ? String(r.VDT) : '',
 				MGTM: String(r.VTM_GU ?? ''),
 				TOTURVOL: r.PSS_VAL != null ? String(r.PSS_VAL) : '',
 				CATH: String(r.CH_01 ?? '0'),
@@ -227,7 +228,7 @@ export default function IndwellingCatheter() {
 		setFormData(rowToCatheterForm(record, selectedMember?.P_NM || ''));
 	};
 
-	const formatDateDisplay = formatDateYmd;
+	const formatDateDisplay = formatDateYyMmDd;
 
 	const formatTimeDisplay = (timeStr: string) => {
 		if (!timeStr) return '';
@@ -297,7 +298,7 @@ export default function IndwellingCatheter() {
 		setLoadingRecords(true);
 		try {
 			const recordToDelete = catheterList[selectedRecordIndex];
-			const vdt = formatDateDisplay(recordToDelete.MGDT || formData.managementDate || '');
+			const vdt = formatDateYmd(recordToDelete.MGDT || recordToDelete.VDT || formData.managementDate || '');
 			const vtmGu = String(recordToDelete.VTM_GU ?? '');
 			const url = `/api/f33050?ancd=${encodeURIComponent(selectedMember.ANCD)}&pnum=${encodeURIComponent(
 				selectedMember.PNUM
@@ -507,23 +508,27 @@ export default function IndwellingCatheter() {
 					>
 				{/* 중간 패널: 유치도뇨관리 목록 테이블 */}
 				<div className="flex flex-col w-1/3 bg-white border-r border-blue-200">
-					<div className="overflow-hidden border-b border-blue-200 bg-blue-50">
-						<table className="w-full text-xs border-collapse">
-							<thead>
-								<tr>
-									<th className="px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">관리일자</th>
-									<th className="px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">관리시간</th>
-									<th className="px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">소변총량</th>
-									<th className="px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">도뇨관</th>
-									<th className="px-2 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">소변맥</th>
-									<th className="px-2 py-2 font-semibold text-center text-blue-900">소독</th>
-								</tr>
-							</thead>
-						</table>
-					</div>
 					<div className="flex flex-col flex-1 overflow-hidden">
 						<div className="flex-1 overflow-y-auto">
-							<table className="w-full text-xs border-collapse">
+							<table className="w-full text-xs border-collapse table-fixed">
+								<colgroup>
+									<col className="w-[18%]" />
+									<col className="w-[28%]" />
+									<col className="w-[14%]" />
+									<col className="w-[13%]" />
+									<col className="w-[13%]" />
+									<col className="w-[14%]" />
+								</colgroup>
+								<thead className="sticky top-0 z-10 bg-blue-50">
+									<tr>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">관리일자</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">관리시간</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">소변총량</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">도뇨관</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">소변맥</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-blue-200 bg-blue-50">소독</th>
+									</tr>
+								</thead>
 								<tbody>
 									{loadingRecords ? (
 										<tr>
@@ -546,7 +551,7 @@ export default function IndwellingCatheter() {
 														selectedRecordIndex === globalIndex ? 'bg-blue-100' : ''
 													}`}
 												>
-													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">{formatDateDisplay(record.MGDT || '')}</td>
+													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">{formatDateDisplay(record.MGDT || record.VDT || '')}</td>
 													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">{formatTimeDisplay(record.MGTM || '')}</td>
 													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">{record.TOTURVOL || '-'}</td>
 													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">

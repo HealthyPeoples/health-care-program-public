@@ -28,7 +28,7 @@ import ExcretionObservation from '@/component/nursing-home/pages/excretion-obser
 import BathService from '@/component/nursing-home/pages/bath-service/BathService';
 import PositionChangeRecord from '@/component/nursing-home/pages/position-change-record/PositionChangeRecord';
 import HealthExamination from '@/component/nursing-home/pages/health-examination/HealthExamination';
-import MedicationRegistration from '@/component/nursing-home/pages/medication-registration/MedicationRegistration';
+import MedicationRegistrationStub from '@/component/nursing-home/pages/medication-registration/MedicationRegistrationStub';
 import MedicationPerformance from '@/component/nursing-home/pages/medication-performance/MedicationPerformance';
 import EntrustedMedical from '@/component/nursing-home/pages/entrusted-medical/EntrustedMedical';
 import NursingService from '@/component/nursing-home/pages/nursing-service/NursingService';
@@ -72,7 +72,7 @@ import DataRoom from '@/component/nursing-home/pages/data-room/DataRoom';
 import EvaluationChecklist from '@/component/nursing-home/pages/evaluation-checklist/EvaluationChecklist';
 import UDCPage from '@/component/nursing-home/pages/UDC-page/UDCPage';
 import UserCodeRegistration from '@/component/nursing-home/pages/user-code-registration/UserCodeRegistration';
-import OutingProcessing from '@/component/nursing-home/pages/outing-processing/OutingProcessing';
+import OutingInfo from '@/component/nursing-home/pages/outing-info/OutingInfo';
 import EmployeeBasicInfo from '@/component/nursing-home/pages/employee-basic-info/EmployeeBasicInfo';
 import ProgramPlanRegistration from '@/component/nursing-home/pages/program-plan-registration/ProgramPlanRegistration';
 import CounselingRecord from '@/component/nursing-home/pages/counseling-record/CounselingRecord';
@@ -109,8 +109,8 @@ function renderInternal(href: string) {
       return <DailyLongtermCare />;
     case '/nursingHome/snack-bulk-registration':
       return <SnackBulkRegistration />;
-    case '/nursingHome/outing-processing':
-      return <OutingProcessing />;
+    case '/nursingHome/outing-info':
+      return <OutingInfo />;
 
     case '/nursingHome/medication-time':
       return <MedicationTime />;
@@ -172,7 +172,7 @@ function renderInternal(href: string) {
     case '/nursingHome/health-examination':
       return <HealthExamination />;
     case '/nursingHome/medication-registration':
-      return <MedicationRegistration />;
+      return <MedicationRegistrationStub />;
     case '/nursingHome/medication-performance':
       return <MedicationPerformance />;
     case '/nursingHome/entrusted-medical':
