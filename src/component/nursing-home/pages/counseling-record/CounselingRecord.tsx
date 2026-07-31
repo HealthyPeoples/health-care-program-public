@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 
 interface MemberData {
@@ -91,7 +92,7 @@ export default function CounselingRecord() {
 	}, [showConsultantDropdown]);
 
 	// 상담 기록 조회 (수급자 선택 시)
-	const fetchConsultations = async (ancd: string, pnum: string, member: MemberData | null) => {
+	const fetchConsultations = async (ancd: string, pnum: string, member: MemberData | null, preserveDate?: string | null) => {
 		if (!ancd || !pnum) {
 			setConsultationList([]);
 			setConsultationDates([]);
@@ -112,8 +113,36 @@ export default function CounselingRecord() {
 				const dates = consultations.map((c: CounselingData) => c.CSDT || '').filter((d: string) => d);
 				setConsultationDates(dates);
 				
-				// 첫 번째 상담 기록이 있으면 자동 선택
-				if (consultations.length > 0) {
+				if (preserveDate !== undefined) {
+					if (preserveDate && consultations.length > 0) {
+						const idx = dates.findIndex(
+							(d: string) => d === preserveDate || formatDateDisplay(d) === formatDateDisplay(preserveDate)
+						);
+						if (idx >= 0) {
+							setSelectedDateIndex(idx);
+							handleSelectDate(idx, consultations[idx], member);
+						} else {
+							setSelectedDateIndex(null);
+							resetForm(member);
+						}
+					} else if (preserveDate) {
+						setConsultationDates([preserveDate, ...dates]);
+						setSelectedDateIndex(0);
+						resetForm(member);
+						setFormData((prev) => ({
+							...prev,
+							beneficiary: member?.P_NM || prev.beneficiary,
+							consultationDate: formatDateDisplay(preserveDate)
+						}));
+					} else {
+						setSelectedDateIndex(null);
+						resetForm(member);
+					}
+					setIsEditMode(false);
+					setConsultantSearchTerm('');
+					setConsultantSuggestions([]);
+					setShowConsultantDropdown(false);
+				} else if (consultations.length > 0) {
 					setSelectedDateIndex(0);
 					handleSelectDate(0, consultations[0], member);
 					setIsEditMode(false); // 상담 기록 로드 시 편집 모드 해제
@@ -290,6 +319,12 @@ export default function CounselingRecord() {
 		// 해당 수급자의 상담 기록 조회 (member를 직접 전달)
 		fetchConsultations(member.ANCD, member.PNUM, member);
 	};
+
+	useTabRefresh(() => {
+		if (!selectedMember?.ANCD || !selectedMember?.PNUM) return;
+		const savedDate = selectedDateIndex !== null ? consultationDates[selectedDateIndex] : null;
+		void fetchConsultations(selectedMember.ANCD, selectedMember.PNUM, selectedMember, savedDate);
+	});
 
 	// 폼 초기화
 	const resetForm = (member: MemberData | null = null) => {

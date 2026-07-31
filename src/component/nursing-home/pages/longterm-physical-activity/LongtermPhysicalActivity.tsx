@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 import { BATH_METH_TO_LABEL, resolveBathMethodFromRow } from '../../utils/physicalActivityFields';
 
 interface MemberData {
@@ -248,6 +249,11 @@ export default function LongtermPhysicalActivity() {
 		const pnum = String(member?.PNUM ?? '').trim();
 		await fetchDefaults(pnum);
 	};
+
+	useTabRefresh(() => {
+		if (!selectedPnum) return;
+		void fetchDefaults(selectedPnum);
+	});
 
 	const handleEnterEdit = () => {
 		if (!selectedPnum) {

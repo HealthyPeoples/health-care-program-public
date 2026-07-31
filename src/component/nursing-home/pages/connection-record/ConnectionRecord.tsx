@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 
 interface MemberData {
@@ -78,7 +79,7 @@ export default function ConnectionRecord() {
 	};
 
 	// 연계 기록 조회 (수급자 선택 시)
-	const fetchConnections = async (ancd: string, pnum: string, member: MemberData | null) => {
+	const fetchConnections = async (ancd: string, pnum: string, member: MemberData | null, preserveDate?: string | null) => {
 		if (!ancd || !pnum) {
 			setConnectionList([]);
 			setConsultationDates([]);
@@ -156,8 +157,33 @@ export default function ConnectionRecord() {
 				
 				setConsultationDates(uniqueDates);
 				
-				// 첫 번째 연계 기록이 있으면 자동 선택
-				if (connections.length > 0) {
+				if (preserveDate !== undefined) {
+					if (preserveDate && connections.length > 0) {
+						const idx = uniqueDates.findIndex(
+							(d: string) => d === preserveDate || formatDateDisplay(d) === formatDateDisplay(preserveDate)
+						);
+						if (idx >= 0) {
+							setSelectedDateIndex(idx);
+							handleSelectDate(idx, connections[idx], member);
+						} else {
+							setSelectedDateIndex(null);
+							resetForm(member);
+						}
+					} else if (preserveDate) {
+						setConsultationDates([preserveDate, ...uniqueDates]);
+						setSelectedDateIndex(0);
+						resetForm(member);
+						setFormData((prev) => ({
+							...prev,
+							beneficiary: member?.P_NM || prev.beneficiary,
+							connectionDate: formatDateDisplay(preserveDate)
+						}));
+					} else {
+						setSelectedDateIndex(null);
+						resetForm(member);
+					}
+					setIsEditMode(false);
+				} else if (connections.length > 0) {
 					setSelectedDateIndex(0);
 					handleSelectDate(0, connections[0], member);
 					setIsEditMode(false);
@@ -282,6 +308,12 @@ export default function ConnectionRecord() {
 		// 해당 수급자의 연계 기록 조회 (member를 직접 전달)
 		fetchConnections(member.ANCD, member.PNUM, member);
 	};
+
+	useTabRefresh(() => {
+		if (!selectedMember?.ANCD || !selectedMember?.PNUM) return;
+		const savedDate = selectedDateIndex !== null ? consultationDates[selectedDateIndex] : null;
+		void fetchConnections(selectedMember.ANCD, selectedMember.PNUM, selectedMember, savedDate);
+	});
 
 	// 폼 초기화
 	const resetForm = (member: MemberData | null = null) => {

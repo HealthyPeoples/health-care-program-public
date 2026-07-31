@@ -289,6 +289,7 @@ async function upsertOvernightOngoingRow(pool, ancd, svdtIso, pendingRow) {
 	request.input('DNST', '2');
 	request.input('MGST', '2');
 	request.input('AGST', '2');
+	request.input('DGST', '2');
 
 	await request.query(`
 		MERGE [돌봄시설DB].[dbo].[F14020] AS T
@@ -306,10 +307,11 @@ async function upsertOvernightOngoingRow(pool, ancd, svdtIso, pendingRow) {
 				[LCST] = @LCST,
 				[DNST] = @DNST,
 				[MGST] = @MGST,
-				[AGST] = @AGST
+				[AGST] = @AGST,
+				[DGST] = @DGST
 		WHEN NOT MATCHED THEN
-			INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
-			VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST);
+			INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST],[DGST])
+			VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST,@DGST);
 	`);
 
 	return { pnum, leaveDate, leaveTime, ioTmInfo };
@@ -548,6 +550,7 @@ export async function POST(req) {
 				request.input('DNST', '1');
 				request.input('MGST', '1');
 				request.input('AGST', '1');
+				request.input('DGST', '1');
 
 				await request.query(`
 					MERGE [돌봄시설DB].[dbo].[F14020] AS T
@@ -565,10 +568,11 @@ export async function POST(req) {
 							[LCST] = @LCST,
 							[DNST] = @DNST,
 							[MGST] = @MGST,
-							[AGST] = @AGST
+							[AGST] = @AGST,
+							[DGST] = @DGST
 					WHEN NOT MATCHED THEN
-						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
-						VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST);
+						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST],[DGST])
+						VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST,@DGST);
 				`);
 
 				try {
@@ -632,8 +636,8 @@ export async function POST(req) {
 							[INDT] = @INDT,
 							[PAY_COM_GU] = @PAY_COM_GU
 					WHEN NOT MATCHED THEN
-						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
-						VALUES (@ANCD,@PNUM,@SVDT,@INDT,'1','1',N'식장',@PAY_COM_GU,'','1','1','1','1','1');
+						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST],[DGST])
+						VALUES (@ANCD,@PNUM,@SVDT,@INDT,'1','1',N'식장',@PAY_COM_GU,'','1','1','1','1','1','1');
 				`);
 
 				results.push({ index: i, pnum, ok: true, kind, time, payComGu });
@@ -736,7 +740,7 @@ export async function POST(req) {
 				DNST: r.dnst ?? r.DNST ?? r.mealStatus?.dinner,
 				MGST: r.mgst ?? r.MGST ?? r.snackStatus?.morning,
 				AGST: r.agst ?? r.AGST ?? r.snackStatus?.afternoon,
-				DGST: r.dgst ?? r.DGST,
+				DGST: r.dgst ?? r.DGST ?? r.snackStatus?.evening,
 				MOVOL: r.movol ?? r.MOVOL,
 				LCVOL: r.lcvol ?? r.LCVOL,
 				DNVOL: r.dnvol ?? r.DNVOL,

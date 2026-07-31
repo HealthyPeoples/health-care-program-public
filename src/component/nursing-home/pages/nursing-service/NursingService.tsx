@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
+import { useTabRefresh } from "../../hooks/useTabRefresh";
 
 type ServiceRow = {
 	ANCD?: number | string;
@@ -210,6 +211,15 @@ export default function NursingService() {
 		setSelectedMember(member);
 		fetchList(String(member.PNUM));
 	};
+
+	// 탭 재활성화: 수급자 선택은 유지하고 서비스 목록만 재조회
+	useTabRefresh(() => {
+		if (!selectedMember) return;
+		void fetchList(
+			String(selectedMember.PNUM),
+			origKey ? { HCADT: origKey.HCADT, HCACDC: origKey.HCACDC } : null
+		);
+	});
 
 	const handleSelectRow = (row: ServiceRow) => {
 		if (isEditMode && !confirm("수정 중인 내용이 저장되지 않습니다. 이동할까요?")) return;

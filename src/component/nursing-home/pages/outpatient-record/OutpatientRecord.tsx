@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
+import { useTabRefresh } from "../../hooks/useTabRefresh";
 import {
 	buildOutpatientFeeHtml,
 	openPrintWindow,
@@ -248,6 +249,13 @@ export default function OutpatientRecord() {
 		// selectedMedt는 기간 변경 시 유지 선호용이라 deps에서 제외
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedMember?.PNUM, startDate, endDate]);
+
+	// 탭 재활성화: 수급자·기간 선택은 유지하고 목록만 재조회
+	useTabRefresh(() => {
+		if (!selectedMember) return;
+		if (startDate && endDate && startDate > endDate) return;
+		void fetchList(String(selectedMember.PNUM), selectedMedt, { startDate, endDate });
+	});
 
 	const openCreateModal = () => {
 		if (!selectedMember) {

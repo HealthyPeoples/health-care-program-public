@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 
 interface MemberData {
 	[key: string]: any;
@@ -929,6 +930,12 @@ export default function MedicationTime() {
 		loadDetail(selectedMember, selectedEadt);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedMember?.PNUM, selectedEadt]);
+
+	useTabRefresh(() => {
+		if (!selectedMember) return;
+		void refreshEadtList(selectedMember, false);
+		if (selectedEadt) void loadDetail(selectedMember, selectedEadt);
+	});
 
 	const showEmptyMedicationData =
 		!eadtLoading && !detailLoading && !isEditMode && (eadtList.length === 0 || !detailExists);

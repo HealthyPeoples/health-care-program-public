@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { TabRefreshContext } from '@/component/nursing-home/hooks/useTabRefresh';
 import MemberInfoView from '@/component/nursing-home/pages/member-info/MemberInfoView';
 import DiseaseHistoryView from '@/component/nursing-home/pages/disease-history/DiseaseHistoryView';
 import MemberContractInfo from '@/component/nursing-home/pages/member-contract-info/MemberContractInfo';
@@ -267,14 +268,17 @@ function renderInternal(href: string) {
 export default function TabHost() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  // 탭 재선택 시 컨텐츠 remount용 키 (데이터 리프레시)
-  const [mountKeys, setMountKeys] = useState<Record<string, number>>({});
+  // 탭 재선택 시 데이터 soft-refresh용 토큰 (UI 상태 유지)
+  const [refreshTokens, setRefreshTokens] = useState<Record<string, number>>({});
   const router = useRouter();
   const pathname = usePathname();
 
-  const bumpMountKey = (id: string) => {
-    setMountKeys((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
+  const bumpRefreshToken = (id: string) => {
+    setRefreshTokens((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
   };
+
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
 
   // localStorage에서 상태 복원
   useEffect(() => {
@@ -347,12 +351,12 @@ export default function TabHost() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as { href: string; title: string };
       const id = detail.href;
-      setTabs((prev) => {
-        const exists = prev.some((t) => t.id === id);
-        return exists ? prev : [...prev, { id, title: detail.title, href: detail.href }];
-      });
-      // 메뉴로 탭 선택 시 컨텐츠 remount (이미 열린 탭 재선택 포함)
-      bumpMountKey(id);
+      const exists = tabsRef.current.some((t) => t.id === id);
+      if (exists) {
+        bumpRefreshToken(id);
+      } else {
+        setTabs((prev) => [...prev, { id, title: detail.title, href: detail.href }]);
+      }
       setActiveId(id);
       // 새 탭이 열릴 때 URL 업데이트
       router.push(detail.href);
@@ -364,9 +368,9 @@ export default function TabHost() {
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) || null, [tabs, activeId]);
 
   const handleTabClick = (tab: TabItem) => {
-    // 다른 탭이었다가 다시 선택한 경우 컨텐츠를 remount해 데이터 리프레시
+    // 다른 탭이었다가 다시 선택한 경우 데이터 soft-refresh
     if (tab.id !== activeId) {
-      bumpMountKey(tab.id);
+      bumpRefreshToken(tab.id);
     }
     setActiveId(tab.id);
     // 탭 클릭 시 해당 페이지의 URL로 이동
@@ -376,7 +380,7 @@ export default function TabHost() {
   const closeTab = (id: string) => {
     const updatedTabs = tabs.filter((t) => t.id !== id);
     setTabs(updatedTabs);
-    setMountKeys((prev) => {
+    setRefreshTokens((prev) => {
       const next = { ...prev };
       delete next[id];
       return next;
@@ -402,7 +406,7 @@ export default function TabHost() {
   const closeAllTabs = () => {
     setTabs([]);
     setActiveId(null);
-    setMountKeys({});
+    setRefreshTokens({});
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (error) {
@@ -458,16 +462,19 @@ export default function TabHost() {
       <div className="flex-1 bg-white">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
-          const mountKey = mountKeys[tab.id] || 0;
           const content = renderInternal(tab.href);
           return (
             <div
-              key={`${tab.id}:${mountKey}`}
+              key={tab.id}
               className={`h-full min-h-screen ${isActive ? 'block' : 'hidden'}`}
             >
-              {content || (
-                <iframe src={tab.href} className="w-full h-[70vh]" />
-              )}
+              <TabRefreshContext.Provider
+                value={{ href: tab.href, refreshToken: refreshTokens[tab.id] || 0 }}
+              >
+                {content || (
+                  <iframe src={tab.href} className="w-full h-[70vh]" />
+                )}
+              </TabRefreshContext.Provider>
             </div>
           );
         })}

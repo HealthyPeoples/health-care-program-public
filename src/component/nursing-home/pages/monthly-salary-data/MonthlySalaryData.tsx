@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { formatCareGradeLabel } from "../../utils/careGrade";
+import { useTabRefresh } from "../../hooks/useTabRefresh";
 
 interface MemberData {
 	ANCD: string;
@@ -402,6 +403,19 @@ export default function MonthlySalaryData() {
 		setDetailForm(initialDetailForm);
 		void fetchSalaryList(payYearMonth, { silent: true });
 	}, [payYearMonth, fetchSalaryList]);
+
+	// 탭 재활성화: 급여년월·선택 수급자는 유지하고 목록만 재조회
+	useTabRefresh(() => {
+		void (async () => {
+			const prevPnum = selectedMember?.PNUM ? String(selectedMember.PNUM).trim() : "";
+			const data = await fetchSalaryList(payYearMonth, { silent: true });
+			if (!prevPnum) return;
+			const rec = data.find((r) => String(r.PNUM ?? "").trim() === prevPnum);
+			if (rec) {
+				setSelectedMember(salaryRecordToMemberData(rec));
+			}
+		})();
+	});
 
 	const handleRowClick = (row: SalaryRow) => {
 		const rec = salaryRecords.find((r) => String(r.PNUM ?? "").trim() === row.pnum.trim());

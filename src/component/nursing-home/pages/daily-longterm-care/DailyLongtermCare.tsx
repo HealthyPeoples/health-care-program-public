@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 import {
 	NO_ROOM_VALUE,
 	attachLatestRoomNoByPnum,
@@ -614,6 +615,16 @@ export default function DailyLongtermCare() {
 	useEffect(() => {
 		void fetchMembers();
 	}, []);
+
+	// 탭 재활성화: 날짜/수급자 선택은 유지하고 목록·상세만 재조회
+	useTabRefresh(() => {
+		void (async () => {
+			await fetchMembers(searchTerm.trim() || undefined);
+			if (selectedMember) {
+				void fetchDetail(selectedMember, selectedDate);
+			}
+		})();
+	});
 
 	useEffect(() => {
 		setCurrentPage(1);
