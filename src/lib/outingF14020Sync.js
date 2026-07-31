@@ -139,25 +139,50 @@ function buildReturnIoTmInfo(endTm) {
 	return b ? `R:${b}` : '';
 }
 
-function calcOutingPayComGu(startTm, endTm) {
-	const a = parseMinutes(startTm);
-	const b = parseMinutes(endTm);
-	if (a == null || b == null) return '0';
-	const outingMin = b >= a ? b - a : 24 * 60 - a + b;
-	const facilityHours = (24 * 60 - outingMin) / 60;
-	return facilityHours >= 12 ? '0' : '1';
+/** 외출: 시간 무관 100% */
+function calcOutingPayComGu(_startTm, _endTm) {
+	return '0';
 }
 
-function calcOvernightLeavePayComGu(startTm) {
-	const a = parseMinutes(startTm);
-	if (a == null) return '0';
-	return a / 60 >= 12 ? '0' : '1';
+/** 외박 출발/외박중: 시간 무관 50% */
+function calcOvernightLeavePayComGu(_startTm) {
+	return '1';
 }
 
-function calcReturnPayComGu(endTm) {
-	const b = parseMinutes(endTm);
-	if (b == null) return '0';
-	return (24 * 60 - b) / 60 >= 12 ? '0' : '1';
+/** 외박 복귀일: 시간 무관 100% */
+function calcReturnPayComGu(_endTm) {
+	return '0';
+}
+
+function addDaysYmd(ymd, days) {
+	const d = new Date(`${ymd}T00:00:00`);
+	if (Number.isNaN(d.getTime())) return '';
+	d.setDate(d.getDate() + days);
+	return toYmd(d);
+}
+
+/** start~end 포함 일자 목록 (최대 370일) */
+function listYmdRange(startYmd, endYmd) {
+	const start = toYmd(startYmd);
+	const end = toYmd(endYmd) || start;
+	if (!start) return [];
+	const out = [];
+	let cur = start;
+	for (let i = 0; i < 370; i++) {
+		out.push(cur);
+		if (cur >= end) break;
+		cur = addDaysYmd(cur, 1);
+		if (!cur) break;
+	}
+	return out;
+}
+
+function buildOvernightOngoingIoTmInfo(leaveDate, leaveTime) {
+	const d = toYmd(leaveDate);
+	const t = padTime5(leaveTime);
+	// 날짜 정규화 실패 시 깨진 ON: 문자열을 만들지 않고 시각만 저장
+	if (!d || !t) return t || '';
+	return `ON:${d}|${t}`;
 }
 
 function nowStr() {
@@ -224,44 +249,71 @@ async function syncF14020FromOutingRow(pool, ancd, row, prevRow = null) {
 		throw new Error('F14020 동기화에 필요한 PNUM/시작일/시작시간이 없습니다');
 	}
 
-	if (prevRow) {
-		const prevStart = toYmd(prevRow.START_DT);
-		const prevEnd = toYmd(prevRow.END_DT);
-		const keep = new Set();
-		if (gyn === '0') keep.add(endDt || startDt);
-		if (gyn === '2') {
-			keep.add(startDt);
-			if (endDt) keep.add(endDt);
-		}
-		for (const d of [prevStart, prevEnd]) {
-			if (d && !keep.has(d)) {
-				await clearF14020OutingFlags(pool, ancd, Number(prevRow.PNUM) || pnum, d);
-			}
-		}
-	}
+	const keep = new Set();
 
 	if (gyn === '0') {
 		const day = endDt || startDt;
+		keep.add(day);
 		await upsertF14020OutingFlags(pool, ancd, pnum, day, {
 			gyn: '0',
 			ioTmInfo: buildIoTmInfo('0', startTm, endTm),
 			payComGu: calcOutingPayComGu(startTm, endTm)
 		});
-		return;
+	} else if (gyn === '2') {
+		if (endDt && endTm) {
+			if (startDt === endDt) {
+				// 당일 복귀: 100%
+				keep.add(endDt);
+				await upsertF14020OutingFlags(pool, ancd, pnum, endDt, {
+					gyn: '1',
+					ioTmInfo: buildReturnIoTmInfo(endTm),
+					payComGu: calcReturnPayComGu(endTm)
+				});
+			} else {
+				// 출발일~복귀 전날: 각 50%, 복귀일: 100%
+				const overnightLast = addDaysYmd(endDt, -1);
+				const overnightDays = listYmdRange(startDt, overnightLast);
+				for (const d of overnightDays) {
+					keep.add(d);
+					const ioTmInfo =
+						d === startDt
+							? buildIoTmInfo('2', startTm, '')
+							: buildOvernightOngoingIoTmInfo(startDt, startTm);
+					await upsertF14020OutingFlags(pool, ancd, pnum, d, {
+						gyn: '2',
+						ioTmInfo,
+						payComGu: calcOvernightLeavePayComGu(startTm)
+					});
+				}
+				keep.add(endDt);
+				await upsertF14020OutingFlags(pool, ancd, pnum, endDt, {
+					gyn: '1',
+					ioTmInfo: buildReturnIoTmInfo(endTm),
+					payComGu: calcReturnPayComGu(endTm)
+				});
+			}
+		} else {
+			keep.add(startDt);
+			await upsertF14020OutingFlags(pool, ancd, pnum, startDt, {
+				gyn: '2',
+				ioTmInfo: buildIoTmInfo('2', startTm, ''),
+				payComGu: calcOvernightLeavePayComGu(startTm)
+			});
+		}
 	}
 
-	if (gyn === '2') {
-		await upsertF14020OutingFlags(pool, ancd, pnum, startDt, {
-			gyn: '2',
-			ioTmInfo: buildIoTmInfo('2', startTm, ''),
-			payComGu: calcOvernightLeavePayComGu(startTm)
-		});
-		if (endDt && endTm) {
-			await upsertF14020OutingFlags(pool, ancd, pnum, endDt, {
-				gyn: '1',
-				ioTmInfo: buildReturnIoTmInfo(endTm),
-				payComGu: calcReturnPayComGu(endTm)
-			});
+	if (prevRow) {
+		const prevStart = toYmd(prevRow.START_DT);
+		const prevEnd = toYmd(prevRow.END_DT) || prevStart;
+		const prevGyn = String(prevRow.GYN || '').trim();
+		const prevDays =
+			prevGyn === '0'
+				? [prevEnd || prevStart].filter(Boolean)
+				: listYmdRange(prevStart, prevEnd);
+		for (const d of prevDays) {
+			if (d && !keep.has(d)) {
+				await clearF14020OutingFlags(pool, ancd, Number(prevRow.PNUM) || pnum, d);
+			}
 		}
 	}
 }
@@ -279,8 +331,10 @@ async function clearF14020ForOutingRow(pool, ancd, row) {
 		return;
 	}
 	if (gyn === '2') {
-		if (startDt) await clearF14020OutingFlags(pool, ancd, pnum, startDt);
-		if (endDt && endDt !== startDt) await clearF14020OutingFlags(pool, ancd, pnum, endDt);
+		const days = listYmdRange(startDt, endDt || startDt);
+		for (const d of days) {
+			if (d) await clearF14020OutingFlags(pool, ancd, pnum, d);
+		}
 	}
 }
 

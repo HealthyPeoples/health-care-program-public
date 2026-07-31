@@ -99,6 +99,20 @@ describe('MemberInfoUtils — pure helpers', () => {
 		assert.match(U.todayYYYYMMDD(), /^\d{4}-\d{2}-\d{2}$/);
 	});
 
+	it('입·퇴소 시간 / PAY_COM_GU(12시간 이하)', () => {
+		assert.equal(U.toTimeInputString('09:30:00'), '09:30');
+		assert.equal(U.toTimeInputString('930'), '');
+		assert.equal(U.toTimeInputString('0930'), '09:30');
+		assert.equal(U.formatDateTimeDisplay('2024-06-01', '14:00'), '2024-06-01 14:00');
+		// 입소 12:00 → 체류 12h → 1 / 입소 11:00 → 13h → 0
+		assert.equal(U.calcAdmitPayComGu('12:00'), '1');
+		assert.equal(U.calcAdmitPayComGu('11:00'), '0');
+		// 퇴소 11:00 → 체류 11h → 1 / 퇴소 13:00 → 13h → 0
+		assert.equal(U.calcDischargePayComGu('11:00'), '1');
+		assert.equal(U.calcDischargePayComGu('12:00'), '1');
+		assert.equal(U.calcDischargePayComGu('13:00'), '0');
+	});
+
 	it('buildMemberForEdit 스칼라 정규화', () => {
 		const m = U.buildMemberForEdit({
 			ANCD: 190000,

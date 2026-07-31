@@ -8,7 +8,68 @@ import {
 	extractMemberFloor,
 	normalizeRoomNo,
 } from '../../utils/roomNoFloor';
-import { buildMemberForEdit, type MemberData } from './MemberInfoUtils';
+import {
+	buildMemberForEdit,
+	toDateInputString,
+	toTimeInputString,
+	type MemberData,
+} from './MemberInfoUtils';
+
+/** 입소/퇴소 당일 F14020 실적 생성·급여50% 반영 */
+async function syncAdmitDischargeF14020(opts: {
+	pnum: string | number;
+	admitDate?: unknown;
+	admitTime?: unknown;
+	dischargeDate?: unknown;
+	dischargeTime?: unknown;
+}) {
+	const tasks: Array<Promise<Response>> = [];
+	const admitDate = toDateInputString(opts.admitDate);
+	const admitTime = toTimeInputString(opts.admitTime);
+	const dischargeDate = toDateInputString(opts.dischargeDate);
+	const dischargeTime = toTimeInputString(opts.dischargeTime);
+
+	if (admitDate && admitTime) {
+		tasks.push(
+			fetch('/api/f14020', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					svdt: admitDate,
+					action: 'syncAdmitDischargePay',
+					rows: [{ pnum: opts.pnum, kind: 'admit', time: admitTime }],
+				}),
+			})
+		);
+	}
+	if (dischargeDate && dischargeTime) {
+		tasks.push(
+			fetch('/api/f14020', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					svdt: dischargeDate,
+					action: 'syncAdmitDischargePay',
+					rows: [{ pnum: opts.pnum, kind: 'discharge', time: dischargeTime }],
+				}),
+			})
+		);
+	}
+	if (tasks.length === 0) return;
+	const results = await Promise.allSettled(tasks);
+	for (const r of results) {
+		if (r.status === 'rejected') {
+			console.warn('입·퇴소 실적(F14020) 동기화 실패:', r.reason);
+			continue;
+		}
+		try {
+			const json = await r.value.json();
+			if (!json?.success) console.warn('입·퇴소 실적(F14020) 동기화 실패:', json);
+		} catch (e) {
+			console.warn('입·퇴소 실적(F14020) 동기화 응답 파싱 실패:', e);
+		}
+	}
+}
 import {
 	buildRecipientCardPrintHtml,
 	buildV10010AListPrintHtml,
@@ -166,7 +227,9 @@ export function useMemberInfo() {
 					[P_CINFO] = @P_CINFO,
 					[P_CTDT] = @P_CTDT,
 					[P_SDT] = @P_SDT,
+					[P_SDT_TM] = @P_SDT_TM,
 					[P_EDT] = @P_EDT,
+					[P_EDT_TM] = @P_EDT_TM,
 					[HCANUM] = @HCANUM,
 					[HCAINFO] = @HCAINFO,
 					[HSPT] = @HSPT,
@@ -198,7 +261,9 @@ export function useMemberInfo() {
 				P_CINFO: editedMember.P_CINFO?.trim() || null,
 				P_CTDT: formatDate(editedMember.P_CTDT),
 				P_SDT: formatDate(editedMember.P_SDT),
+				P_SDT_TM: toTimeInputString(editedMember.P_SDT_TM) || null,
 				P_EDT: formatDate(editedMember.P_EDT),
+				P_EDT_TM: toTimeInputString(editedMember.P_EDT_TM) || null,
 				HCANUM: editedMember.HCANUM?.trim() || null,
 				HCAINFO: editedMember.HCAINFO?.trim() || null,
 				HSPT: editedMember.HSPT?.trim() || null,
@@ -219,6 +284,17 @@ export function useMemberInfo() {
 			const result = await response.json();
 
 			if (result && result.success) {
+				try {
+					await syncAdmitDischargeF14020({
+						pnum: selectedMember.PNUM,
+						admitDate: editedMember.P_SDT,
+						admitTime: editedMember.P_SDT_TM,
+						dischargeDate: editedMember.P_EDT,
+						dischargeTime: editedMember.P_EDT_TM,
+					});
+				} catch (syncErr) {
+					console.warn('입·퇴소 실적 동기화 경고:', syncErr);
+				}
 				alert('저장되었습니다.');
 				// 목록 새로고침하여 최신 데이터 가져오기
 				await fetchMembers();
@@ -418,14 +494,14 @@ export function useMemberInfo() {
 					[ANCD], [PNUM], [P_NM], [P_BRDT], [P_NO], [P_SEX], 
 					[P_ZIP], [P_ADDR], [P_TEL], [P_HP], [P_GRD], 
 					[P_YYNO], [P_YYDT], [P_ST], [P_CINFO], 
-					[P_CTDT], [P_SDT], [P_EDT], 
+					[P_CTDT], [P_SDT], [P_SDT_TM], [P_EDT], [P_EDT_TM], 
 					[HCANUM], [HCAINFO], [HSPT], [DTNM], [DTTEL], 
 					[INDT], [ETC], [P_YYSDT], [P_YYEDT], [P_FLOOR]
 				) VALUES (
 					@ANCD, @PNUM, @P_NM, @P_BRDT, @P_NO, @P_SEX,
 					@P_ZIP, @P_ADDR, @P_TEL, @P_HP, @P_GRD,
 					@P_YYNO, @P_YYDT, @P_ST, @P_CINFO,
-					@P_CTDT, @P_SDT, @P_EDT,
+					@P_CTDT, @P_SDT, @P_SDT_TM, @P_EDT, @P_EDT_TM,
 					@HCANUM, @HCAINFO, @HSPT, @DTNM, @DTTEL,
 					@INDT, @ETC, @P_YYSDT, @P_YYEDT, @P_FLOOR
 				)
@@ -471,7 +547,9 @@ export function useMemberInfo() {
 				P_CINFO: newMember.P_CINFO?.trim() || null,
 				P_CTDT: formatDate(newMember.P_CTDT),
 				P_SDT: formatDate(newMember.P_SDT),
+				P_SDT_TM: toTimeInputString(newMember.P_SDT_TM) || null,
 				P_EDT: formatDate(newMember.P_EDT),
+				P_EDT_TM: toTimeInputString(newMember.P_EDT_TM) || null,
 				HCANUM: newMember.HCANUM?.trim() || null,
 				HCAINFO: newMember.HCAINFO?.trim() || null,
 				HSPT: newMember.HSPT?.trim() || null,
@@ -493,6 +571,17 @@ export function useMemberInfo() {
 			const result = await response.json();
 
 			if (result && result.success) {
+				try {
+					await syncAdmitDischargeF14020({
+						pnum: nextPNUM,
+						admitDate: newMember.P_SDT,
+						admitTime: newMember.P_SDT_TM,
+						dischargeDate: newMember.P_EDT,
+						dischargeTime: newMember.P_EDT_TM,
+					});
+				} catch (syncErr) {
+					console.warn('입·퇴소 실적 동기화 경고:', syncErr);
+				}
 				alert('수급자가 생성되었습니다.');
 				setIsCreating(false);
 				setNewMember({});

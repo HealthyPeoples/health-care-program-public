@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
-import { toDateInputString, type MemberData } from './MemberInfoUtils';
+import { formatDateTimeDisplay, toDateInputString, type MemberData } from './MemberInfoUtils';
 
 export type MemberInfoFormMode = 'create' | 'edit' | 'view' | 'placeholder';
 
@@ -265,22 +265,38 @@ export default function MemberInfoForm({
 
 						{/* 8행 */}
 						<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-							<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">입소일자</label>
-							<input
-								type="date"
-								value={newMember.P_SDT || ''}
-								onChange={(e) => onNewMemberFieldChange?.('P_SDT', e.target.value)}
-								className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-							/>
+							<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">입소일자 / 시간</label>
+							<div className="flex gap-2">
+								<input
+									type="date"
+									value={newMember.P_SDT || ''}
+									onChange={(e) => onNewMemberFieldChange?.('P_SDT', e.target.value)}
+									className="w-full min-w-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+								<input
+									type="time"
+									value={newMember.P_SDT_TM || ''}
+									onChange={(e) => onNewMemberFieldChange?.('P_SDT_TM', e.target.value)}
+									className="w-[7.5rem] shrink-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+							</div>
 						</div>
 						<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-							<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">퇴소일자</label>
-							<input
-								type="date"
-								value={newMember.P_EDT || ''}
-								onChange={(e) => onNewMemberFieldChange?.('P_EDT', e.target.value)}
-								className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-							/>
+							<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">퇴소일자 / 시간</label>
+							<div className="flex gap-2">
+								<input
+									type="date"
+									value={newMember.P_EDT || ''}
+									onChange={(e) => onNewMemberFieldChange?.('P_EDT', e.target.value)}
+									className="w-full min-w-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+								<input
+									type="time"
+									value={newMember.P_EDT_TM || ''}
+									onChange={(e) => onNewMemberFieldChange?.('P_EDT_TM', e.target.value)}
+									className="w-[7.5rem] shrink-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+							</div>
 						</div>
 
 						{/* 9행 */}
@@ -666,32 +682,48 @@ export default function MemberInfoForm({
 						)}
 					</div>
 					<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-						<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">입소일자</label>
+						<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">입소일자 / 시간</label>
 						{isEditing && editedMember ? (
-							<input
-								type="date"
-								value={editedMember.P_SDT || ''}
-								onChange={(e) => onFieldChange?.('P_SDT', e.target.value)}
-								className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-							/>
+							<div className="flex gap-2">
+								<input
+									type="date"
+									value={editedMember.P_SDT || ''}
+									onChange={(e) => onFieldChange?.('P_SDT', e.target.value)}
+									className="w-full min-w-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+								<input
+									type="time"
+									value={editedMember.P_SDT_TM || ''}
+									onChange={(e) => onFieldChange?.('P_SDT_TM', e.target.value)}
+									className="w-[7.5rem] shrink-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+							</div>
 						) : (
 							<span className="w-full border-b border-blue-200 py-1">
-								{toDateInputString(member.P_SDT) || '-'}
+								{formatDateTimeDisplay(member.P_SDT, member.P_SDT_TM)}
 							</span>
 						)}
 					</div>
 					<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
-						<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">퇴소일자</label>
+						<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">퇴소일자 / 시간</label>
 						{isEditing && editedMember ? (
-							<input
-								type="date"
-								value={editedMember.P_EDT || ''}
-								onChange={(e) => onFieldChange?.('P_EDT', e.target.value)}
-								className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-							/>
+							<div className="flex gap-2">
+								<input
+									type="date"
+									value={editedMember.P_EDT || ''}
+									onChange={(e) => onFieldChange?.('P_EDT', e.target.value)}
+									className="w-full min-w-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+								<input
+									type="time"
+									value={editedMember.P_EDT_TM || ''}
+									onChange={(e) => onFieldChange?.('P_EDT_TM', e.target.value)}
+									className="w-[7.5rem] shrink-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								/>
+							</div>
 						) : (
 							<span className="w-full border-b border-blue-200 py-1">
-								{toDateInputString(member.P_EDT) || '-'}
+								{formatDateTimeDisplay(member.P_EDT, member.P_EDT_TM)}
 							</span>
 						)}
 					</div>

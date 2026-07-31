@@ -9,6 +9,11 @@ interface PerformanceData {
 	birthDate: string;
 	ancd?: string;
 	pnum?: string;
+	svdt?: string; // 서비스일자 YYYY-MM-DD
+	admitDate?: string; // P_SDT
+	admitTime?: string; // P_SDT_TM HH:mm
+	dischargeDate?: string; // P_EDT
+	dischargeTime?: string; // P_EDT_TM HH:mm
 	mealLocation: string; // ST_PLAC
 	mealType: string; // ST_KIND
 	gyn: string; // GYN: '0'=외출, '1'=입원, '2'=외박
@@ -16,6 +21,9 @@ interface PerformanceData {
 	gynEndTime: string; // 외출/외박 종료 (IO_TM_INFO)
 	returnTime: string; // 외박 복귀 시각 (IO_TM_INFO = R:HH:mm)
 	payComGu: string; // PAY_COM_GU: '1'=급여50%적용
+	overnightOngoing?: boolean; // 외박중(출발일 이후~복귀 전)
+	overnightLeaveDate?: string; // 외박 출발일
+	overnightLeaveTime?: string; // 외박 출발시각
 	mealStatus: { breakfast: string; lunch: string; dinner: string }; // MOST, LCST, DNST: '1'=양호, '2'=이상
 	specialNotes: string; // ST_ETC
 	snackStatus: { morning: string; afternoon: string }; // MGST, AGST: '1'=양호, '2'=이상
@@ -38,15 +46,46 @@ function padTime5(t: string): string {
 	return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
 }
 
-function parseIoTmInfo(info: string | null | undefined): { start: string; end: string; returnTime: string } {
+function parseIoTmInfo(info: string | null | undefined): {
+	start: string;
+	end: string;
+	returnTime: string;
+	overnightOngoing?: boolean;
+	overnightLeaveDate?: string;
+} {
 	const s = String(info || '').trim();
+	// 외박중(중간일): ON:YYYY-MM-DD|HH:mm (깨진 날짜 문자열도 보정)
+	const ongoingStrict = /^ON:(\d{4}-\d{2}-\d{2})\|(\d{1,2}:\d{2})$/i.exec(s);
+	if (ongoingStrict) {
+		return {
+			start: padTime5(ongoingStrict[2]),
+			end: '',
+			returnTime: '',
+			overnightOngoing: true,
+			overnightLeaveDate: ongoingStrict[1],
+		};
+	}
+	const ongoingLoose = /^ON:(.+)\|(\d{1,2}:\d{2})$/i.exec(s);
+	if (ongoingLoose) {
+		const leaveDate = toYmd(ongoingLoose[1]);
+		const leaveTime = padTime5(ongoingLoose[2]);
+		if (leaveDate && leaveTime) {
+			return {
+				start: leaveTime,
+				end: '',
+				returnTime: '',
+				overnightOngoing: true,
+				overnightLeaveDate: leaveDate,
+			};
+		}
+	}
 	const ret = /^R[:：]?\s*(\d{1,2}:\d{2})$/i.exec(s) || /^복귀\s*[:：]?\s*(\d{1,2}:\d{2})$/.exec(s);
 	if (ret) return { start: '', end: '', returnTime: padTime5(ret[1]) };
 	const range = /^(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})$/.exec(s);
 	if (range) return { start: padTime5(range[1]), end: padTime5(range[2]), returnTime: '' };
-	// 외박: 나간 시각만 저장된 경우 (예: "08:00" 또는 "08:00~")
-	const single = /^(\d{1,2}:\d{2})\s*[~\-–]?\s*$/.exec(s);
-	if (single) return { start: padTime5(single[1]), end: '', returnTime: '' };
+	// 외박: 나간 시각만 저장된 경우 (예: "08:00", "08:00:00", "08:00~")
+	const single = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*[~\-–]?\s*$/.exec(s);
+	if (single) return { start: padTime5(`${single[1]}:${single[2]}`), end: '', returnTime: '' };
 	return { start: '', end: '', returnTime: '' };
 }
 
@@ -61,56 +100,22 @@ function formatIoTmInfo(gyn: string, start: string, end: string, returnTime?: st
 	return `${a}~${b}`;
 }
 
-function parseTimeToMinutes(t: string): number | null {
-	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
-	if (!m) return null;
-	const h = Number(m[1]);
-	const min = Number(m[2]);
-	if (!Number.isFinite(h) || !Number.isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) return null;
-	return h * 60 + min;
+/** 외박중 중간일 IO_TM_INFO */
+function formatOvernightOngoingIoTmInfo(leaveDate: string, leaveTime: string): string {
+	const d = toYmd(leaveDate);
+	const t = padTime5(leaveTime);
+	if (!d || !t) return '';
+	return `ON:${d}|${t}`;
 }
 
-/** 외출: 24h − 외출구간. 외박(나감): 0시~나간시각. 외박복귀: 복귀시각~24시. */
-function calcFacilityHours(gyn: string, start: string, end: string, returnTime?: string): number | null {
-	const ret = padTime5(returnTime || '');
-	if (ret && (gyn === '1' || gyn === '')) {
-		const leave = parseTimeToMinutes(ret);
-		if (leave == null) return null;
-		return (24 * 60 - leave) / 60;
-	}
-	if (gyn === '2') {
-		const leave = parseTimeToMinutes(start);
-		if (leave == null) return null;
-		return leave / 60;
-	}
-	if (gyn === '0') {
-		const a = parseTimeToMinutes(start);
-		const b = parseTimeToMinutes(end);
-		if (a == null || b == null) return null;
-		const outingMin = b >= a ? b - a : 24 * 60 - a + b;
-		return (24 * 60 - outingMin) / 60;
-	}
-	return null;
-}
-
-function formatFacilityHoursText(hours: number | null): string {
-	if (hours == null) return '';
-	const rounded = Math.round(hours * 10) / 10;
-	const text = Number.isInteger(rounded) ? String(rounded) : String(rounded);
-	return `기관 ${text}시간`;
-}
-
-/** 외출/외박/복귀: 기관 체류 ≥12h → 0, <12h → 1. */
-function calcPayComGu(gyn: string, start: string, end: string, returnTime?: string): string {
-	if (returnTime && (gyn === '1' || gyn === '')) {
-		const hours = calcFacilityHours('1', '', '', returnTime);
-		if (hours == null) return '0';
-		return hours >= 12 ? '0' : '1';
-	}
-	if (gyn !== '0' && gyn !== '2') return '0';
-	const hours = calcFacilityHours(gyn, start, end);
-	if (hours == null) return '0';
-	return hours >= 12 ? '0' : '1';
+/**
+ * 급여 적용: 외출=항상 100%(0), 외박 출발·외박중=항상 50%(1), 외박 복귀일=항상 100%(0)
+ */
+function calcPayComGu(gyn: string, _start?: string, _end?: string, returnTime?: string): string {
+	if (returnTime && (gyn === '1' || gyn === '')) return '0';
+	if (gyn === '0') return '0';
+	if (gyn === '2') return '1';
+	return '0';
 }
 
 function gynLabel(gyn: string): string {
@@ -120,14 +125,76 @@ function gynLabel(gyn: string): string {
 	return '';
 }
 
+function toYmd(v: unknown): string {
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		const y = v.getFullYear();
+		const m = String(v.getMonth() + 1).padStart(2, '0');
+		const d = String(v.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	const s = String(v).trim();
+	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+	const parsed = Date.parse(s);
+	if (!Number.isNaN(parsed)) {
+		const dt = new Date(parsed);
+		const y = dt.getFullYear();
+		const m = String(dt.getMonth() + 1).padStart(2, '0');
+		const d = String(dt.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	return '';
+}
+
+function toHm(v: unknown): string {
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		return `${String(v.getHours()).padStart(2, '0')}:${String(v.getMinutes()).padStart(2, '0')}`;
+	}
+	const s = String(v).trim();
+	const colon = s.match(/^(\d{1,2}):(\d{2})/);
+	if (colon) return padTime5(`${colon[1]}:${colon[2]}`);
+	if (/^\d{4}$/.test(s)) return padTime5(`${s.slice(0, 2)}:${s.slice(2)}`);
+	const embedded = s.match(/[T\s](\d{1,2}):(\d{2})/);
+	if (embedded) return padTime5(`${embedded[1]}:${embedded[2]}`);
+	return '';
+}
+
+function getAdmitDischargeFlags(row: PerformanceData, dateYmd: string) {
+	const day = toYmd(dateYmd);
+	const isAdmitDay = !!day && !!row.admitDate && row.admitDate === day;
+	const isDischargeDay = !!day && !!row.dischargeDate && row.dischargeDate === day;
+	return { isAdmitDay, isDischargeDay, isAdmitOrDischargeDay: isAdmitDay || isDischargeDay };
+}
+
+function formatOvernightOngoingLabel(leaveDate?: string, leaveTime?: string): string {
+	const d = toYmd(leaveDate || '');
+	const t = padTime5(leaveTime || '');
+	if (d && t) return `외박중 ${d} ${t}`;
+	if (d) return `외박중 ${d}`;
+	if (t) return `외박중 ${t}`;
+	return '외박중';
+}
+
+function gynDisplayText(row: PerformanceData, dateYmd?: string): string {
+	const day = toYmd(dateYmd || row.svdt || '');
+	const { isAdmitDay, isDischargeDay } = getAdmitDischargeFlags(row, day);
+	const parts: string[] = [];
+	if (isAdmitDay) parts.push(row.admitTime ? `금일 입소 ${row.admitTime}` : '금일 입소');
+	if (isDischargeDay) parts.push(row.dischargeTime ? `금일 퇴소 ${row.dischargeTime}` : '금일 퇴소');
+	if (parts.length) return parts.join(' / ');
+	if (row.overnightOngoing) return formatOvernightOngoingLabel(row.overnightLeaveDate, row.overnightLeaveTime);
+	if (row.returnTime) return `복귀 ${row.returnTime}`;
+	return gynLabel(row.gyn);
+}
+
 function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 	const times = parseIoTmInfo(item.IO_TM_INFO);
 	const gyn = String(item.GYN ?? '0').trim();
-	const payFromDb = String(item.PAY_COM_GU ?? '').trim();
-	const payComGu =
-		payFromDb === '0' || payFromDb === '1'
-			? payFromDb
-			: calcPayComGu(gyn, times.start, times.end, times.returnTime);
+	// 외출/외박/복귀는 신규칙으로 표시 (기존 DB 12시간 규칙 잔존값 무시)
+	const payComGu = calcPayComGu(gyn, times.start, times.end, times.returnTime);
+	const overnightOngoing = !!times.overnightOngoing && gyn === '2';
 	return {
 		id: index + 1,
 		serialNo: Number(item.MENUM) || index + 1,
@@ -135,6 +202,11 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 		birthDate: '',
 		ancd: item.ANCD || '',
 		pnum: item.PNUM || '',
+		svdt: toYmd(item.SVDT),
+		admitDate: toYmd(item.P_SDT),
+		admitTime: toHm(item.P_SDT_TM),
+		dischargeDate: toYmd(item.P_EDT),
+		dischargeTime: toHm(item.P_EDT_TM),
 		mealLocation: item.ST_PLAC || '',
 		mealType: item.ST_KIND || '1',
 		gyn,
@@ -142,6 +214,9 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 		gynEndTime: times.end,
 		returnTime: times.returnTime,
 		payComGu,
+		overnightOngoing,
+		overnightLeaveDate: overnightOngoing ? times.overnightLeaveDate || '' : '',
+		overnightLeaveTime: overnightOngoing ? times.start || '' : '',
 		mealStatus: {
 			breakfast: item.MOST || '1',
 			lunch: item.LCST || '1',
@@ -156,6 +231,22 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 }
 
 function buildMealSavePayload(r: PerformanceData) {
+	if (r.overnightOngoing) {
+		return {
+			pnum: r.pnum,
+			mealLocation: r.mealLocation,
+			mealType: r.mealType,
+			gyn: '2',
+			mealStatus: r.mealStatus,
+			snackStatus: r.snackStatus,
+			specialNotes: r.specialNotes,
+			payComGu: '1',
+			ioTmInfo: formatOvernightOngoingIoTmInfo(
+				r.overnightLeaveDate || '',
+				r.overnightLeaveTime || r.gynStartTime || ''
+			),
+		};
+	}
 	const isOuting = r.gyn === '0' || r.gyn === '2';
 	const endTime = r.gyn === '2' ? '' : r.gynEndTime;
 	const payComGu = calcPayComGu(r.gyn, r.gynStartTime, endTime, r.returnTime);
@@ -755,9 +846,7 @@ export default function DailyBeneficiaryPerformance() {
 		}
 		return rows
 			.map((row) => {
-				const gynText = row.returnTime
-					? `복귀 ${row.returnTime}`
-					: gynLabel(row.gyn);
+				const gynText = gynDisplayText(row, row.svdt || selectedDate);
 				const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
 				const lunch = row.mealStatus.lunch === '1' ? '○' : '';
 				const dinner = row.mealStatus.dinner === '1' ? '○' : '';
@@ -1247,9 +1336,7 @@ export default function DailyBeneficiaryPerformance() {
 					</thead>
 					<tbody>
 						${memberPrintData.map(row => {
-							const gynText = row.returnTime
-								? `복귀 ${row.returnTime}`
-								: gynLabel(row.gyn);
+							const gynText = gynDisplayText(row, row.svdt);
 							const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
 							const lunch = row.mealStatus.lunch === '1' ? '○' : '';
 							const dinner = row.mealStatus.dinner === '1' ? '○' : '';
@@ -1303,7 +1390,12 @@ export default function DailyBeneficiaryPerformance() {
 					name: member.P_NM || '',
 					birthDate: formatDate(member.P_BRDT),
 					ancd: member.ANCD || '',
-					pnum: member.PNUM || ''
+					pnum: member.PNUM || '',
+					svdt: row.svdt || selectedDate,
+					admitDate: toYmd(member.P_SDT),
+					admitTime: toHm(member.P_SDT_TM),
+					dischargeDate: toYmd(member.P_EDT),
+					dischargeTime: toHm(member.P_EDT_TM),
 				};
 			}
 			return row;
@@ -1421,11 +1513,21 @@ export default function DailyBeneficiaryPerformance() {
 										</td>
 									</tr>
 								) : (
-									currentData.map((row, idx) => (
+									currentData.map((row) => {
+									const { isAdmitDay, isDischargeDay, isAdmitOrDischargeDay } =
+										getAdmitDischargeFlags(row, selectedDate);
+									const isOvernightOngoing = !!row.overnightOngoing;
+									return (
 									<tr 
 										key={row.id} 
-										className={`border-b border-blue-50 hover:bg-blue-50 ${
-											selectedMember === row.id ? 'bg-blue-100' : ''
+										className={`border-b border-blue-50 ${
+											isAdmitOrDischargeDay
+												? 'bg-yellow-100 hover:bg-yellow-200'
+												: isOvernightOngoing
+													? 'bg-green-100 hover:bg-green-200'
+													: selectedMember === row.id
+														? 'bg-blue-100 hover:bg-blue-50'
+														: 'hover:bg-blue-50'
 										}`}
 										onClick={() => setSelectedMember(row.id)}
 									>
@@ -1556,93 +1658,114 @@ export default function DailyBeneficiaryPerformance() {
 												<option value="3">유동식(미음)</option>
 											</select>
 										</td>
-										{/* 입원/외출/외박 (GYN) */}
+										{/* 입원/외출/외박 (GYN) — 입·퇴소/외박중은 문구만 표시 */}
 										<td className="text-center px-3 py-3 border-r border-blue-100 min-w-[320px]">
 											<div className="flex flex-col items-center gap-1" onClick={(e) => e.stopPropagation()}>
-												<div className="flex justify-center gap-1 flex-wrap">
-													<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-														<input
-															type="checkbox"
-															checked={row.gyn === '0'}
-															onChange={(e) => applyGynChange(row.id, e.target.checked ? '0' : '')}
-															disabled={editingRowId !== row.id}
-															className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '0' ? "disabled-checked-blue" : ""}`}
-														/>
-														<span className="text-xs">외출</span>
-													</label>
-													<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-														<input
-															type="checkbox"
-															checked={row.gyn === '1'}
-															onChange={(e) => applyGynChange(row.id, e.target.checked ? '1' : '')}
-															disabled={editingRowId !== row.id}
-															className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '1' ? "disabled-checked-blue" : ""}`}
-														/>
-														<span className="text-xs">입원</span>
-													</label>
-													<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-														<input
-															type="checkbox"
-															checked={row.gyn === '2'}
-															onChange={(e) => applyGynChange(row.id, e.target.checked ? '2' : '')}
-															disabled={editingRowId !== row.id}
-															className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '2' ? "disabled-checked-blue" : ""}`}
-														/>
-														<span className="text-xs">외박</span>
-													</label>
-												</div>
-												{row.gyn === '0' && (
-													<div className="flex flex-col items-center gap-0.5">
-														<div className="flex items-center gap-1 whitespace-nowrap">
-															<input
-																type="time"
-																value={row.gynStartTime || ''}
-																onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
-																disabled={editingRowId !== row.id}
-																className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
-																	editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-																}`}
-															/>
-															<span className="text-xs text-blue-900/70 shrink-0">~</span>
-															<input
-																type="time"
-																value={row.gynEndTime || ''}
-																onChange={(e) => applyGynTimeChange(row.id, 'gynEndTime', e.target.value)}
-																disabled={editingRowId !== row.id}
-																className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
-																	editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-																}`}
-															/>
-														</div>
-													</div>
-												)}
-												{row.gyn === '2' && (
-													<div className="flex items-center gap-1 whitespace-nowrap">
-														<span className="text-xs text-blue-900/70 shrink-0">나감</span>
-														<input
-															type="time"
-															value={row.gynStartTime || ''}
-															onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
-															disabled={editingRowId !== row.id}
-															className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
-																editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-															}`}
-														/>
-														{row.gynStartTime && (
-															<span className="text-xs text-blue-900/80 shrink-0">
-																{formatFacilityHoursText(calcFacilityHours('2', row.gynStartTime, ''))}
-															</span>
+												{isAdmitOrDischargeDay ? (
+													<>
+														{isAdmitDay && (
+															<div className="flex items-center gap-2 whitespace-nowrap">
+																<span className="text-sm font-semibold text-amber-900">금일 입소</span>
+																{row.admitTime ? (
+																	<span className="text-sm text-amber-900 tabular-nums">{row.admitTime}</span>
+																) : null}
+															</div>
 														)}
-													</div>
-												)}
-												{row.gyn === '1' && row.returnTime && (
-													<div className="flex items-center gap-1 whitespace-nowrap">
-														<span className="text-xs text-blue-900/70 shrink-0">복귀</span>
-														<span className="text-xs text-blue-900 font-medium">{row.returnTime}</span>
-														<span className="text-xs text-blue-900/80 shrink-0">
-															{formatFacilityHoursText(calcFacilityHours('1', '', '', row.returnTime))}
+														{isDischargeDay && (
+															<div className="flex items-center gap-2 whitespace-nowrap">
+																<span className="text-sm font-semibold text-amber-900">금일 퇴소</span>
+																{row.dischargeTime ? (
+																	<span className="text-sm text-amber-900 tabular-nums">{row.dischargeTime}</span>
+																) : null}
+															</div>
+														)}
+													</>
+												) : isOvernightOngoing ? (
+													<div className="flex flex-col items-center gap-0.5">
+														<span className="text-sm font-semibold text-green-900">
+															{formatOvernightOngoingLabel(row.overnightLeaveDate, row.overnightLeaveTime)}
 														</span>
 													</div>
+												) : (
+													<>
+														<div className="flex justify-center gap-1 flex-wrap">
+															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+																<input
+																	type="checkbox"
+																	checked={row.gyn === '0'}
+																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '0' : '')}
+																	disabled={editingRowId !== row.id}
+																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '0' ? "disabled-checked-blue" : ""}`}
+																/>
+																<span className="text-xs">외출</span>
+															</label>
+															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+																<input
+																	type="checkbox"
+																	checked={row.gyn === '1'}
+																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '1' : '')}
+																	disabled={editingRowId !== row.id}
+																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '1' ? "disabled-checked-blue" : ""}`}
+																/>
+																<span className="text-xs">입원</span>
+															</label>
+															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+																<input
+																	type="checkbox"
+																	checked={row.gyn === '2'}
+																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '2' : '')}
+																	disabled={editingRowId !== row.id}
+																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '2' ? "disabled-checked-blue" : ""}`}
+																/>
+																<span className="text-xs">외박</span>
+															</label>
+														</div>
+														{row.gyn === '0' && (
+															<div className="flex flex-col items-center gap-0.5">
+																<div className="flex items-center gap-1 whitespace-nowrap">
+																	<input
+																		type="time"
+																		value={row.gynStartTime || ''}
+																		onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
+																		disabled={editingRowId !== row.id}
+																		className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																			editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																		}`}
+																	/>
+																	<span className="text-xs text-blue-900/70 shrink-0">~</span>
+																	<input
+																		type="time"
+																		value={row.gynEndTime || ''}
+																		onChange={(e) => applyGynTimeChange(row.id, 'gynEndTime', e.target.value)}
+																		disabled={editingRowId !== row.id}
+																		className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																			editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																		}`}
+																	/>
+																</div>
+															</div>
+														)}
+														{row.gyn === '2' && (
+															<div className="flex items-center gap-1 whitespace-nowrap">
+																<span className="text-xs text-blue-900/70 shrink-0">나감</span>
+																<input
+																	type="time"
+																	value={row.gynStartTime || ''}
+																	onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
+																	disabled={editingRowId !== row.id}
+																	className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
+																		editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+																	}`}
+																/>
+															</div>
+														)}
+														{row.gyn === '1' && row.returnTime && (
+															<div className="flex items-center gap-1 whitespace-nowrap">
+																<span className="text-xs text-blue-900/70 shrink-0">복귀</span>
+																<span className="text-xs text-blue-900 font-medium">{row.returnTime}</span>
+															</div>
+														)}
+													</>
 												)}
 												{row.payComGu === '1' && (
 													<span className="text-xs font-semibold text-red-600">급여50%적용</span>
@@ -1784,7 +1907,8 @@ export default function DailyBeneficiaryPerformance() {
 											</div>
 										</td>
 									</tr>
-									))
+									);
+									})
 								)}
 							</tbody>
 						</table>
