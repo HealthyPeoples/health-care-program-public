@@ -25,11 +25,13 @@ interface DailyCareForm {
 	DNST: string;
 	MGST: string;
 	AGST: string;
+	DGST: string;
 	MOVOL: string;
 	LCVOL: string;
 	DNVOL: string;
 	MGVOL: string;
 	AGVOL: string;
+	DGVOL: string;
 	ST_KIND: string;
 	ST_PLAC: string;
 	ST_ETC: string;
@@ -103,11 +105,13 @@ const emptyForm = (overrides: Partial<DailyCareForm> = {}): DailyCareForm => ({
 	DNST: '1',
 	MGST: '1',
 	AGST: '1',
+	DGST: '1',
 	MOVOL: '',
 	LCVOL: '',
 	DNVOL: '',
 	MGVOL: '',
 	AGVOL: '',
+	DGVOL: '',
 	ST_KIND: '',
 	ST_PLAC: '',
 	ST_ETC: '',
@@ -170,6 +174,92 @@ const formatDateYmd = (v: unknown) => {
 	return s.length >= 10 ? s.slice(0, 10) : s;
 };
 
+type MealStatusKey = 'MOST' | 'LCST' | 'DNST' | 'MGST' | 'AGST' | 'DGST';
+type MealVolKey = 'MOVOL' | 'LCVOL' | 'DNVOL' | 'MGVOL' | 'AGVOL' | 'DGVOL';
+
+function MealStatusRow({
+	label,
+	statusKey,
+	volKey,
+	isSnack = false,
+	statusValue,
+	volValue,
+	disabled,
+	onStatusChange,
+	onVolChange
+}: {
+	label: string;
+	statusKey: MealStatusKey;
+	volKey: MealVolKey;
+	isSnack?: boolean;
+	statusValue: string;
+	volValue: string;
+	disabled: boolean;
+	onStatusChange: (key: MealStatusKey, value: string) => void;
+	onVolChange: (key: MealVolKey, value: string) => void;
+}) {
+	return (
+		<div className="flex items-center gap-2">
+			<label className="w-16 shrink-0 text-blue-900/80">{label}</label>
+			<select
+				className="w-24 shrink-0 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
+				value={statusValue}
+				disabled={disabled}
+				onChange={(e) => onStatusChange(statusKey, e.target.value)}
+			>
+				<option value="1">양호</option>
+				<option value="2">이상</option>
+			</select>
+			<input
+				type="text"
+				className="flex-1 min-w-0 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
+				value={volValue}
+				disabled={disabled}
+				onChange={(e) => onVolChange(volKey, e.target.value)}
+				placeholder={isSnack ? '간식명' : '섭취량'}
+			/>
+		</div>
+	);
+}
+
+function CheckRow({
+	label,
+	field,
+	checked,
+	disabled,
+	className = 'md:col-span-6',
+	onToggle
+}: {
+	label: string;
+	field: keyof DailyCareForm;
+	checked: boolean;
+	disabled: boolean;
+	className?: string;
+	onToggle: (field: keyof DailyCareForm) => void;
+}) {
+	return (
+		<label
+			className={`flex items-center col-span-12 gap-2 ${className} ${
+				disabled ? 'cursor-default' : 'cursor-pointer'
+			}`}
+		>
+			<input
+				type="checkbox"
+				className={`h-4 w-4 rounded border-blue-400 accent-blue-600 ${
+					disabled ? 'pointer-events-none opacity-100' : ''
+				}`}
+				checked={checked}
+				readOnly={disabled}
+				tabIndex={disabled ? -1 : 0}
+				onChange={() => {
+					if (!disabled) onToggle(field);
+				}}
+			/>
+			<span className="text-blue-900/80">{label}</span>
+		</label>
+	);
+}
+
 const mapRowToForm = (row: any, member: MemberData | null): DailyCareForm => {
 	const bathMeth = resolveBathMethodFromRow(row) || strOr(row?.PH_BATH_METH, '2');
 	return emptyForm({
@@ -180,11 +270,13 @@ const mapRowToForm = (row: any, member: MemberData | null): DailyCareForm => {
 		DNST: status01(row?.DNST),
 		MGST: status01(row?.MGST),
 		AGST: status01(row?.AGST),
+		DGST: status01(row?.DGST),
 		MOVOL: strOr(row?.MOVOL),
 		LCVOL: strOr(row?.LCVOL),
 		DNVOL: strOr(row?.DNVOL),
 		MGVOL: strOr(row?.MGVOL),
 		AGVOL: strOr(row?.AGVOL),
+		DGVOL: strOr(row?.DGVOL),
 		ST_KIND: strOr(row?.ST_KIND),
 		ST_PLAC: strOr(row?.ST_PLAC),
 		ST_ETC: strOr(row?.ST_ETC),
@@ -375,11 +467,13 @@ export default function DailyLongtermCare() {
 				DNST: form.DNST,
 				MGST: form.MGST,
 				AGST: form.AGST,
+				DGST: form.DGST,
 				MOVOL: form.MOVOL,
 				LCVOL: form.LCVOL,
 				DNVOL: form.DNVOL,
 				MGVOL: form.MGVOL,
 				AGVOL: form.AGVOL,
+				DGVOL: form.DGVOL,
 				ST_KIND: form.ST_KIND || form.PH_MEAL_KIND,
 				ST_PLAC: form.ST_PLAC,
 				ST_ETC: form.ST_ETC,
@@ -526,66 +620,10 @@ export default function DailyLongtermCare() {
 	}, [searchTerm, selectedStatus, selectedGrade, selectedFloor]);
 
 	const disabled = !isEditMode;
-	const MealStatusRow = ({
-		label,
-		statusKey,
-		volKey
-	}: {
-		label: string;
-		statusKey: 'MOST' | 'LCST' | 'DNST' | 'MGST' | 'AGST';
-		volKey: 'MOVOL' | 'LCVOL' | 'DNVOL' | 'MGVOL' | 'AGVOL';
-	}) => (
-		<div className="flex items-center col-span-12 gap-2 md:col-span-6 lg:col-span-4">
-			<label className="w-20 shrink-0 text-blue-900/80">{label}</label>
-			<select
-				className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
-				value={form[statusKey]}
-				disabled={disabled}
-				onChange={(e) => setField(statusKey, e.target.value)}
-			>
-				<option value="1">양호</option>
-				<option value="2">이상</option>
-			</select>
-			<input
-				type="text"
-				className="w-20 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
-				value={form[volKey]}
-				disabled={disabled}
-				onChange={(e) => setField(volKey, e.target.value)}
-				placeholder="섭취량"
-			/>
-		</div>
-	);
 
-	const CheckRow = ({
-		label,
-		field,
-		className = 'md:col-span-6'
-	}: {
-		label: string;
-		field: keyof DailyCareForm;
-		className?: string;
-	}) => (
-		<label
-			className={`flex items-center col-span-12 gap-2 ${className} ${
-				disabled ? 'cursor-default' : 'cursor-pointer'
-			}`}
-		>
-			<input
-				type="checkbox"
-				className={`h-4 w-4 rounded border-blue-400 accent-blue-600 ${
-					disabled ? 'pointer-events-none opacity-100' : ''
-				}`}
-				checked={form[field] === '1'}
-				readOnly={disabled}
-				tabIndex={disabled ? -1 : 0}
-				onChange={() => {
-					if (!disabled) toggleYn(field);
-				}}
-			/>
-			<span className="text-blue-900/80">{label}</span>
-		</label>
-	);
+	const noMember = !selectedMember;
+	const noRecord = !!selectedMember && !hasRecord && !isEditMode && !loadingDetail;
+	const contentLocked = noMember || noRecord;
 
 	return (
 		<div className="min-h-screen text-black bg-white">
@@ -815,13 +853,12 @@ export default function DailyLongtermCare() {
 
 					{/* 우측: F14020 일 서비스실적 */}
 					<section className="relative flex-1 min-w-0">
-						<div
-							className={
-								!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
-							}
-						>
-							<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
-								<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
+						<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
+								<div
+									className={`flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200 ${
+										noMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+									}`}
+								>
 									<div>
 										<h2 className="text-xl font-semibold text-blue-900">일 서비스실적 조회</h2>
 										<p className="text-xs text-blue-900/70 mt-0.5">
@@ -872,6 +909,12 @@ export default function DailyLongtermCare() {
 									</div>
 								</div>
 
+								<div className="relative">
+								<div
+									className={
+										contentLocked ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+									}
+								>
 								{loadingDetail ? (
 									<div className="p-10 text-center text-blue-900/60">조회 중...</div>
 								) : (
@@ -896,15 +939,15 @@ export default function DailyLongtermCare() {
 														readOnly
 													/>
 												</div>
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
+												{/* <div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-24 text-blue-900/80">요양등급</label>
 													<input
 														className="flex-1 px-2 py-1 bg-slate-50 border border-blue-300 rounded"
 														value={formatCareGradeLabel(selectedMember?.P_GRD, '-')}
 														readOnly
 													/>
-												</div>
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
+												</div> */}
+												{/* <div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-24 text-blue-900/80">성별</label>
 													<input
 														className="flex-1 px-2 py-1 bg-slate-50 border border-blue-300 rounded"
@@ -917,16 +960,16 @@ export default function DailyLongtermCare() {
 														}
 														readOnly
 													/>
-												</div>
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
+												</div> */}
+												{/* <div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-24 text-blue-900/80">인정번호</label>
 													<input
 														className="flex-1 px-2 py-1 bg-slate-50 border border-blue-300 rounded"
 														value={String(selectedMember?.P_YYNO || selectedMember?.P_CERTNO || '-')}
 														readOnly
 													/>
-												</div>
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
+												</div> */}
+												{/* <div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-24 text-blue-900/80">방번호</label>
 													<input
 														className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
@@ -934,8 +977,8 @@ export default function DailyLongtermCare() {
 														disabled={disabled}
 														onChange={(e) => setField('ROOM_NO', e.target.value)}
 													/>
-												</div>
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
+												</div> */}
+												{/* <div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-24 text-blue-900/80">출근여부</label>
 													<select
 														className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
@@ -946,8 +989,8 @@ export default function DailyLongtermCare() {
 														<option value="0">외출</option>
 														<option value="1">입원(외박)</option>
 													</select>
-												</div>
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
+												</div> */}
+												{/* <div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-24 text-blue-900/80">외출사유</label>
 													<input
 														className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
@@ -955,47 +998,117 @@ export default function DailyLongtermCare() {
 														disabled={disabled}
 														onChange={(e) => setField('GINFO', e.target.value)}
 													/>
-												</div>
+												</div> */}
 											</div>
 										</div>
 
 										{/* 식사 서비스 */}
 										<div className="p-3 border border-blue-200 rounded bg-blue-50/50">
 											<h3 className="mb-3 text-sm font-semibold text-blue-900">식사 서비스</h3>
-											<div className="grid grid-cols-12 gap-3 text-sm">
-												<MealStatusRow label="아침" statusKey="MOST" volKey="MOVOL" />
-												<MealStatusRow label="오전간식" statusKey="MGST" volKey="MGVOL" />
-												<MealStatusRow label="점심" statusKey="LCST" volKey="LCVOL" />
-												<MealStatusRow label="오후간식" statusKey="AGST" volKey="AGVOL" />
-												<MealStatusRow label="저녁" statusKey="DNST" volKey="DNVOL" />
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
-													<label className="w-28 shrink-0 text-blue-900/80">식사종류</label>
-													<select
-														className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
-														value={form.PH_MEAL_KIND}
-														disabled={disabled}
-														onChange={(e) => setField('PH_MEAL_KIND', e.target.value)}
-													>
-														<option value="1">일반식</option>
-														<option value="2">죽</option>
-														<option value="3">유동식</option>
-													</select>
+											<div className="space-y-3 text-sm">
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{/* 왼쪽: 식사 */}
+													<div className="space-y-2">
+														<div className="text-xs font-semibold text-blue-900/80">식사</div>
+														<MealStatusRow
+															label="아침"
+															statusKey="MOST"
+															volKey="MOVOL"
+															statusValue={form.MOST}
+															volValue={form.MOVOL}
+															disabled={disabled}
+															onStatusChange={setField}
+															onVolChange={setField}
+														/>
+														<MealStatusRow
+															label="점심"
+															statusKey="LCST"
+															volKey="LCVOL"
+															statusValue={form.LCST}
+															volValue={form.LCVOL}
+															disabled={disabled}
+															onStatusChange={setField}
+															onVolChange={setField}
+														/>
+														<MealStatusRow
+															label="저녁"
+															statusKey="DNST"
+															volKey="DNVOL"
+															statusValue={form.DNST}
+															volValue={form.DNVOL}
+															disabled={disabled}
+															onStatusChange={setField}
+															onVolChange={setField}
+														/>
+													</div>
+													{/* 오른쪽: 간식 */}
+													<div className="space-y-2">
+														<div className="text-xs font-semibold text-blue-900/80">간식</div>
+														<MealStatusRow
+															label="오전"
+															statusKey="MGST"
+															volKey="MGVOL"
+															isSnack
+															statusValue={form.MGST}
+															volValue={form.MGVOL}
+															disabled={disabled}
+															onStatusChange={setField}
+															onVolChange={setField}
+														/>
+														<MealStatusRow
+															label="오후"
+															statusKey="AGST"
+															volKey="AGVOL"
+															isSnack
+															statusValue={form.AGST}
+															volValue={form.AGVOL}
+															disabled={disabled}
+															onStatusChange={setField}
+															onVolChange={setField}
+														/>
+														<MealStatusRow
+															label="저녁"
+															statusKey="DGST"
+															volKey="DGVOL"
+															isSnack
+															statusValue={form.DGST}
+															volValue={form.DGVOL}
+															disabled={disabled}
+															onStatusChange={setField}
+															onVolChange={setField}
+														/>
+													</div>
 												</div>
-												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
-													<label className="w-28 shrink-0 text-blue-900/80">섭취량</label>
-													<select
-														className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
-														value={form.PH_MEAL_VAL}
-														disabled={disabled}
-														onChange={(e) => setField('PH_MEAL_VAL', e.target.value)}
-													>
-														<option value="1">1</option>
-														<option value="2">1/2이상</option>
-														<option value="3">1/2미만</option>
-													</select>
+												<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+													<div className="flex items-center gap-2">
+														<label className="w-20 shrink-0 text-blue-900/80">식사종류</label>
+														<select
+															className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
+															value={form.PH_MEAL_KIND}
+															disabled={disabled}
+															onChange={(e) => setField('PH_MEAL_KIND', e.target.value)}
+														>
+															<option value="1">일반식</option>
+															<option value="2">죽</option>
+															<option value="3">유동식</option>
+														</select>
+													</div>
+													<div className="flex items-center gap-2">
+														<label className="w-20 shrink-0 text-blue-900/80">섭취량</label>
+														<select
+															className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
+															value={form.PH_MEAL_VAL}
+															disabled={disabled}
+															onChange={(e) => setField('PH_MEAL_VAL', e.target.value)}
+														>
+															<option value="1">1</option>
+															<option value="2">1/2이상</option>
+															<option value="3">1/2미만</option>
+														</select>
+													</div>
 												</div>
-												<div className="flex items-center col-span-12 gap-2">
-													<label className="w-28 shrink-0 text-blue-900/80">식사비고</label>
+												<div className="flex items-center gap-2">
+													<label className="w-20 shrink-0 text-blue-900/80">식사비고</label>
 													<input
 														className="flex-1 px-2 py-1 bg-white border border-blue-300 rounded disabled:bg-slate-50"
 														value={form.ST_ETC}
@@ -1010,12 +1123,12 @@ export default function DailyLongtermCare() {
 										<div className="p-3 border border-blue-200 rounded bg-blue-50/50">
 											<h3 className="mb-3 text-sm font-semibold text-blue-900">신체활동지원</h3>
 											<div className="grid grid-cols-12 gap-3 text-sm">
-												<CheckRow label="세면·구강·머리감기·몸단장·옷갈아입히기" field="PH_HEAD_HELP" />
-												<CheckRow label="이동도움 및 신체기능유지·증진" field="PH_MOVE_HELP" />
-												<CheckRow label="체위변경" field="PH_CHANG_HELP" />
-												<CheckRow label="산책동행" field="PH_WORK_HELP" />
-												<CheckRow label="외출동행" field="PH_OUT_HELP" />
-												<CheckRow label="목욕 실시" field="PH_BATH_HELP" />
+												<CheckRow label="세면·구강·머리감기·몸단장·옷갈아입히기" field="PH_HEAD_HELP" checked={form.PH_HEAD_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="이동도움 및 신체기능유지·증진" field="PH_MOVE_HELP" checked={form.PH_MOVE_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="체위변경" field="PH_CHANG_HELP" checked={form.PH_CHANG_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="산책동행" field="PH_WORK_HELP" checked={form.PH_WORK_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="외출동행" field="PH_OUT_HELP" checked={form.PH_OUT_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="목욕 실시" field="PH_BATH_HELP" checked={form.PH_BATH_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
 												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-32 text-blue-900/80">목욕 소요시간 (분)</label>
 													<input
@@ -1075,8 +1188,8 @@ export default function DailyLongtermCare() {
 										<div className="p-3 border border-blue-200 rounded bg-blue-50/50">
 											<h3 className="mb-3 text-sm font-semibold text-blue-900">인지관리 및 의사소통</h3>
 											<div className="grid grid-cols-12 gap-3 text-sm">
-												<CheckRow label="인지관리지원" field="RG_AID_HELP" />
-												<CheckRow label="의사소통도움 등 말벗·격려" field="RG_TALK_HELP" />
+												<CheckRow label="인지관리지원" field="RG_AID_HELP" checked={form.RG_AID_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="의사소통도움 등 말벗·격려" field="RG_TALK_HELP" checked={form.RG_TALK_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
 												<div className="flex items-center col-span-12 gap-2">
 													<label className="w-28 shrink-0 text-blue-900/80">특이사항</label>
 													<input
@@ -1172,9 +1285,9 @@ export default function DailyLongtermCare() {
 													/>
 													<span className="text-blue-900/60 text-xs">분</span>
 												</div>
-												<CheckRow label="기타(응급서비스)" field="NS_ETC" />
-												<CheckRow label="투약관리" field="NS_MEDI_CHK" />
-												<CheckRow label="욕창관리" field="NS_SORE_CHK" />
+												<CheckRow label="기타(응급서비스)" field="NS_ETC" checked={form.NS_ETC === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="투약관리" field="NS_MEDI_CHK" checked={form.NS_MEDI_CHK === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="욕창관리" field="NS_SORE_CHK" checked={form.NS_SORE_CHK === '1'} disabled={disabled} onToggle={toggleYn} />
 												<div className="flex items-center col-span-12 gap-2 md:col-span-6">
 													<label className="w-36 text-blue-900/80">욕창관찰</label>
 													<select
@@ -1212,10 +1325,10 @@ export default function DailyLongtermCare() {
 										<div className="p-3 border border-blue-200 rounded bg-blue-50/50">
 											<h3 className="mb-3 text-sm font-semibold text-blue-900">기능회복훈련</h3>
 											<div className="grid grid-cols-12 gap-3 text-sm">
-												<CheckRow label="신체·인지기능 향상 프로그램" field="FN_COGN_HELP" />
-												<CheckRow label="신체기능·기본동작·일상생활동작훈련" field="FN_MOVE_HELP" />
-												<CheckRow label="인지기능 향상훈련" field="FN_MIND_HELP" />
-												<CheckRow label="물리(작업)치료" field="FN_PHY_HELP" />
+												<CheckRow label="신체·인지기능 향상 프로그램" field="FN_COGN_HELP" checked={form.FN_COGN_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="신체기능·기본동작·일상생활동작훈련" field="FN_MOVE_HELP" checked={form.FN_MOVE_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="인지기능 향상훈련" field="FN_MIND_HELP" checked={form.FN_MIND_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
+												<CheckRow label="물리(작업)치료" field="FN_PHY_HELP" checked={form.FN_PHY_HELP === '1'} disabled={disabled} onToggle={toggleYn} />
 												<div className="flex items-center col-span-12 gap-2">
 													<label className="w-28 shrink-0 text-blue-900/80">특이사항</label>
 													<input
@@ -1238,16 +1351,24 @@ export default function DailyLongtermCare() {
 										</div>
 									</div>
 								)}
-							</div>
-						</div>
+								</div>
 
-						{!selectedMember && (
-							<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
-								<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
-									수급자를 선택해주세요
-								</p>
+								{noMember && (
+									<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+										<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
+											수급자를 선택해주세요
+										</p>
+									</div>
+								)}
+								{noRecord && (
+									<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+										<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
+											등록된 서비스실적이 없습니다
+										</p>
+									</div>
+								)}
+								</div>
 							</div>
-						)}
 					</section>
 				</div>
 			</div>

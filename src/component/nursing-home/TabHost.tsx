@@ -267,8 +267,14 @@ function renderInternal(href: string) {
 export default function TabHost() {
   const [tabs, setTabs] = useState<TabItem[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 탭 재선택 시 컨텐츠 remount용 키 (데이터 리프레시)
+  const [mountKeys, setMountKeys] = useState<Record<string, number>>({});
   const router = useRouter();
   const pathname = usePathname();
+
+  const bumpMountKey = (id: string) => {
+    setMountKeys((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
+  };
 
   // localStorage에서 상태 복원
   useEffect(() => {
@@ -343,9 +349,10 @@ export default function TabHost() {
       const id = detail.href;
       setTabs((prev) => {
         const exists = prev.some((t) => t.id === id);
-        const next = exists ? prev : [...prev, { id, title: detail.title, href: detail.href }];
-        return next;
+        return exists ? prev : [...prev, { id, title: detail.title, href: detail.href }];
       });
+      // 메뉴로 탭 선택 시 컨텐츠 remount (이미 열린 탭 재선택 포함)
+      bumpMountKey(id);
       setActiveId(id);
       // 새 탭이 열릴 때 URL 업데이트
       router.push(detail.href);
@@ -357,6 +364,10 @@ export default function TabHost() {
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) || null, [tabs, activeId]);
 
   const handleTabClick = (tab: TabItem) => {
+    // 다른 탭이었다가 다시 선택한 경우 컨텐츠를 remount해 데이터 리프레시
+    if (tab.id !== activeId) {
+      bumpMountKey(tab.id);
+    }
     setActiveId(tab.id);
     // 탭 클릭 시 해당 페이지의 URL로 이동
     router.push(tab.href);
@@ -365,6 +376,11 @@ export default function TabHost() {
   const closeTab = (id: string) => {
     const updatedTabs = tabs.filter((t) => t.id !== id);
     setTabs(updatedTabs);
+    setMountKeys((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
     
     if (activeId === id) {
       if (updatedTabs.length > 0) {
@@ -386,6 +402,7 @@ export default function TabHost() {
   const closeAllTabs = () => {
     setTabs([]);
     setActiveId(null);
+    setMountKeys({});
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (error) {
@@ -441,10 +458,11 @@ export default function TabHost() {
       <div className="flex-1 bg-white">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
+          const mountKey = mountKeys[tab.id] || 0;
           const content = renderInternal(tab.href);
           return (
             <div
-              key={tab.id}
+              key={`${tab.id}:${mountKey}`}
               className={`h-full min-h-screen ${isActive ? 'block' : 'hidden'}`}
             >
               {content || (
