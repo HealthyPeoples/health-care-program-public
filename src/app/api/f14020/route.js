@@ -46,7 +46,6 @@ const CARE_COLUMNS = [
 	'FN_PHY_HELP',
 	'FN_PS',
 	'FN_WRITE_NAME',
-	'IO_TM_INFO',
 	'ROOM_NO',
 	'GINFO'
 ];
@@ -290,6 +289,7 @@ async function upsertOvernightOngoingRow(pool, ancd, svdtIso, pendingRow) {
 	request.input('DNST', '2');
 	request.input('MGST', '2');
 	request.input('AGST', '2');
+	request.input('DGST', '2');
 
 	await request.query(`
 		MERGE [돌봄시설DB].[dbo].[F14020] AS T
@@ -307,10 +307,11 @@ async function upsertOvernightOngoingRow(pool, ancd, svdtIso, pendingRow) {
 				[LCST] = @LCST,
 				[DNST] = @DNST,
 				[MGST] = @MGST,
-				[AGST] = @AGST
+				[AGST] = @AGST,
+				[DGST] = @DGST
 		WHEN NOT MATCHED THEN
-			INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
-			VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST);
+			INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST],[DGST])
+			VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST,@DGST);
 	`);
 
 	return { pnum, leaveDate, leaveTime, ioTmInfo };
@@ -549,6 +550,7 @@ export async function POST(req) {
 				request.input('DNST', '1');
 				request.input('MGST', '1');
 				request.input('AGST', '1');
+				request.input('DGST', '1');
 
 				await request.query(`
 					MERGE [돌봄시설DB].[dbo].[F14020] AS T
@@ -566,10 +568,11 @@ export async function POST(req) {
 							[LCST] = @LCST,
 							[DNST] = @DNST,
 							[MGST] = @MGST,
-							[AGST] = @AGST
+							[AGST] = @AGST,
+							[DGST] = @DGST
 					WHEN NOT MATCHED THEN
-						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
-						VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST);
+						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST],[DGST])
+						VALUES (@ANCD,@PNUM,@SVDT,@INDT,@GYN,@ST_KIND,@ST_PLAC,@PAY_COM_GU,@IO_TM_INFO,@MOST,@LCST,@DNST,@MGST,@AGST,@DGST);
 				`);
 
 				try {
@@ -633,8 +636,8 @@ export async function POST(req) {
 							[INDT] = @INDT,
 							[PAY_COM_GU] = @PAY_COM_GU
 					WHEN NOT MATCHED THEN
-						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST])
-						VALUES (@ANCD,@PNUM,@SVDT,@INDT,'1','1',N'식장',@PAY_COM_GU,'','1','1','1','1','1');
+						INSERT ([ANCD],[PNUM],[SVDT],[INDT],[GYN],[ST_KIND],[ST_PLAC],[PAY_COM_GU],[IO_TM_INFO],[MOST],[LCST],[DNST],[MGST],[AGST],[DGST])
+						VALUES (@ANCD,@PNUM,@SVDT,@INDT,'1','1',N'식장',@PAY_COM_GU,'','1','1','1','1','1','1');
 				`);
 
 				results.push({ index: i, pnum, ok: true, kind, time, payComGu });
@@ -649,8 +652,68 @@ export async function POST(req) {
 			});
 		}
 
+		// 간식 일괄등록: 해당일자 F14020(입소 수급자 실적)에 MGVOL/AGVOL/DGVOL 일괄 반영
+		if (action === 'bulkSnack') {
+			const mgvol = body?.MGVOL ?? body?.mgvol ?? body?.morningSnack ?? '';
+			const agvol = body?.AGVOL ?? body?.agvol ?? body?.afternoonSnack ?? '';
+			const dgvol = body?.DGVOL ?? body?.dgvol ?? body?.eveningSnack ?? '';
+
+			if (
+				String(mgvol).trim() === '' &&
+				String(agvol).trim() === '' &&
+				String(dgvol).trim() === ''
+			) {
+				return jsonError(
+					{ success: false, error: '오전/오후/저녁 간식 중 하나 이상 입력해주세요.' },
+					400
+				);
+			}
+
+			const now = new Date();
+			const nowStr = now.toISOString().slice(0, 19).replace('T', ' ');
+			const request = pool.request();
+			request.input('ANCD', gate.sessionAncd);
+			request.input('SVDT', svdtIso);
+			request.input('INDT', nowStr);
+			request.input('MGVOL', String(mgvol ?? ''));
+			request.input('AGVOL', String(agvol ?? ''));
+			request.input('DGVOL', String(dgvol ?? ''));
+
+			// 값이 있는 간식만 갱신 (빈 값은 기존 유지)
+			const setParts = ['f.[INDT] = @INDT'];
+			if (String(mgvol).trim() !== '') setParts.push('f.[MGVOL] = @MGVOL');
+			if (String(agvol).trim() !== '') setParts.push('f.[AGVOL] = @AGVOL');
+			if (String(dgvol).trim() !== '') setParts.push('f.[DGVOL] = @DGVOL');
+
+			const result = await request.query(`
+				UPDATE f
+				SET ${setParts.join(',\n\t\t\t\t\t')}
+				FROM [돌봄시설DB].[dbo].[F14020] f
+				INNER JOIN [돌봄시설DB].[dbo].[F10010] m
+					ON f.[ANCD] = m.[ANCD]
+					AND CAST(f.[PNUM] AS VARCHAR) = CAST(m.[PNUM] AS VARCHAR)
+				WHERE f.[ANCD] = @ANCD
+					AND f.[SVDT] = @SVDT
+					AND CAST(m.[P_ST] AS VARCHAR) = '1'
+			`);
+
+			const updated = Array.isArray(result.rowsAffected)
+				? result.rowsAffected.reduce((a, b) => a + (Number(b) || 0), 0)
+				: Number(result.rowsAffected) || 0;
+
+			return jsonOk({
+				success: true,
+				action: 'bulkSnack',
+				svdt: svdtIso,
+				updated,
+				MGVOL: String(mgvol).trim() !== '' ? String(mgvol) : undefined,
+				AGVOL: String(agvol).trim() !== '' ? String(agvol) : undefined,
+				DGVOL: String(dgvol).trim() !== '' ? String(dgvol) : undefined
+			});
+		}
+
 		if (!Array.isArray(rows)) {
-			return jsonError({ success: false, error: 'svdt와 rows 배열이 필요합니다 (또는 action: generate / returnFromOvernight / syncAdmitDischargePay)' }, 400);
+			return jsonError({ success: false, error: 'svdt와 rows 배열이 필요합니다 (또는 action: generate / returnFromOvernight / syncAdmitDischargePay / bulkSnack)' }, 400);
 		}
 
 		const now = new Date();
@@ -677,7 +740,7 @@ export async function POST(req) {
 				DNST: r.dnst ?? r.DNST ?? r.mealStatus?.dinner,
 				MGST: r.mgst ?? r.MGST ?? r.snackStatus?.morning,
 				AGST: r.agst ?? r.AGST ?? r.snackStatus?.afternoon,
-				DGST: r.dgst ?? r.DGST,
+				DGST: r.dgst ?? r.DGST ?? r.snackStatus?.evening,
 				MOVOL: r.movol ?? r.MOVOL,
 				LCVOL: r.lcvol ?? r.LCVOL,
 				DNVOL: r.dnvol ?? r.DNVOL,

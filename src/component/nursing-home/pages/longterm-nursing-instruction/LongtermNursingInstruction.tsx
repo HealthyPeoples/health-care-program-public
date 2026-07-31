@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 
 interface MemberData {
 	[key: string]: any;
@@ -193,6 +194,11 @@ export default function LongtermNursingInstruction() {
 		setSelectedMember(member);
 		await fetchDefaults(String(member?.PNUM ?? '').trim());
 	};
+
+	useTabRefresh(() => {
+		if (!selectedPnum) return;
+		void fetchDefaults(selectedPnum);
+	});
 
 	// 직원 검색 함수
 	const searchEmployee = async (searchTerm: string, setSuggestions: (data: Array<{EMPNO: string; EMPNM: string}>) => void, setShowDropdown: (show: boolean) => void) => {

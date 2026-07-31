@@ -12,6 +12,7 @@ import {
 	toNullableDecimal,
 	toNullableNumber,
 } from '../../utils/f30120Fields';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 import {
 	extractFloorFromRoomNo,
 	fetchRoomNoMapFromF30112,
@@ -148,6 +149,11 @@ export default function VitalSignsPeriodic() {
 		setCurrentPage(1); // 날짜 변경 시 페이지를 1로 초기화
 		fetchVitalSignsData(selectedDate);
 	}, [selectedDate]);
+
+	// 탭 재활성화: 선택 날짜는 유지하고 데이터만 재조회
+	useTabRefresh(() => {
+		void fetchVitalSignsData(selectedDate);
+	});
 
 	// 날짜 변경 함수
 	const handleDateChange = (days: number) => {

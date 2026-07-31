@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { formatCareGradeLabel } from "../utils/careGrade";
+import { useTabRefresh } from "../hooks/useTabRefresh";
 import {
   NO_ROOM_VALUE,
   attachLatestRoomNoByPnum,
@@ -78,6 +79,11 @@ export default function BeneficiaryListPanel({
   useEffect(() => {
     fetchMembers();
   }, []);
+
+  // 탭 재활성화 시 수급자 목록만 다시 조회 (선택/필터 상태 유지)
+  useTabRefresh(() => {
+    void fetchMembers(searchTerm.trim() || undefined);
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {

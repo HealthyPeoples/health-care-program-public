@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 
 interface MemberData {
 	ANCD: string;
@@ -85,7 +86,7 @@ export default function EmergencyRecord() {
 	};
 
 	// 응급 기록 조회 (수급자 선택 시)
-	const fetchEmergencies = async (ancd: string, pnum: string, member: MemberData | null) => {
+	const fetchEmergencies = async (ancd: string, pnum: string, member: MemberData | null, preserveDate?: string | null) => {
 		if (!ancd || !pnum) {
 			setEmergencyList([]);
 			setEmergencyDates([]);
@@ -104,11 +105,43 @@ export default function EmergencyRecord() {
 
 			const list: EmergencyData[] = Array.isArray(result.data) ? result.data : [];
 			setEmergencyList(list);
-			setEmergencyDates(list.map((r) => formatDateDisplay(r.EMDT)).filter(Boolean));
-			setSelectedDateIndex(null);
-			setDraftDate(null);
-			resetForm(member);
-			setIsEditMode(false);
+			const dates = list.map((r) => formatDateDisplay(r.EMDT)).filter(Boolean);
+			setEmergencyDates(dates);
+			if (preserveDate !== undefined) {
+				if (preserveDate && list.length > 0) {
+					const idx = dates.findIndex(
+						(d) => d === preserveDate || formatDateDisplay(d) === formatDateDisplay(preserveDate)
+					);
+					if (idx >= 0) {
+						setSelectedDateIndex(idx);
+						handleSelectDate(idx, list[idx], member);
+					} else {
+						setSelectedDateIndex(null);
+						setDraftDate(null);
+						resetForm(member);
+					}
+				} else if (preserveDate) {
+					setEmergencyDates([preserveDate, ...dates]);
+					setSelectedDateIndex(0);
+					setDraftDate(null);
+					resetForm(member);
+					setFormData((prev) => ({
+						...prev,
+						beneficiary: member?.P_NM || prev.beneficiary,
+						emergencyDate: formatDateDisplay(preserveDate)
+					}));
+				} else {
+					setSelectedDateIndex(null);
+					setDraftDate(null);
+					resetForm(member);
+				}
+				setIsEditMode(false);
+			} else {
+				setSelectedDateIndex(null);
+				setDraftDate(null);
+				resetForm(member);
+				setIsEditMode(false);
+			}
 		} catch (err) {
 			console.error('[응급 기록 조회] 오류 발생:', err);
 			setEmergencyList([]);
@@ -211,6 +244,12 @@ export default function EmergencyRecord() {
 		setFormData(prev => ({ ...prev, beneficiary: member.P_NM || '' }));
 		fetchEmergencies(member.ANCD, member.PNUM, member);
 	};
+
+	useTabRefresh(() => {
+		if (!selectedMember?.ANCD || !selectedMember?.PNUM) return;
+		const savedDate = selectedDateIndex !== null ? emergencyDates[selectedDateIndex] : null;
+		void fetchEmergencies(selectedMember.ANCD, selectedMember.PNUM, selectedMember, savedDate);
+	});
 
 	// 폼 초기화
 	const resetForm = (member: MemberData | null = null) => {

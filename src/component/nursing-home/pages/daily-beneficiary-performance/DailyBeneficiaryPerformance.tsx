@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 
 interface PerformanceData {
 	id: number;
@@ -26,7 +27,7 @@ interface PerformanceData {
 	overnightLeaveTime?: string; // 외박 출발시각
 	mealStatus: { breakfast: string; lunch: string; dinner: string }; // MOST, LCST, DNST: '1'=양호, '2'=이상
 	specialNotes: string; // ST_ETC
-	snackStatus: { morning: string; afternoon: string }; // MGST, AGST: '1'=양호, '2'=이상
+	snackStatus: { morning: string; afternoon: string; evening: string }; // MGST, AGST, DGST: '1'=양호, '2'=이상
 }
 
 interface OvernightPendingItem {
@@ -225,7 +226,8 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 		specialNotes: item.ST_ETC || '',
 		snackStatus: {
 			morning: item.MGST || '1',
-			afternoon: item.AGST || '1'
+			afternoon: item.AGST || '1',
+			evening: item.DGST || '1'
 		}
 	};
 }
@@ -318,7 +320,10 @@ export default function DailyBeneficiaryPerformance() {
 	const [combinedData, setCombinedData] = useState<PerformanceData[]>([]);
 
 	// F14020 데이터 조회 함수
-	const fetchPerformanceData = async (svdt: string) => {
+	const fetchPerformanceData = async (
+		svdt: string,
+		opts?: { preservePnum?: string | null }
+	) => {
 		setLoading(true);
 		try {
 			// 날짜 형식 확인 및 정규화 (yyyy-mm-dd 형식 보장)
@@ -349,17 +354,25 @@ export default function DailyBeneficiaryPerformance() {
 				// 수급자명 가나다순(오름차순) 정렬 후 연번 재부여
 				transformedData = transformedData
 					.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
-					.map((row, idx) => ({ ...row, serialNo: idx + 1 }));
+					.map((row, idx) => ({ ...row, id: idx + 1, serialNo: idx + 1 }));
 				
-		setCombinedData(transformedData);
+				setCombinedData(transformedData);
 				setNextId(transformedData.length > 0 ? Math.max(...transformedData.map(d => d.id)) + 1 : 1);
 				setEditingRowId(null);
 				setEditingBackup(null);
+				// 탭 재조회 시 선택 수급자 유지 (id는 재부여되므로 pnum 기준)
+				if (opts?.preservePnum != null && opts.preservePnum !== '') {
+					const match = transformedData.find(
+						(r) => String(r.pnum ?? '').trim() === String(opts.preservePnum).trim()
+					);
+					setSelectedMember(match ? match.id : null);
+				}
 			} else {
 				setCombinedData([]);
 				setNextId(1);
 				setEditingRowId(null);
 				setEditingBackup(null);
+				if (opts?.preservePnum != null) setSelectedMember(null);
 			}
 		} catch (err) {
 			console.error('실적 데이터 조회 오류:', err);
@@ -367,6 +380,7 @@ export default function DailyBeneficiaryPerformance() {
 			setNextId(1);
 			setEditingRowId(null);
 			setEditingBackup(null);
+			if (opts?.preservePnum != null) setSelectedMember(null);
 		} finally {
 			setLoading(false);
 		}
@@ -377,6 +391,17 @@ export default function DailyBeneficiaryPerformance() {
 		setCurrentPage(1); // 날짜 변경 시 페이지를 1로 초기화
 		fetchPerformanceData(selectedDate);
 	}, [selectedDate]);
+
+	// 탭 재활성화: 선택 날짜·수급자는 유지하고 F14020(간식상태 등)만 재조회
+	useTabRefresh(() => {
+		const prevPnum =
+			selectedMember != null
+				? combinedData.find((r) => r.id === selectedMember)?.pnum
+				: null;
+		void fetchPerformanceData(selectedDate, {
+			preservePnum: prevPnum != null ? String(prevPnum) : null
+		});
+	});
 
 	// 새로고침 시 경고 얼럿
 	useEffect(() => {
@@ -508,7 +533,7 @@ export default function DailyBeneficiaryPerformance() {
 			payComGu: '0',
 			mealStatus: { breakfast: '1', lunch: '1', dinner: '1' }, // 기본값: 양호
 			specialNotes: '',
-			snackStatus: { morning: '1', afternoon: '1' } // 기본값: 양호
+			snackStatus: { morning: '1', afternoon: '1', evening: '1' } // 기본값: 양호
 		};
 
 		// 기존 데이터들의 연번을 하나씩 증가 (한 칸씩 뒤로 밀기)
@@ -842,7 +867,7 @@ export default function DailyBeneficiaryPerformance() {
 
 	const buildPerformanceTableRowsHtml = (rows: PerformanceData[]) => {
 		if (rows.length === 0) {
-			return '<tr><td colspan="9" style="text-align:center">해당 일자 데이터 없음</td></tr>';
+			return '<tr><td colspan="10" style="text-align:center">해당 일자 데이터 없음</td></tr>';
 		}
 		return rows
 			.map((row) => {
@@ -852,6 +877,7 @@ export default function DailyBeneficiaryPerformance() {
 				const dinner = row.mealStatus.dinner === '1' ? '○' : '';
 				const morningSnack = row.snackStatus.morning === '1' ? '○' : '';
 				const afternoonSnack = row.snackStatus.afternoon === '1' ? '○' : '';
+				const eveningSnack = row.snackStatus.evening === '1' ? '○' : '';
 				const mealTypeText =
 					row.mealType === '1' ? '일반식' : row.mealType === '2' ? '죽' : row.mealType === '3' ? '유동식(미음)' : '';
 
@@ -865,6 +891,7 @@ export default function DailyBeneficiaryPerformance() {
 									<td class="check-mark">${dinner}</td>
 									<td class="check-mark">${morningSnack}</td>
 									<td class="check-mark">${afternoonSnack}</td>
+									<td class="check-mark">${eveningSnack}</td>
 									<td>${mealTypeText}</td>
 								</tr>
 							`;
@@ -904,6 +931,7 @@ export default function DailyBeneficiaryPerformance() {
 							<th>저녁</th>
 							<th>오전간식</th>
 							<th>오후간식</th>
+							<th>저녁간식</th>
 							<th>식이</th>
 						</tr>
 					</thead>
@@ -1331,6 +1359,7 @@ export default function DailyBeneficiaryPerformance() {
 							<th>저</th>
 							<th>오전간</th>
 							<th>오후간</th>
+							<th>저녁간</th>
 							<th>식이</th>
 						</tr>
 					</thead>
@@ -1342,6 +1371,7 @@ export default function DailyBeneficiaryPerformance() {
 							const dinner = row.mealStatus.dinner === '1' ? '○' : '';
 							const morningSnack = row.snackStatus.morning === '1' ? '○' : '';
 							const afternoonSnack = row.snackStatus.afternoon === '1' ? '○' : '';
+							const eveningSnack = row.snackStatus.evening === '1' ? '○' : '';
 							const mealTypeText = row.mealType === '1' ? '일반식' : row.mealType === '2' ? '죽' : row.mealType === '3' ? '유동식(미음)' : '';
 							
 							return `
@@ -1354,6 +1384,7 @@ export default function DailyBeneficiaryPerformance() {
 									<td class="check-mark">${dinner}</td>
 									<td class="check-mark">${morningSnack}</td>
 									<td class="check-mark">${afternoonSnack}</td>
+									<td class="check-mark">${eveningSnack}</td>
 									<td>${mealTypeText}</td>
 								</tr>
 							`;
@@ -1854,6 +1885,21 @@ export default function DailyBeneficiaryPerformance() {
 														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.afternoon === '1' ? "disabled-checked-blue" : ""}`}
 													/>
 													<span className="text-xs">오후</span>
+												</label>
+												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+													<input 
+														type="checkbox" 
+														checked={row.snackStatus.evening === '1'}
+														onChange={(e) => {
+															const newData = combinedData.map(r => 
+																r.id === row.id ? { ...r, snackStatus: { ...r.snackStatus, evening: e.target.checked ? '1' : '2' } } : r
+															);
+															setCombinedData(newData);
+														}}
+														disabled={editingRowId !== row.id}
+														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.evening === '1' ? "disabled-checked-blue" : ""}`}
+													/>
+													<span className="text-xs">저녁</span>
 												</label>
 											</div>
 										</td>

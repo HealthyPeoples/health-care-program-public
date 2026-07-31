@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { formatCareGradeLabel } from "../utils/careGrade";
+import { useTabRefresh } from "../hooks/useTabRefresh";
 import {
   NO_ROOM_VALUE,
   attachLatestRoomNoByPnum,
@@ -65,6 +66,11 @@ export function MemberListPanel({
     fetchMembers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 탭 재활성화 시 수급자 목록만 다시 조회 (필터/페이지 상태 유지)
+  useTabRefresh(() => {
+    void fetchMembers(searchTerm.trim() || undefined);
+  });
 
   useEffect(() => {
     setCurrentPage(1);

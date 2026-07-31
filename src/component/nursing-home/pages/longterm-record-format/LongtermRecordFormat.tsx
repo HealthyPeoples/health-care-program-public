@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { resolveBathMethodFromRow } from '../../utils/physicalActivityFields';
 import {
@@ -738,6 +739,11 @@ export default function LongtermRecordFormat() {
 	useEffect(() => {
 		void loadRecordData(selectedPnum, weekStart);
 	}, [selectedPnum, weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	useTabRefresh(() => {
+		if (!selectedPnum) return;
+		void loadRecordData(selectedPnum, weekStart);
+	});
 
 	const vitalDisplay = (i: number) => {
 		const v = dailyRecords.vitalSigns[i]?.trim();

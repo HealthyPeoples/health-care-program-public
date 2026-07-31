@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 
 interface MemberData {
 	[key: string]: any;
@@ -273,6 +274,11 @@ export default function LongtermBeneficiaryStatus() {
 		setSelectedMember(member);
 		await fetchDefaults(String(member?.PNUM ?? '').trim());
 	};
+
+	useTabRefresh(() => {
+		if (!selectedPnum) return;
+		void fetchDefaults(selectedPnum);
+	});
 
 	const handleEnterEdit = () => {
 		if (!selectedPnum) return alert('수급자를 선택해주세요.');

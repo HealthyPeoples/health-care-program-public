@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { useTabRefresh } from '../../hooks/useTabRefresh';
 
 interface MemberData {
 	ANCD: string;
@@ -71,7 +72,7 @@ export default function StatusChangeObservation() {
 	};
 
 	// 상태변화 관찰 기록 조회 (수급자 선택 시)
-	const fetchObservations = async (ancd: string, pnum: string, member: MemberData | null) => {
+	const fetchObservations = async (ancd: string, pnum: string, member: MemberData | null, preserveDate?: string | null) => {
 		if (!ancd || !pnum) {
 			setObservationList([]);
 			setObservationDates([]);
@@ -88,8 +89,24 @@ export default function StatusChangeObservation() {
 			// 임시로 빈 데이터 반환
 			setObservationList([]);
 			setObservationDates([]);
-			setSelectedDateIndex(null);
-			resetForm(member);
+			if (preserveDate !== undefined) {
+				if (preserveDate) {
+					setObservationDates([preserveDate]);
+					setSelectedDateIndex(0);
+					resetForm(member);
+					setFormData((prev) => ({
+						...prev,
+						beneficiary: member?.P_NM || prev.beneficiary,
+						observationDate: formatDateDisplay(preserveDate)
+					}));
+				} else {
+					setSelectedDateIndex(null);
+					resetForm(member);
+				}
+			} else {
+				setSelectedDateIndex(null);
+				resetForm(member);
+			}
 			setIsEditMode(false);
 		} catch (err) {
 			console.error('[상태변화 관찰 조회] 오류 발생:', err);
@@ -180,6 +197,12 @@ export default function StatusChangeObservation() {
 		setFormData(prev => ({ ...prev, beneficiary: member.P_NM || '' }));
 		fetchObservations(member.ANCD, member.PNUM, member);
 	};
+
+	useTabRefresh(() => {
+		if (!selectedMember?.ANCD || !selectedMember?.PNUM) return;
+		const savedDate = selectedDateIndex !== null ? observationDates[selectedDateIndex] : null;
+		void fetchObservations(selectedMember.ANCD, selectedMember.PNUM, selectedMember, savedDate);
+	});
 
 	// 폼 초기화
 	const resetForm = (member: MemberData | null = null) => {
