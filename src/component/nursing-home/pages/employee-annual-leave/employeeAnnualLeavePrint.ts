@@ -1,4 +1,12 @@
-﻿import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
+/**
+ * @file 직원연차 — 인쇄 헬퍼 (employeeAnnualLeavePrint.ts)
+ *
+ * @description
+ * 요양원 직원연차 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/employee-annual-leave
+ *
+ * @module component/nursing-home/pages/employee-annual-leave/employeeAnnualLeavePrint
+ */
+import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 import {
 	buildAnnualLeaveSummary,
 	buildLeavePeriods,

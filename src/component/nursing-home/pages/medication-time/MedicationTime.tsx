@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 투약시간 — 화면 컴포넌트 (MedicationTime.tsx)
+ *
+ * @description
+ * 요양원 투약시간 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/medication-time
+ *
+ * @module component/nursing-home/pages/medication-time/MedicationTime
+ */
 import { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

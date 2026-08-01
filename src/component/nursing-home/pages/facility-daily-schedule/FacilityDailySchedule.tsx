@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 시설일일일정 — 화면 컴포넌트 (FacilityDailySchedule.tsx)
+ *
+ * @description
+ * 요양원 시설일일일정 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/facility-daily-schedule
+ *
+ * @module component/nursing-home/pages/facility-daily-schedule/FacilityDailySchedule
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatCareGradeLabel } from "../../utils/careGrade";
 import {

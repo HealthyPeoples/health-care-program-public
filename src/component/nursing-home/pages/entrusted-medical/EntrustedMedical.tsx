@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 위탁진료 — 화면 컴포넌트 (EntrustedMedical.tsx)
+ *
+ * @description
+ * 요양원 위탁진료 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/entrusted-medical
+ *
+ * @module component/nursing-home/pages/entrusted-medical/EntrustedMedical
+ */
 import React, { useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
 import {

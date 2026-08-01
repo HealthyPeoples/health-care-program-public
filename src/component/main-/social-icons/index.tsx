@@ -1,3 +1,11 @@
+/**
+ * @file 공통 UI — index.tsx
+ *
+ * @description
+ * 메인/블로그 스타일 공통 UI 컴포넌트입니다.
+ *
+ * @module component/main-/social-icons/index
+ */
 import { Mail, Github, Facebook, Youtube, Linkedin, Twitter, Mastodon } from './icons'
 
 const components = {

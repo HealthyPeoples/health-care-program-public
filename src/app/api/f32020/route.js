@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f32020 — 활력징후(정기) F32020
+ *
+ * @description
+ * 활력징후(정기) F32020 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f32020/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

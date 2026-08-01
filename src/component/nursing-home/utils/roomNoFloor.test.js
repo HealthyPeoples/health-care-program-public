@@ -1,4 +1,12 @@
 /**
+ * @file 요양원 유틸 — roomNoFloor.test.js
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/roomNoFloor.test
+ */
+/**
  * roomNoFloor — 층수 추출·옵션 구성 최소 검증
  */
 const { describe, it } = require('node:test');

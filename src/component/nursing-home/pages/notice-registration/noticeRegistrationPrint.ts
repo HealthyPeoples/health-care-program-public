@@ -1,3 +1,11 @@
+/**
+ * @file 공지등록 — 인쇄 헬퍼 (noticeRegistrationPrint.ts)
+ *
+ * @description
+ * 요양원 공지등록 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/notice-registration
+ *
+ * @module component/nursing-home/pages/notice-registration/noticeRegistrationPrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export type NoticePrintData = {

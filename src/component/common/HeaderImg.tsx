@@ -1,3 +1,11 @@
+/**
+ * @file HeaderImg.tsx
+ *
+ * @description
+ * src/component/common/HeaderImg.tsx 모듈입니다.
+ *
+ * @module component/common/HeaderImg
+ */
 import Image from 'next/image'
 import { ReactNodeProps } from '../../types'
 

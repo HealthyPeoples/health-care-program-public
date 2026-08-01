@@ -1,3 +1,11 @@
+/**
+ * @file API /api/outing-info — 외출·외박대장 OUTING_INFO
+ *
+ * @description
+ * 외출·외박대장 OUTING_INFO Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/outing-info/route
+ */
 import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';

@@ -1,3 +1,11 @@
+/**
+ * @file 근무표 — 인쇄 헬퍼 (workSchedulePrint.ts)
+ *
+ * @description
+ * 요양원 근무표 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/work-schedule
+ *
+ * @module component/nursing-home/pages/work-schedule/workSchedulePrint
+ */
 /** 근무일정 현황표 인쇄 헬퍼 (F02010 기반)
  * WGU: 1=근무, 2=연차, 3=월차, 4=정기, 5=대휴, 6=병가, 7=경조사, 9=결근
  */

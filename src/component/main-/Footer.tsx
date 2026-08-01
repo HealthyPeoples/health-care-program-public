@@ -1,3 +1,11 @@
+/**
+ * @file 공통 UI — Footer.tsx
+ *
+ * @description
+ * 메인/블로그 스타일 공통 UI 컴포넌트입니다.
+ *
+ * @module component/main-/Footer
+ */
 import Link from 'next/link'
 import SocialIcon from './social-icons'
 import siteMetadata from '../../data/siteMetadata'

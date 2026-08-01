@@ -1,4 +1,12 @@
 /**
+ * @file 월 급여명세서 — 인쇄 헬퍼 (MonthlySalaryStatementPrint.test.js)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementPrint.test
+ */
+/**
  * MonthlySalaryStatementPrint — 인쇄 HTML 빌더 export·배선 최소 검증
  * (비즈니스 로직/금액 계산 테스트 아님)
  */

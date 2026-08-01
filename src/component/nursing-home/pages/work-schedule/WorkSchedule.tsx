@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 근무표 — 화면 컴포넌트 (WorkSchedule.tsx)
+ *
+ * @description
+ * 요양원 근무표 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/work-schedule
+ *
+ * @module component/nursing-home/pages/work-schedule/WorkSchedule
+ */
 import React, { useState, useEffect, useMemo } from "react";
 import {
 	buildWorkScheduleStatusPrintHtml,

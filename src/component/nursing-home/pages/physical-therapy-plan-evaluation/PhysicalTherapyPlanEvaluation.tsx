@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 물리치료계획평가 — 화면 컴포넌트 (PhysicalTherapyPlanEvaluation.tsx)
+ *
+ * @description
+ * 요양원 물리치료계획평가 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/physical-therapy-plan-evaluation
+ *
+ * @module component/nursing-home/pages/physical-therapy-plan-evaluation/PhysicalTherapyPlanEvaluation
+ */
 import React, { useEffect, useMemo, useState } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import BeneficiaryListPanel, { BeneficiaryMember } from '../../components/BeneficiaryListPanel';

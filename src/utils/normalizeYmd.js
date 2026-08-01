@@ -1,4 +1,12 @@
 /**
+ * @file 공통 유틸 — normalizeYmd.js
+ *
+ * @description
+ * 날짜·응답·포맷 등 프로젝트 공통 유틸리티입니다.
+ *
+ * @module utils/normalizeYmd
+ */
+/**
  * API Route 공용 날짜 정규화.
  * 각 함수는 기존 route.js에 있던 구현을 그대로 옮긴 것이며, 동작 변경 없음.
  */

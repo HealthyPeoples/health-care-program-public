@@ -1,3 +1,11 @@
+/**
+ * @file API /api/annual-schedule — 연간일정 API
+ *
+ * @description
+ * 연간일정 API Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/annual-schedule/route
+ */
 import { connPool } from '../../../config/server';
 import { getSessionAncd, parseUserInfoCookieValue } from '../../../config/sessionServer';
 

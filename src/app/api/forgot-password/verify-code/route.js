@@ -1,3 +1,11 @@
+/**
+ * @file API /api/forgot-password/verify-code — 비밀번호 찾기
+ *
+ * @description
+ * 비밀번호 찾기 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/forgot-password/verify-code/route
+ */
 import { getVerificationCode, deleteVerificationCode } from '../send-code/route';
 import { connPool } from '../../../../config/server';
 

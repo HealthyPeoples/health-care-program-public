@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 시설기본정보 — 화면 컴포넌트 (FacilityBasicInfo.tsx)
+ *
+ * @description
+ * 요양원 시설기본정보 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/facility-basic-info
+ *
+ * @module component/nursing-home/pages/facility-basic-info/FacilityBasicInfo
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type TabKey = "customer" | "tax" | "service";

@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — verify-api-response
+ *
+ * @description
+ * jsonOk/jsonError 응답 동일성 검증
+ *
+ * @module scripts/verify-api-response
+ */
+/**
  * jsonOk/jsonError 가 기존 new Response(JSON.stringify) 패턴과
  * status / Content-Type / body JSON 이 동일한지 검증합니다.
  */

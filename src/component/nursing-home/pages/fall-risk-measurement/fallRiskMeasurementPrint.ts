@@ -1,3 +1,11 @@
+/**
+ * @file 낙상위험도측정 — 인쇄 헬퍼 (fallRiskMeasurementPrint.ts)
+ *
+ * @description
+ * 요양원 낙상위험도측정 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/fall-risk-measurement
+ *
+ * @module component/nursing-home/pages/fall-risk-measurement/fallRiskMeasurementPrint
+ */
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {
 	ASSESSMENT_SECTIONS,

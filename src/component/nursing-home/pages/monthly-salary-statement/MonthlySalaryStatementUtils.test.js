@@ -1,4 +1,12 @@
 /**
+ * @file 월 급여명세서 — 유틸/타입/매퍼 (MonthlySalaryStatementUtils.test.js)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementUtils.test
+ */
+/**
  * MonthlySalaryStatementUtils — 순수 유틸 export·동작 최소 검증
  */
 const { describe, it, before } = require("node:test");

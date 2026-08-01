@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 공지조회 — 화면 컴포넌트 (NoticeInquiry.tsx)
+ *
+ * @description
+ * 요양원 공지조회 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/notice-inquiry
+ *
+ * @module component/nursing-home/pages/notice-inquiry/NoticeInquiry
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	buildNoticePrintHtml,

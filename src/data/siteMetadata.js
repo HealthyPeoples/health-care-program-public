@@ -1,3 +1,11 @@
+/**
+ * @file 정적 데이터 — siteMetadata.js
+ *
+ * @description
+ * 네비게이션·상수 등 정적 데이터 모듈입니다.
+ *
+ * @module data/siteMetadata
+ */
 /** @type {import("pliny/config").PlinyConfig } */
 const siteMetadata = {
   title: 'Next.js Starter Blog',

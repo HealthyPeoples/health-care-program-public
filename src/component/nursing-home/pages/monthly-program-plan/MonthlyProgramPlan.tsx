@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 월 프로그램계획 — 화면 컴포넌트 (MonthlyProgramPlan.tsx)
+ *
+ * @description
+ * 요양원 월 프로그램계획 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-program-plan
+ *
+ * @module component/nursing-home/pages/monthly-program-plan/MonthlyProgramPlan
+ */
 import React, { useState, useEffect, useMemo } from 'react';
 
 /** type="month" 값 — 당월 `YYYY-MM` */

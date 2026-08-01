@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 욕구사정기록 — 화면 컴포넌트 (NeedsAssessmentRecord.tsx)
+ *
+ * @description
+ * 요양원 욕구사정기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/needs-assessment-record
+ *
+ * @module component/nursing-home/pages/needs-assessment-record/NeedsAssessmentRecord
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file UDC 페이지 — 모듈 (UDCPage.tsx)
+ *
+ * @description
+ * 요양원 UDC 페이지 기능의 모듈입니다. 폴더: component/nursing-home/pages/UDC-page
+ *
+ * @module component/nursing-home/pages/UDC-page/UDCPage
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 interface UdcGroupRow {

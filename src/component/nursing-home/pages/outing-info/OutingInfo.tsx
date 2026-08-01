@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 외출·외박대장 — 화면 컴포넌트 (OutingInfo.tsx)
+ *
+ * @description
+ * 요양원 외출·외박대장 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/outing-info
+ *
+ * @module component/nursing-home/pages/outing-info/OutingInfo
+ */
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 

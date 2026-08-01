@@ -1,3 +1,11 @@
+/**
+ * @file 연간일정 — 인쇄 헬퍼 (annualSchedulePrint.ts)
+ *
+ * @description
+ * 요양원 연간일정 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/annual-schedule
+ *
+ * @module component/nursing-home/pages/annual-schedule/annualSchedulePrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export { openPrintPreviewWindow };

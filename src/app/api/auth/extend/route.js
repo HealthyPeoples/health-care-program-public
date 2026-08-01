@@ -1,64 +1,48 @@
-import { NextRequest, NextResponse } from 'next/server';
+/**
+ * @file API /api/auth/extend — 서명된 세션 JWT 재발급(연장)
+ *
+ * @module app/api/auth/extend/route
+ */
+import { NextResponse } from 'next/server';
 
 import { jsonError } from '../../../../utils/apiResponse';
+import { getSessionFromRequest } from '../../../../config/sessionServer';
+
+const {
+	SESSION_MAX_AGE_SEC,
+	signSession,
+	setSessionCookies,
+} = require('../../../../lib/sessionJwt');
+
 export async function POST(req) {
-  try {
-    const token = req.cookies.get('auth_token')?.value;
-    const userInfo = req.cookies.get('user_info')?.value;
+	try {
+		const user = getSessionFromRequest(req);
+		if (!user) {
+			return jsonError({ success: false, message: '로그인 정보가 없습니다.' }, 401);
+		}
 
-    if (!token || !userInfo) {
-      return jsonError({ success: false, message: '로그인 정보가 없습니다.' }, 401);
-    }
+		const token = signSession({
+			ancd: user.ancd,
+			uid: user.uid,
+			ugr: user.ugr,
+			annm: user.annm,
+		});
 
-    // 사용자 정보 파싱
-    let user;
-    try {
-      user = JSON.parse(userInfo);
-    } catch (parseError) {
-      return jsonError({ success: false, message: '사용자 정보 파싱 오류' }, 400);
-    }
+		const expiresAt = new Date(Date.now() + SESSION_MAX_AGE_SEC * 1000).toISOString();
 
-    // 새로운 만료 시간 설정 (24시간)
-    const expiresIn = 24 * 60 * 60 * 1000; // 24시간
-    const expiresAt = new Date(Date.now() + expiresIn);
+		const response = NextResponse.json(
+			{
+				success: true,
+				message: '로그인이 연장되었습니다.',
+				expiresAt,
+			},
+			{ status: 200 }
+		);
 
-    // 업데이트된 사용자 정보
-    const updatedUserInfo = {
-      ...user,
-      expiresAt: expiresAt.toISOString(),
-    };
-
-    // 응답 생성
-    const response = NextResponse.json(
-      {
-        success: true,
-        message: '로그인이 연장되었습니다.',
-        expiresAt: expiresAt.toISOString(),
-      },
-      { status: 200 }
-    );
-
-    // 쿠키 업데이트
-    response.cookies.set('auth_token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: expiresIn / 1000, // 초 단위
-      path: '/',
-    });
-
-    response.cookies.set('user_info', JSON.stringify(updatedUserInfo), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: expiresIn / 1000,
-      path: '/',
-    });
-
-    return response;
-  } catch (err) {
-    console.error('로그인 연장 오류:', err);
-    return jsonError({ success: false, message: '로그인 연장 처리 중 오류가 발생했습니다.' });
-  }
+		setSessionCookies(response, token, SESSION_MAX_AGE_SEC);
+		return response;
+	} catch (err) {
+		console.error('로그인 연장 오류:', err);
+		return jsonError({ success: false, message: '로그인 연장 처리 중 오류가 발생했습니다.' });
+	}
 }
-

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 장기요양 신체활동 — 화면 컴포넌트 (LongtermPhysicalActivity.tsx)
+ *
+ * @description
+ * 요양원 장기요양 신체활동 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/longterm-physical-activity
+ *
+ * @module component/nursing-home/pages/longterm-physical-activity/LongtermPhysicalActivity
+ */
 import { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f14070 — 자원봉사 실적 F14070
+ *
+ * @description
+ * 자원봉사 실적 F14070 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f14070/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

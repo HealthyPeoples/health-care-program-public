@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 요양원 탭 호스트
+ *
+ * @description
+ * 다중 탭으로 요양원 화면을 열고 전환합니다.
+ *
+ * @module component/nursing-home/TabHost
+ */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { TabRefreshContext } from '@/component/nursing-home/hooks/useTabRefresh';

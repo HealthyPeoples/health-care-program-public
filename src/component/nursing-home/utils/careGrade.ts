@@ -1,4 +1,12 @@
 /**
+ * @file 요양원 유틸 — careGrade.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/careGrade
+ */
+/**
  * 수정 폼 `<select value>`와 일치시키기.
  * DB/API에서 공백, "2등급", 전각 숫자, number 타입 등으로 올 수 있음.
  * 구코드 6은 인지지원 옵션(value 9)에 맞춤.

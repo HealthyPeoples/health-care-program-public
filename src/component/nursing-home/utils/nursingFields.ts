@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — nursingFields.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/nursingFields
+ */
 export function parseNursingEtcDesc(raw: unknown): Record<string, any> | null {
 	if (!raw) return null;
 	try {

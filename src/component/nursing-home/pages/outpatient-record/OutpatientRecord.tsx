@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 외래진료기록 — 화면 컴포넌트 (OutpatientRecord.tsx)
+ *
+ * @description
+ * 요양원 외래진료기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/outpatient-record
+ *
+ * @module component/nursing-home/pages/outpatient-record/OutpatientRecord
+ */
 import React, { useEffect, useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
 import { useTabRefresh } from "../../hooks/useTabRefresh";

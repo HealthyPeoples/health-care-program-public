@@ -1,4 +1,12 @@
 /**
+ * @file 낙상위험도측정 — 유틸/타입/매퍼 (f51014Mapper.ts)
+ *
+ * @description
+ * 요양원 낙상위험도측정 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/fall-risk-measurement
+ *
+ * @module component/nursing-home/pages/fall-risk-measurement/f51014Mapper
+ */
+/**
  * F51014(낙상위험도 측정) 화면 상태 ↔ DB 컬럼 매핑
  * 모달 UI: Huhn 평가 양식 / 저장 컬럼: B01~B08, B80, B81, B90, B99
  */

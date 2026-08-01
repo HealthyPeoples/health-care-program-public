@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 간식일괄등록 — 화면 컴포넌트 (SnackBulkRegistration.tsx)
+ *
+ * @description
+ * 요양원 간식일괄등록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/snack-bulk-registration
+ *
+ * @module component/nursing-home/pages/snack-bulk-registration/SnackBulkRegistration
+ */
 import { useState } from 'react';
 
 const todayYmd = () => {

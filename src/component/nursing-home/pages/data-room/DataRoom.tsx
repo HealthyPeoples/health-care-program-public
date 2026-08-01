@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 자료실 — 화면 컴포넌트 (DataRoom.tsx)
+ *
+ * @description
+ * 요양원 자료실 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/data-room
+ *
+ * @module component/nursing-home/pages/data-room/DataRoom
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type DataRoomCategory = "전체" | "공지" | "서식" | "교육" | "기타";

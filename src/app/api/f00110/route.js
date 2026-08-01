@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f00110 — 시설(기관) 기본정보 F00110
+ *
+ * @description
+ * 시설(기관) 기본정보 F00110 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f00110/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdAccess, assertAnCdMatchesSession, getSessionAncd } from '../../../config/sessionServer';
 
@@ -178,32 +186,16 @@ export async function PUT(req) {
   }
 }
 
-/** 레거시: 동적 쿼리 POST */
-export async function POST(req) {
-  try {
-    const pool = await connPool;
-    if (!pool) {
-      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
-    }
-
-    const body = await req.json();
-    const { query, params } = body;
-
-    if (!query) {
-      return jsonError({ success: false, error: '쿼리가 필요합니다' }, 400);
-    }
-
-    const request = pool.request();
-    if (params && typeof params === 'object') {
-      Object.keys(params).forEach((key) => {
-        request.input(key, params[key]);
-      });
-    }
-
-    const result = await request.query(query);
-    return jsonOk({ success: true, data: result.recordset, count: result.recordset.length });
-  } catch (err) {
-    console.error('F00110 쿼리 실행 오류:', err);
-    return jsonError({ success: false, error: err.message, details: err.toString() });
-  }
+/**
+ * 레거시 동적 SQL POST는 보안상 영구 비활성.
+ * 시설 정보는 GET/PUT만 사용하세요.
+ */
+export async function POST() {
+  return jsonError(
+    {
+      success: false,
+      error: '동적 SQL 실행은 지원하지 않습니다. GET/PUT을 사용하세요.',
+    },
+    410
+  );
 }

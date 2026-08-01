@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f40100 — 월 급여계산 F40100
+ *
+ * @description
+ * 월 급여계산 F40100 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f40100/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

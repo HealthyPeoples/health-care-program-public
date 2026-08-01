@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 배설관찰 — 화면 컴포넌트 (ExcretionObservation.tsx)
+ *
+ * @description
+ * 요양원 배설관찰 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/excretion-observation
+ *
+ * @module component/nursing-home/pages/excretion-observation/ExcretionObservation
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';

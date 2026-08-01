@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 수급자계약정보 — 화면 컴포넌트 (MemberContractInfo.tsx)
+ *
+ * @description
+ * 요양원 수급자계약정보 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/member-contract-info
+ *
+ * @module component/nursing-home/pages/member-contract-info/MemberContractInfo
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {
@@ -563,16 +572,7 @@ export default function MemberContractInfo() {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					query: `
-						SELECT
-							[ANCD], [PNUM], [CDT], [SVSDT], [SVEDT],
-							[INSPER], [USRPER], [USRGU], [USRINFO],
-							[EAMT], [ETAMT], [ESAMT], [USRINFO_AMT],
-							[CHGU], [INDT], [ETC], [INEMPNO], [INEMPNM]
-						FROM [돌봄시설DB].[dbo].[F10110]
-						WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
-						ORDER BY [CDT] DESC
-					`,
+					action: 'contract.list',
 					params: { ANCD: String(ancd), PNUM: String(pnum) }
 				})
 			});
@@ -847,21 +847,6 @@ export default function MemberContractInfo() {
 
 			const contractDate = formatDate(newContractInfo.CDT);
 
-			// F10110 INSERT 쿼리
-			const insertQuery = `
-				INSERT INTO [돌봄시설DB].[dbo].[F10110] (
-					[ANCD], [PNUM], [CDT], [SVSDT], [SVEDT],
-					[INSPER], [USRPER], [USRGU], [USRINFO],
-					[EAMT], [ETAMT], [ESAMT], [USRINFO_AMT],
-					[CHGU], [INDT], [ETC], [INEMPNO], [INEMPNM]
-				) VALUES (
-					@ANCD, @PNUM, @CDT, @SVSDT, @SVEDT,
-					@INSPER, @USRPER, @USRGU, @USRINFO,
-					@EAMT, @ETAMT, @ESAMT, @USRINFO_AMT,
-					@CHGU, @INDT, @ETC, @INEMPNO, @INEMPNM
-				)
-			`;
-
 			const params = {
 				ANCD: selectedMember.ANCD,
 				PNUM: selectedMember.PNUM,
@@ -887,7 +872,7 @@ export default function MemberContractInfo() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: insertQuery, params })
+				body: JSON.stringify({ action: 'contract.insert', params })
 			});
 
 			const result = await response.json();
@@ -895,12 +880,6 @@ export default function MemberContractInfo() {
 			if (result && result.success) {
 				// F10010의 P_CTDT 업데이트
 				if (contractDate) {
-					const updateF10010Query = `
-						UPDATE [돌봄시설DB].[dbo].[F10010]
-						SET [P_CTDT] = @P_CTDT
-						WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
-					`;
-
 					const updateParams = {
 						ANCD: selectedMember.ANCD,
 						PNUM: selectedMember.PNUM,
@@ -910,7 +889,7 @@ export default function MemberContractInfo() {
 					await fetch('/api/f10010', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ query: updateF10010Query, params: updateParams })
+						body: JSON.stringify({ action: 'member.updateContractDate', params: updateParams })
 					});
 				}
 
@@ -990,28 +969,6 @@ export default function MemberContractInfo() {
 				}
 			};
 
-			// UPDATE 쿼리 (PK: ANCD, PNUM, CDT)
-			const updateQuery = `
-				UPDATE [돌봄시설DB].[dbo].[F10110]
-				SET 
-					[CDT] = @CDT,
-					[SVSDT] = @SVSDT,
-					[SVEDT] = @SVEDT,
-					[INSPER] = @INSPER,
-					[USRPER] = @USRPER,
-					[USRGU] = @USRGU,
-					[USRINFO] = @USRINFO,
-					[EAMT] = @EAMT,
-					[ETAMT] = @ETAMT,
-					[ESAMT] = @ESAMT,
-					[USRINFO_AMT] = @USRINFO_AMT,
-					[CHGU] = @CHGU,
-					[ETC] = @ETC,
-					[INEMPNO] = @INEMPNO,
-					[INEMPNM] = @INEMPNM
-				WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [CDT] = @OLD_CDT
-			`;
-
 			const params = {
 				ANCD: selectedMember.ANCD,
 				PNUM: selectedMember.PNUM,
@@ -1036,7 +993,7 @@ export default function MemberContractInfo() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: updateQuery, params })
+				body: JSON.stringify({ action: 'contract.update', params })
 			});
 
 			const result = await response.json();
@@ -1047,18 +1004,6 @@ export default function MemberContractInfo() {
 				alert(`계약정보(F10110) 수정 실패: ${errorMessage}`);
 				return;
 			}
-
-			const updateF10010Query = `
-				UPDATE [돌봄시설DB].[dbo].[F10010]
-				SET 
-					[P_NM] = @P_NM,
-					[P_ST] = @P_ST,
-					[P_CINFO] = @P_CINFO,
-					[P_CTDT] = @P_CTDT,
-					[P_SDT] = @P_SDT,
-					[P_EDT] = @P_EDT
-				WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
-			`;
 
 			const f10010Params = {
 				ANCD: selectedMember.ANCD,
@@ -1074,7 +1019,7 @@ export default function MemberContractInfo() {
 			const f10010Res = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: updateF10010Query, params: f10010Params })
+				body: JSON.stringify({ action: 'member.updateFromContract', params: f10010Params })
 			});
 
 			const f10010Result = await f10010Res.json();
@@ -1110,10 +1055,6 @@ export default function MemberContractInfo() {
 			try {
 				const cdtKey = selectedContract.CDT != null ? String(selectedContract.CDT) : '';
 				const cdtDay = cdtKey.length >= 10 ? cdtKey.substring(0, 10) : '';
-				const deleteQuery = `
-					DELETE FROM [돌봄시설DB].[dbo].[F10110]
-					WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [CDT] = @CDT
-				`;
 
 				const params = {
 					ANCD: selectedMember.ANCD,
@@ -1124,7 +1065,7 @@ export default function MemberContractInfo() {
 				const response = await fetch('/api/f10010', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ query: deleteQuery, params })
+					body: JSON.stringify({ action: 'contract.delete', params })
 				});
 
 				const result = await response.json();

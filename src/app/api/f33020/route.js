@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f33020 — 욕창위험도 F33020
+ *
+ * @description
+ * 욕창위험도 F33020 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f33020/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

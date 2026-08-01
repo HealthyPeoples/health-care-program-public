@@ -1,3 +1,11 @@
+/**
+ * @file 직원근태 — 인쇄 헬퍼 (employeeAttendancePrint.ts)
+ *
+ * @description
+ * 요양원 직원근태 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/employee-attendance
+ *
+ * @module component/nursing-home/pages/employee-attendance/employeeAttendancePrint
+ */
 export interface AttendancePrintRow {
 	EMPNM?: string;
 	WDT?: string;

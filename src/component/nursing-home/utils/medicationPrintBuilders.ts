@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — medicationPrintBuilders.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/medicationPrintBuilders
+ */
 /** Shared print helpers used by medication-time and medication-registration pages. */
 
 export const calcAge = (birthYmd?: string) => {

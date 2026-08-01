@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — roomNoFloor.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/roomNoFloor
+ */
 export const NO_ROOM_VALUE = '__NO_ROOM__';
 
 export function normalizeRoomNo(roomNo: unknown): string {

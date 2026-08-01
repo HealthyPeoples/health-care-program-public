@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f30030 — 급여/수가 F30030
+ *
+ * @description
+ * 급여/수가 F30030 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f30030/route
+ */
 import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';

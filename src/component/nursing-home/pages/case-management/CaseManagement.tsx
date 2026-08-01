@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 사례관리 — 화면 컴포넌트 (CaseManagement.tsx)
+ *
+ * @description
+ * 요양원 사례관리 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/case-management
+ *
+ * @module component/nursing-home/pages/case-management/CaseManagement
+ */
 import React, { useState, useEffect } from 'react';
 
 interface CaseData {

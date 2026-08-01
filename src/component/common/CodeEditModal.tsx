@@ -1,3 +1,11 @@
+/**
+ * @file CodeEditModal.tsx
+ *
+ * @description
+ * src/component/common/CodeEditModal.tsx 모듈입니다.
+ *
+ * @module component/common/CodeEditModal
+ */
 import React from 'react';
 
 interface CodeEditModalProps {

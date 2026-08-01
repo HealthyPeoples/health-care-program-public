@@ -1,3 +1,11 @@
+/**
+ * @file API /api/user-code-list — 사용자코드 목록
+ *
+ * @description
+ * 사용자코드 목록 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/user-code-list/route
+ */
 import { NextRequest } from 'next/server';
 import { parseStringPromise } from 'xml2js';
 

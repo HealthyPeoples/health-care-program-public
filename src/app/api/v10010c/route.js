@@ -1,3 +1,11 @@
+/**
+ * @file API /api/v10010c — 수급자 조회 뷰 V10010C
+ *
+ * @description
+ * 수급자 조회 뷰 V10010C Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/v10010c/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

@@ -1,3 +1,11 @@
+/**
+ * @file 인지기능평가기록 — 인쇄 헬퍼 (cognitiveAssessmentPrint.ts)
+ *
+ * @description
+ * 요양원 인지기능평가기록 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/cognitive-assessment-record
+ *
+ * @module component/nursing-home/pages/cognitive-assessment-record/cognitiveAssessmentPrint
+ */
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {
 	ASSESSMENT_ITEMS,

@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 투약등록 — 화면 컴포넌트 (MedicationRegistration.tsx)
+ *
+ * @description
+ * 요양원 투약등록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/medication-registration
+ *
+ * @module component/nursing-home/pages/medication-registration/MedicationRegistration
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';

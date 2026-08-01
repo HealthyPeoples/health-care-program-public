@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 물리치료실적 — 화면 컴포넌트 (PhysicalTherapyPerformance.tsx)
+ *
+ * @description
+ * 요양원 물리치료실적 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/physical-therapy-performance
+ *
+ * @module component/nursing-home/pages/physical-therapy-performance/PhysicalTherapyPerformance
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import BeneficiaryListPanel, { BeneficiaryMember } from '../../components/BeneficiaryListPanel';

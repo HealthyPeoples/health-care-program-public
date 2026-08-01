@@ -1,3 +1,11 @@
+/**
+ * @file 서버/앱 설정 — server.js
+ *
+ * @description
+ * DB 풀·세션·환경 등 서버 설정 모듈입니다.
+ *
+ * @module config/server
+ */
 const sql = require('mssql');
 const { config } = require('./config');
 

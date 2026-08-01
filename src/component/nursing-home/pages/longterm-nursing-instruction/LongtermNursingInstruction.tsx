@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 장기요양 간호지시 — 화면 컴포넌트 (LongtermNursingInstruction.tsx)
+ *
+ * @description
+ * 요양원 장기요양 간호지시 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/longterm-nursing-instruction
+ *
+ * @module component/nursing-home/pages/longterm-nursing-instruction/LongtermNursingInstruction
+ */
 import { useState, useEffect, type ReactNode } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

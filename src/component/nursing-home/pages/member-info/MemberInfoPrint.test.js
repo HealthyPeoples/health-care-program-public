@@ -1,4 +1,12 @@
 /**
+ * @file 수급자정보 — 인쇄 헬퍼 (MemberInfoPrint.test.js)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoPrint.test
+ */
+/**
  * MemberInfoPrint — 출력 HTML 빌더·미리보기 창 열기 최소 검증
  */
 const { describe, it, before, after } = require('node:test');

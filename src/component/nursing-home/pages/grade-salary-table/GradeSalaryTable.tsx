@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 등급별급여표 — 화면 컴포넌트 (GradeSalaryTable.tsx)
+ *
+ * @description
+ * 요양원 등급별급여표 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/grade-salary-table
+ *
+ * @module component/nursing-home/pages/grade-salary-table/GradeSalaryTable
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { formatCareGradeLabel, normalizePGrdForSelect } from "../../utils/careGrade";
 

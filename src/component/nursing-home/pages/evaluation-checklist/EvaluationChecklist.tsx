@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 평가지침/체크리스트 — 화면 컴포넌트 (EvaluationChecklist.tsx)
+ *
+ * @description
+ * 요양원 평가지침/체크리스트 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/evaluation-checklist
+ *
+ * @module component/nursing-home/pages/evaluation-checklist/EvaluationChecklist
+ */
 import React, { useMemo, useState } from "react";
 
 type CategoryTab = "기관운영" | "수급자" | "직원";

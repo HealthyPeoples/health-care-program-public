@@ -1,4 +1,12 @@
 /**
+ * @file 욕창위험도측정 — 유틸/타입/매퍼 (f51013Mapper.ts)
+ *
+ * @description
+ * 요양원 욕창위험도측정 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/bedsore-risk-measurement
+ *
+ * @module component/nursing-home/pages/bedsore-risk-measurement/f51013Mapper
+ */
+/**
  * F51013(욕창위험도 측정) 화면 상태 ↔ DB 컬럼 매핑
  */
 

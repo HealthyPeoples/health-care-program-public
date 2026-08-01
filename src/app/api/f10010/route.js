@@ -1,8 +1,18 @@
+/**
+ * @file API /api/f10010 — 수급자 기본정보 F10010
+ *
+ * @description
+ * GET: 세션 기관 수급자 목록. POST: action 화이트리스트 고정 SQL만 허용(동적 query 거부).
+ *
+ * @module app/api/f10010/route
+ */
 import { connPool } from '../../../config/server';
 import { NextRequest } from 'next/server';
-import { getSessionAncd, ancdEquals } from '../../../config/sessionServer';
+import { getSessionAncd } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
+
+const { dispatchF10010Action } = require('./actions');
 export async function GET(req) {
   try {
     const sessionAncd = getSessionAncd(req);
@@ -161,6 +171,10 @@ export async function GET(req) {
   }
 }
 
+/**
+ * 고정 action만 허용. body.query(동적 SQL)는 거부합니다.
+ * @example { action: 'member.update', params: { PNUM, P_NM, ... } }
+ */
 export async function POST(req) {
   try {
     const sessionAncd = getSessionAncd(req);
@@ -170,56 +184,34 @@ export async function POST(req) {
 
     const pool = await connPool;
     if (!pool) {
-      return jsonError({ 
-        success: false, 
-        error: '데이터베이스 연결 실패' 
-      });
+      return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
     const body = await req.json();
-    const { query, params } = body;
-
-    if (params && typeof params === 'object') {
-      const rowAncd = params.ANCD ?? params.ancd;
-      if (rowAncd != null && rowAncd !== '' && !ancdEquals(rowAncd, sessionAncd)) {
-        return jsonError({ success: false, error: '해당 기관에 대한 접근 권한이 없습니다.' }, 403);
-      }
+    if (body?.query != null) {
+      return jsonError(
+        {
+          success: false,
+          error: '동적 SQL(query)은 지원하지 않습니다. action을 사용하세요.',
+        },
+        400
+      );
     }
 
-    if (!query) {
-      return jsonError({ 
-        success: false, 
-        error: '쿼리가 필요합니다' 
-      }, 400);
+    const action = body?.action;
+    const params = body?.params;
+    if (!action || typeof action !== 'string') {
+      return jsonError({ success: false, error: 'action이 필요합니다.' }, 400);
     }
 
-    // 동적 쿼리 실행
-    const request = pool.request();
-    
-    // 파라미터가 있으면 추가
-    if (params && typeof params === 'object') {
-      Object.keys(params).forEach(key => {
-        request.input(key, params[key]);
-      });
-    }
-
-    const result = await request.query(query);
-    
-    // recordset이 undefined일 수 있으므로 안전하게 처리
-    const recordset = result.recordset || [];
-    
-    return jsonOk({ 
-      success: true, 
-      data: recordset,
-      count: recordset.length
-    });
-
+    const result = await dispatchF10010Action(pool, sessionAncd, action, params);
+    return jsonOk(result);
   } catch (err) {
-    console.error('쿼리 실행 오류:', err);
-    return jsonError({ 
-      success: false, 
-      error: err.message,
-      details: err.toString()
-    });
+    console.error('F10010 action 오류:', err);
+    const status = err?.status || 500;
+    return jsonError(
+      { success: false, error: err.message, details: err.toString() },
+      status
+    );
   }
 }

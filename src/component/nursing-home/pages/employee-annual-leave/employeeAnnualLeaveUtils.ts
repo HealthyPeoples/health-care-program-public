@@ -1,3 +1,11 @@
+/**
+ * @file 직원연차 — 유틸/타입/매퍼 (employeeAnnualLeaveUtils.ts)
+ *
+ * @description
+ * 요양원 직원연차 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/employee-annual-leave
+ *
+ * @module component/nursing-home/pages/employee-annual-leave/employeeAnnualLeaveUtils
+ */
 import { classifyAttendanceDisplay, type AttendancePrintRow } from "../employee-attendance/employeeAttendancePrint";
 
 export interface LeavePeriod {

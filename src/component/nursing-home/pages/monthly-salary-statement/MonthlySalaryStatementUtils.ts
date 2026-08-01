@@ -1,4 +1,12 @@
 /**
+ * @file 월 급여명세서 — 유틸/타입/매퍼 (MonthlySalaryStatementUtils.ts)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatementUtils
+ */
+/**
  * 월별 급여명세서 — 순수 유틸·매핑·상수 (React state/fetch 없음)
  */
 import { formatCareGradeLabel } from "../../utils/careGrade";

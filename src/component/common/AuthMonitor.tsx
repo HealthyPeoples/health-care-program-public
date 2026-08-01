@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file AuthMonitor.tsx
+ *
+ * @description
+ * src/component/common/AuthMonitor.tsx 모듈입니다.
+ *
+ * @module component/common/AuthMonitor
+ */
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { deleteCookie } from '../../utils/auth';

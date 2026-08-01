@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file BeneficiaryListPanel.tsx
+ *
+ * @description
+ * src/component/nursing-home/components/BeneficiaryListPanel.tsx 모듈입니다.
+ *
+ * @module component/nursing-home/components/BeneficiaryListPanel
+ */
 import React, { useEffect, useMemo, useState } from "react";
 import { formatCareGradeLabel } from "../utils/careGrade";
 import { useTabRefresh } from "../hooks/useTabRefresh";

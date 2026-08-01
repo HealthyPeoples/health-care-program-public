@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 프로그램평가 — 화면 컴포넌트 (ProgramEvaluation.tsx)
+ *
+ * @description
+ * 요양원 프로그램평가 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/program-evaluation
+ *
+ * @module component/nursing-home/pages/program-evaluation/ProgramEvaluation
+ */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

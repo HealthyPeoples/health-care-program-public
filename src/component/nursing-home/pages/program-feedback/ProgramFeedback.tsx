@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 프로그램피드백 — 화면 컴포넌트 (ProgramFeedback.tsx)
+ *
+ * @description
+ * 요양원 프로그램피드백 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/program-feedback
+ *
+ * @module component/nursing-home/pages/program-feedback/ProgramFeedback
+ */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 type UserInfo = {

@@ -1,35 +1,88 @@
+/**
+ * @file 일 수급자급여실적 (F14020 식사·외출·외박·급여50%)
+ *
+ * @description
+ * 요양원 수급자의 일별 식사/간식 상태, 외출·외박(IO_TM_INFO), 급여50%(PAY_COM_GU)를
+ * 조회·수정·전체추가·외박복귀·인쇄하는 화면입니다.
+ *
+ * @remarks
+ * - 페이지 엔트리: `src/app/nursingHome/daily-beneficiary-performance/page.tsx`
+ * - API: `GET/POST/DELETE /api/f14020` (세션 ANCD 게이트)
+ * - 외출대장 동기화: 서버 `outingF14020Sync` (저장 시 OUTING_INFO 반영)
+ * - IO_TM_INFO 형식:
+ *   - 외출: `HH:mm~HH:mm`
+ *   - 외박 출발: `HH:mm`
+ *   - 외박중(중간일): `ON:YYYY-MM-DD|HH:mm`
+ *   - 외박 복귀: `R:HH:mm`
+ * - GYN: `'0'` 외출, `'1'` 입원(원내), `'2'` 외박
+ * - PAY_COM_GU: `'1'`=급여 50%, `'0'`=100%
+ *
+ * @see MemberInfoUtils — 입·퇴소 12시간 급여50% 규칙 (서버 syncAdmitDischargePay와 공유)
+ */
 "use client";
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 
+/**
+ * 화면 그리드 1행에 대응하는 F14020 실적 모델.
+ * API 응답을 {@link mapApiItemToPerformance}로 변환해 사용합니다.
+ */
 interface PerformanceData {
+	/** 화면용 임시 행 ID (DB PK 아님) */
 	id: number;
+	/** 표시용 연번 */
 	serialNo: number;
+	/** 수급자명 (F10010.P_NM) */
 	name: string;
+	/** 생년월일 표시 문자열 */
 	birthDate: string;
+	/** 기관코드 */
 	ancd?: string;
+	/** 수급자번호 */
 	pnum?: string;
-	svdt?: string; // 서비스일자 YYYY-MM-DD
-	admitDate?: string; // P_SDT
-	admitTime?: string; // P_SDT_TM HH:mm
-	dischargeDate?: string; // P_EDT
-	dischargeTime?: string; // P_EDT_TM HH:mm
-	mealLocation: string; // ST_PLAC
-	mealType: string; // ST_KIND
-	gyn: string; // GYN: '0'=외출, '1'=입원, '2'=외박
-	gynStartTime: string; // 외출/외박 시작 (IO_TM_INFO)
-	gynEndTime: string; // 외출/외박 종료 (IO_TM_INFO)
-	returnTime: string; // 외박 복귀 시각 (IO_TM_INFO = R:HH:mm)
-	payComGu: string; // PAY_COM_GU: '1'=급여50%적용
-	overnightOngoing?: boolean; // 외박중(출발일 이후~복귀 전)
-	overnightLeaveDate?: string; // 외박 출발일
-	overnightLeaveTime?: string; // 외박 출발시각
-	mealStatus: { breakfast: string; lunch: string; dinner: string }; // MOST, LCST, DNST: '1'=양호, '2'=이상
-	specialNotes: string; // ST_ETC
-	snackStatus: { morning: string; afternoon: string; evening: string }; // MGST, AGST, DGST: '1'=양호, '2'=이상
+	/** 서비스일자 YYYY-MM-DD (SVDT) */
+	svdt?: string;
+	/** 입소일 P_SDT */
+	admitDate?: string;
+	/** 입소시각 P_SDT_TM HH:mm */
+	admitTime?: string;
+	/** 퇴소일 P_EDT */
+	dischargeDate?: string;
+	/** 퇴소시각 P_EDT_TM HH:mm */
+	dischargeTime?: string;
+	/** 식사장소 ST_PLAC */
+	mealLocation: string;
+	/** 식사종류 ST_KIND: 1일반식 2죽 3유동식 */
+	mealType: string;
+	/** GYN: '0'=외출, '1'=입원, '2'=외박 */
+	gyn: string;
+	/** 외출/외박 시작 시각 (IO_TM_INFO에서 파싱) */
+	gynStartTime: string;
+	/** 외출 종료 시각 (외박은 보통 빈 값) */
+	gynEndTime: string;
+	/** 외박 복귀 시각 (IO_TM_INFO = R:HH:mm) */
+	returnTime: string;
+	/** PAY_COM_GU: '1'=급여50%적용, '0'=100% */
+	payComGu: string;
+	/** 외박중(출발일 이후~복귀 전) 여부 */
+	overnightOngoing?: boolean;
+	/** 외박 출발일 (ON: 파싱) */
+	overnightLeaveDate?: string;
+	/** 외박 출발시각 */
+	overnightLeaveTime?: string;
+	/** 조/중/석식 MOST, LCST, DNST: '1'=양호, '2'=이상 */
+	mealStatus: { breakfast: string; lunch: string; dinner: string };
+	/** 특이사항 ST_ETC */
+	specialNotes: string;
+	/** 오전/오후/저녁 간식 MGST, AGST, DGST: '1'=양호, '2'=이상 */
+	snackStatus: { morning: string; afternoon: string; evening: string };
 }
 
+/**
+ * 외박 복귀 모달용 대기 목록 항목.
+ * `/api/f14020?action=overnightPending` 응답을 UI 선택 상태로 확장한 형태입니다.
+ */
 interface OvernightPendingItem {
 	ANCD?: string | number;
 	PNUM: string | number;
@@ -37,16 +90,31 @@ interface OvernightPendingItem {
 	P_BRDT?: string;
 	PREV_SVDT?: string;
 	PREV_IO_TM_INFO?: string;
+	/** 사용자가 입력한 복귀 시각 HH:mm */
 	returnTime: string;
+	/** 복귀 처리 대상 체크 */
 	selected: boolean;
 }
 
+/**
+ * 시각을 `HH:mm`(5자)로 정규화합니다.
+ * @param t - `H:mm` 또는 `HH:mm`
+ * @returns 정규화된 시각, 파싱 실패 시 빈 문자열
+ */
 function padTime5(t: string): string {
 	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
 	if (!m) return '';
 	return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
 }
 
+/**
+ * F14020.IO_TM_INFO 문자열을 UI용 시각/외박중 플래그로 파싱합니다.
+ *
+ * 지원 형식: `ON:날짜|시각`, `R:시각`, `시작~종료`, 단일 `HH:mm`(외박 출발).
+ *
+ * @param info - DB IO_TM_INFO 값
+ * @returns start/end/returnTime 및 외박중이면 overnightOngoing·overnightLeaveDate
+ */
 function parseIoTmInfo(info: string | null | undefined): {
 	start: string;
 	end: string;
@@ -90,6 +158,15 @@ function parseIoTmInfo(info: string | null | undefined): {
 	return { start: '', end: '', returnTime: '' };
 }
 
+/**
+ * UI 입력을 F14020.IO_TM_INFO 저장 형식으로 직렬화합니다.
+ * 복귀 시각이 있으면 `R:HH:mm`을 우선합니다. 외박(gyn=2)은 시작 시각만 저장합니다.
+ *
+ * @param gyn - GYN 코드
+ * @param start - 시작 HH:mm
+ * @param end - 종료 HH:mm (외출)
+ * @param returnTime - 복귀 HH:mm (있으면 R: 형식)
+ */
 function formatIoTmInfo(gyn: string, start: string, end: string, returnTime?: string): string {
 	const ret = padTime5(returnTime || '');
 	if (ret) return `R:${ret}`;
@@ -101,7 +178,11 @@ function formatIoTmInfo(gyn: string, start: string, end: string, returnTime?: st
 	return `${a}~${b}`;
 }
 
-/** 외박중 중간일 IO_TM_INFO */
+/**
+ * 외박중(중간일) IO_TM_INFO를 `ON:YYYY-MM-DD|HH:mm` 형식으로 만듭니다.
+ * @param leaveDate - 외박 출발일
+ * @param leaveTime - 외박 출발 시각
+ */
 function formatOvernightOngoingIoTmInfo(leaveDate: string, leaveTime: string): string {
 	const d = toYmd(leaveDate);
 	const t = padTime5(leaveTime);
@@ -110,7 +191,22 @@ function formatOvernightOngoingIoTmInfo(leaveDate: string, leaveTime: string): s
 }
 
 /**
- * 급여 적용: 외출=항상 100%(0), 외박 출발·외박중=항상 50%(1), 외박 복귀일=항상 100%(0)
+ * 외출·외박 기준 PAY_COM_GU를 계산합니다.
+ *
+ * - 외출(0): 항상 100%(`'0'`)
+ * - 외박(2): 항상 50%(`'1'`)
+ * - 복귀일(returnTime + gyn 1/빈값): 100%(`'0'`)
+ * - 그 외(입원 등): `'0'`
+ *
+ * @remarks
+ * 입·퇴소 12시간 규칙(서버 `calcAdmitPayComGu` / `calcDischargePayComGu`)은 반영하지 않습니다.
+ * DB에 이미 있는 입·퇴소 50%를 이 함수로 덮어쓰지 않도록 주의하세요.
+ *
+ * @param gyn - GYN 코드
+ * @param _start - 미사용(호환용)
+ * @param _end - 미사용(호환용)
+ * @param returnTime - 복귀 시각이 있으면 복귀일 규칙 적용
+ * @returns `'0'` | `'1'`
  */
 function calcPayComGu(gyn: string, _start?: string, _end?: string, returnTime?: string): string {
 	if (returnTime && (gyn === '1' || gyn === '')) return '0';
@@ -119,6 +215,7 @@ function calcPayComGu(gyn: string, _start?: string, _end?: string, returnTime?: 
 	return '0';
 }
 
+/** GYN 코드를 한글 라벨로 변환합니다. */
 function gynLabel(gyn: string): string {
 	if (gyn === '1') return '입원';
 	if (gyn === '0') return '외출';
@@ -126,6 +223,10 @@ function gynLabel(gyn: string): string {
 	return '';
 }
 
+/**
+ * 날짜 값을 `YYYY-MM-DD`로 정규화합니다.
+ * Date / `YYYYMMDD` / ISO 문자열을 허용합니다.
+ */
 function toYmd(v: unknown): string {
 	if (v == null || v === '') return '';
 	if (v instanceof Date && !Number.isNaN(v.getTime())) {
@@ -148,6 +249,10 @@ function toYmd(v: unknown): string {
 	return '';
 }
 
+/**
+ * 시각 값을 `HH:mm`으로 정규화합니다.
+ * Date / `HHmm` / 시각이 포함된 문자열을 허용합니다.
+ */
 function toHm(v: unknown): string {
 	if (v == null || v === '') return '';
 	if (v instanceof Date && !Number.isNaN(v.getTime())) {
@@ -162,6 +267,10 @@ function toHm(v: unknown): string {
 	return '';
 }
 
+/**
+ * 조회일이 해당 수급자의 입소일/퇴소일인지 판별합니다.
+ * @returns isAdmitDay / isDischargeDay / isAdmitOrDischargeDay
+ */
 function getAdmitDischargeFlags(row: PerformanceData, dateYmd: string) {
 	const day = toYmd(dateYmd);
 	const isAdmitDay = !!day && !!row.admitDate && row.admitDate === day;
@@ -169,6 +278,7 @@ function getAdmitDischargeFlags(row: PerformanceData, dateYmd: string) {
 	return { isAdmitDay, isDischargeDay, isAdmitOrDischargeDay: isAdmitDay || isDischargeDay };
 }
 
+/** 외박중 표시 문구 (`외박중 YYYY-MM-DD HH:mm`). */
 function formatOvernightOngoingLabel(leaveDate?: string, leaveTime?: string): string {
 	const d = toYmd(leaveDate || '');
 	const t = padTime5(leaveTime || '');
@@ -178,6 +288,10 @@ function formatOvernightOngoingLabel(leaveDate?: string, leaveTime?: string): st
 	return '외박중';
 }
 
+/**
+ * 그리드/인쇄용 외출·입퇴소 표시 문자열을 만듭니다.
+ * 입·퇴소일 → 외박중 → 복귀 → GYN 라벨 순으로 우선합니다.
+ */
 function gynDisplayText(row: PerformanceData, dateYmd?: string): string {
 	const day = toYmd(dateYmd || row.svdt || '');
 	const { isAdmitDay, isDischargeDay } = getAdmitDischargeFlags(row, day);
@@ -190,6 +304,16 @@ function gynDisplayText(row: PerformanceData, dateYmd?: string): string {
 	return gynLabel(row.gyn);
 }
 
+/**
+ * `/api/f14020` 목록 행을 {@link PerformanceData}로 매핑합니다.
+ *
+ * @param item - F14020(+수급자명) API 레코드
+ * @param index - 0-based 인덱스 (화면 id/serialNo 생성)
+ *
+ * @remarks
+ * PAY_COM_GU는 DB 값 대신 {@link calcPayComGu}로 재계산합니다.
+ * 입·퇴소 12시간 50% DB 값이 화면/재저장 시 무시될 수 있습니다.
+ */
 function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 	const times = parseIoTmInfo(item.IO_TM_INFO);
 	const gyn = String(item.GYN ?? '0').trim();
@@ -232,6 +356,13 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 	};
 }
 
+/**
+ * 행 저장용 POST body 조각을 만듭니다 (`/api/f14020` MERGE 입력).
+ * 외박중이면 gyn=2, payComGu=1, IO=`ON:...` 으로 고정합니다.
+ *
+ * @param r - 편집 중인 실적 행
+ * @returns pnum, 식사/간식, gyn, payComGu, ioTmInfo 등
+ */
 function buildMealSavePayload(r: PerformanceData) {
 	if (r.overnightOngoing) {
 		return {
@@ -270,6 +401,17 @@ function buildMealSavePayload(r: PerformanceData) {
 	};
 }
 
+/**
+ * 일 수급자급여실적 메인 화면.
+ *
+ * @description
+ * - 일자 선택 후 수급자별 식사·외출·급여50% 그리드 편집
+ * - 전체추가(generate), 외박복귀(returnFromOvernight), 인쇄
+ * - 탭 재활성 시 {@link useTabRefresh}로 목록 재조회
+ *
+ * @remarks
+ * 기본 일자는 `toISOString()`(UTC)을 사용합니다. KST 새벽에는 전날이 될 수 있습니다.
+ */
 export default function DailyBeneficiaryPerformance() {
 	const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 	const [selectedMember, setSelectedMember] = useState<number | null>(null);

@@ -1,4 +1,12 @@
 /**
+ * @file 수급자정보 — UI 부분 컴포넌트 (MemberInfoForm.test.js)
+ *
+ * @description
+ * 요양원 수급자정보 기능의 UI 부분 컴포넌트입니다. 폴더: component/nursing-home/pages/member-info
+ *
+ * @module component/nursing-home/pages/member-info/MemberInfoForm.test
+ */
+/**
  * MemberInfoForm — create/edit/view/placeholder 모드 렌더 최소 검증
  */
 const { describe, it, before, after } = require('node:test');

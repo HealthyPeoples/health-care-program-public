@@ -1,14 +1,16 @@
-import { connPool } from '../../../config/server';
+/**
+ * @file API /api/dbtest — DB 연결 테스트(개발용, 비활성)
+ *
+ * @description
+ * 스키마/연결 정찰 방지를 위해 프로덕션·로컬 모두 비활성합니다.
+ *
+ * @module app/api/dbtest/route
+ */
+import { jsonError } from '../../../utils/apiResponse';
 
-export async function GET(req) {
-  try {
-    const pool = await connPool;
-    if (pool) {
-      return new Response('DB 연결 성공', { status: 200 });
-    } else {
-      return new Response('DB 연결 실패: pool 없음', { status: 500 });
-    }
-  } catch (err) {
-    return new Response('DB 연결 실패: ' + err.message, { status: 500 });
-  }
-} 
+export async function GET() {
+  return jsonError(
+    { success: false, error: '이 엔드포인트는 비활성화되었습니다.' },
+    404
+  );
+}

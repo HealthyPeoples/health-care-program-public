@@ -1,4 +1,12 @@
 /**
+ * @file 공유 라이브러리 — azureBlobStorage.js
+ *
+ * @description
+ * API·화면에서 공유하는 도메인 로직 모듈입니다.
+ *
+ * @module lib/azureBlobStorage
+ */
+/**
  * Azure Blob Storage 헬퍼
  *
  * 환경변수:

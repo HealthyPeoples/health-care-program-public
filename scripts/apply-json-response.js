@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — apply-json-response
+ *
+ * @description
+ * API 응답을 jsonOk/jsonError로 일괄 치환
+ *
+ * @module scripts/apply-json-response
+ */
+/**
  * API Route의 new Response(JSON.stringify(...)) / NextResponse.json(...) 를
  * jsonOk/jsonError 로 치환합니다. 쿠키를 조작하는 NextResponse 는 건드리지 않습니다.
  * 평문 Response(dbtest) 는 제외합니다.

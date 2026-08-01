@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 연간일정 — 화면 컴포넌트 (AnnualSchedule.tsx)
+ *
+ * @description
+ * 요양원 연간일정 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/annual-schedule
+ *
+ * @module component/nursing-home/pages/annual-schedule/AnnualSchedule
+ */
 import React, { useState, useEffect, useMemo } from "react";
 import {
 	buildAnnualScheduleCalendarPrintHtml,

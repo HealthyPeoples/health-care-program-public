@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f14041-program-feedback — 프로그램 피드백 F14041
+ *
+ * @description
+ * 프로그램 피드백 F14041 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f14041-program-feedback/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, parseUserInfoCookieValue } from '../../../config/sessionServer';
 

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 직원직무교육 — 화면 컴포넌트 (EmployeeJobTraining.tsx)
+ *
+ * @description
+ * 요양원 직원직무교육 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/employee-job-training
+ *
+ * @module component/nursing-home/pages/employee-job-training/EmployeeJobTraining
+ */
 import React, { useEffect, useMemo, useState } from "react";
 import {
 	buildJobTrainingPrintHtml,

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file MemberInfor.tsx
+ *
+ * @description
+ * src/component/nursing-home/member-infor/MemberInfor.tsx 모듈입니다.
+ *
+ * @module component/nursing-home/member-infor/MemberInfor
+ */
 import { useState } from 'react';
 import { NursingHomeHeader } from '../../nursing-home/organisms/NursingHomeHeader'
 

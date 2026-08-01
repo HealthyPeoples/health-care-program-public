@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 직원연차 — 화면 컴포넌트 (EmployeeAnnualLeave.tsx)
+ *
+ * @description
+ * 요양원 직원연차 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/employee-annual-leave
+ *
+ * @module component/nursing-home/pages/employee-annual-leave/EmployeeAnnualLeave
+ */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
 	buildAllBaseYearAnnualLeavePrintRows,

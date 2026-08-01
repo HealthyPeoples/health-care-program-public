@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f01010 — 자료실·첨부 F01010
+ *
+ * @description
+ * 자료실·첨부 F01010 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f01010/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdAccess, assertAnCdMatchesSession } from '../../../config/sessionServer';
 

@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — rename-outing-process-to-info
+ *
+ * @description
+ * OUTING_PROCESS→OUTING_INFO 리네임
+ *
+ * @module scripts/rename-outing-process-to-info
+ */
+/**
  * OUTING_PROCESS → OUTING_INFO 즉시 이름 변경
  * 사용: node scripts/rename-outing-process-to-info.js
  */

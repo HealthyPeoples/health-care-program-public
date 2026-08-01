@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 공통 UI — CallNav2.tsx
+ *
+ * @description
+ * 메인/블로그 스타일 공통 UI 컴포넌트입니다.
+ *
+ * @module component/main-/CallNav2
+ */
 import React from 'react';
 import { useState } from 'react';
 

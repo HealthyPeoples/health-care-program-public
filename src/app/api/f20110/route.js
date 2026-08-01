@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f20110 — 인지·기능평가 F20110
+ *
+ * @description
+ * 인지·기능평가 F20110 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f20110/route
+ */
 import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';

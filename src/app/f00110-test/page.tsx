@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file App Router 페이지 — f00110-test
+ *
+ * @description
+ * 경로 /f00110-test 의 page 엔트리입니다.
+ *
+ * @module app/f00110-test/page
+ */
 import { useState, useEffect } from 'react';
 
 interface F00110Data {
@@ -10,7 +18,6 @@ export default function F00110TestPage() {
   const [data, setData] = useState<F00110Data[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [customQuery, setCustomQuery] = useState('SELECT TOP 10 * FROM [돌봄시설DB].[dbo].[F00110]');
 
   const fetchData = async () => {
     setLoading(true);
@@ -32,33 +39,8 @@ export default function F00110TestPage() {
     }
   };
 
-  const executeCustomQuery = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await fetch('/api/f00110', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: customQuery
-        })
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        setData(result.data);
-      } else {
-        setError(result.error || '쿼리 실행 실패');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류');
-    } finally {
-      setLoading(false);
-    }
+  const handleCustomQueryDisabled = () => {
+    alert('동적 SQL 실행은 비활성화되었습니다. (POST /api/f00110 → 410)');
   };
 
   useEffect(() => {
@@ -81,22 +63,16 @@ export default function F00110TestPage() {
 
       <div className="mb-6">
         <h2 className="mb-2 text-xl font-semibold">커스텀 쿼리 실행</h2>
-        <div className="flex gap-2 mb-2">
-          <input
-            type="text"
-            value={customQuery}
-            onChange={(e) => setCustomQuery(e.target.value)}
-            className="flex-1 p-2 border border-gray-300 rounded"
-            placeholder="SQL 쿼리를 입력하세요"
-          />
-          <button
-            onClick={executeCustomQuery}
-            disabled={loading}
-            className="px-4 py-2 font-bold text-white bg-green-500 rounded hover:bg-green-700 disabled:opacity-50"
-          >
-            실행
-          </button>
-        </div>
+        <p className="mb-2 text-sm text-gray-600">
+          동적 SQL(POST /api/f00110)은 비활성화되었습니다.
+        </p>
+        <button
+          onClick={handleCustomQueryDisabled}
+          disabled={loading}
+          className="px-4 py-2 font-bold text-white bg-gray-400 rounded cursor-not-allowed disabled:opacity-50"
+        >
+          실행 (비활성)
+        </button>
       </div>
 
       {error && (

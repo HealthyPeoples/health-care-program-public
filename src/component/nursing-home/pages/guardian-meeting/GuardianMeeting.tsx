@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 보호자회의 — 화면 컴포넌트 (GuardianMeeting.tsx)
+ *
+ * @description
+ * 요양원 보호자회의 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/guardian-meeting
+ *
+ * @module component/nursing-home/pages/guardian-meeting/GuardianMeeting
+ */
 import React, { useState, useEffect } from 'react';
 
 interface GuardianMeetingData {

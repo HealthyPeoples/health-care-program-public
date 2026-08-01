@@ -1,3 +1,11 @@
+/**
+ * @file API /api/v30030r — 급여 조회 뷰 V30030R
+ *
+ * @description
+ * 급여 조회 뷰 V30030R Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/v30030r/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';

@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f14091 — 시설업무일지 결재 F14091
+ *
+ * @description
+ * 시설업무일지 결재 F14091 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f14091/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

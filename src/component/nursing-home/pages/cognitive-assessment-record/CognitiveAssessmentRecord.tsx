@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 인지기능평가기록 — 화면 컴포넌트 (CognitiveAssessmentRecord.tsx)
+ *
+ * @description
+ * 요양원 인지기능평가기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/cognitive-assessment-record
+ *
+ * @module component/nursing-home/pages/cognitive-assessment-record/CognitiveAssessmentRecord
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

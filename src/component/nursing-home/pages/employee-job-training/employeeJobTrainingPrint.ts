@@ -1,3 +1,11 @@
+/**
+ * @file 직원직무교육 — 인쇄 헬퍼 (employeeJobTrainingPrint.ts)
+ *
+ * @description
+ * 요양원 직원직무교육 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/employee-job-training
+ *
+ * @module component/nursing-home/pages/employee-job-training/employeeJobTrainingPrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export type JobTrainingPrintData = {

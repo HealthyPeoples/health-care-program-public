@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 월 급여명세서 — 커스텀 훅 (useMonthlySalaryStatement.ts)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 커스텀 훅입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/useMonthlySalaryStatement
+ */
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import {

@@ -1,4 +1,12 @@
 /**
+ * @file 욕구사정기록 — 유틸/타입/매퍼 (f51012Mapper.ts)
+ *
+ * @description
+ * 요양원 욕구사정기록 기능의 유틸/타입/매퍼입니다. 폴더: component/nursing-home/pages/needs-assessment-record
+ *
+ * @module component/nursing-home/pages/needs-assessment-record/f51012Mapper
+ */
+/**
  * F51012(욕구사정기록) 화면 상태 ↔ DB 컬럼 매핑
  */
 

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 개인자원봉사실적 — 화면 컴포넌트 (IndividualVolunteerPerformance.tsx)
+ *
+ * @description
+ * 요양원 개인자원봉사실적 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/individual-volunteer-performance
+ *
+ * @module component/nursing-home/pages/individual-volunteer-performance/IndividualVolunteerPerformance
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
 	buildIndividualVolunteerContentBatchPrintHtml,

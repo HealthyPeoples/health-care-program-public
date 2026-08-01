@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — verify-normalize-ymd
+ *
+ * @description
+ * normalizeYmd 단위 검증
+ *
+ * @module scripts/verify-normalize-ymd
+ */
+/**
  * Verify normalizeYmd commonization against git HEAD originals.
  */
 const fs = require('fs');

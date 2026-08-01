@@ -1,3 +1,11 @@
+/**
+ * @file 개인자원봉사실적 — 인쇄 헬퍼 (individualVolunteerPerformancePrint.ts)
+ *
+ * @description
+ * 요양원 개인자원봉사실적 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/individual-volunteer-performance
+ *
+ * @module component/nursing-home/pages/individual-volunteer-performance/individualVolunteerPerformancePrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export { openPrintPreviewWindow };

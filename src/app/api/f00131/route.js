@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f00131 — 시설 코드 상세 F00131
+ *
+ * @description
+ * 시설 코드 상세 F00131 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f00131/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 

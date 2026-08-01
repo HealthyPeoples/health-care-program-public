@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 요양원 UI — DayNightCareMenu.tsx
+ *
+ * @description
+ * 요양원 공통 UI(메뉴·패널 등) 컴포넌트입니다.
+ *
+ * @module component/nursing-home/organisms/DayNightCareMenu
+ */
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Sections3 } from '../menuData';

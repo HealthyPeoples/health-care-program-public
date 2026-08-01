@@ -1,3 +1,11 @@
+/**
+ * @file ReviewMain.tsx
+ *
+ * @description
+ * src/component/review-/ReviewMain.tsx 모듈입니다.
+ *
+ * @module component/review-/ReviewMain
+ */
 import { MainContainer } from '../../containers'
 
 export const ReviewMain = () => {

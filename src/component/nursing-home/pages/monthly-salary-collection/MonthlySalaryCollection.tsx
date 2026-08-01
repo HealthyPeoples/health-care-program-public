@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 월 급여수납 — 화면 컴포넌트 (MonthlySalaryCollection.tsx)
+ *
+ * @description
+ * 요양원 월 급여수납 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-salary-collection
+ *
+ * @module component/nursing-home/pages/monthly-salary-collection/MonthlySalaryCollection
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 

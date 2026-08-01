@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 목욕서비스 — 화면 컴포넌트 (BathService.tsx)
+ *
+ * @description
+ * 요양원 목욕서비스 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/bath-service
+ *
+ * @module component/nursing-home/pages/bath-service/BathService
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';

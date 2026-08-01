@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — entrustedMedicalPrint.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/entrustedMedicalPrint
+ */
 /** 촉탁의 진료비/진료기록부 출력 HTML */
 
 function esc(v: unknown): string {

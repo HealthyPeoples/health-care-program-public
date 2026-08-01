@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 욕창관리 — 화면 컴포넌트 (BedsoreManagement.tsx)
+ *
+ * @description
+ * 요양원 욕창관리 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/bedsore-management
+ *
+ * @module component/nursing-home/pages/bedsore-management/BedsoreManagement
+ */
 import React, { useState, useEffect } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';

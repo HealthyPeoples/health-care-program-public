@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 투약등록 — 화면 컴포넌트 (MedicationRegistrationStub.tsx)
+ *
+ * @description
+ * 요양원 투약등록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/medication-registration
+ *
+ * @module component/nursing-home/pages/medication-registration/MedicationRegistrationStub
+ */
 import React, { useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
 

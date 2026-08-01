@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file RoomNoFloorSelect.tsx
+ *
+ * @description
+ * src/component/nursing-home/components/RoomNoFloorSelect.tsx 모듈입니다.
+ *
+ * @module component/nursing-home/components/RoomNoFloorSelect
+ */
 import React, { useMemo } from 'react';
 import { NO_ROOM_VALUE, availableFloorsFromMembers } from '../utils/roomNoFloor';
 

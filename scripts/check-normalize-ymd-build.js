@@ -1,3 +1,11 @@
+/**
+ * @file 유지보수 스크립트 — check-normalize-ymd-build
+ *
+ * @description
+ * normalizeYmd 빌드/사용 점검
+ *
+ * @module scripts/check-normalize-ymd-build
+ */
 const fs = require('fs');
 const path = require('path');
 

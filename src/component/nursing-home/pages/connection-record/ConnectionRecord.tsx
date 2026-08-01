@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 연계기록 — 화면 컴포넌트 (ConnectionRecord.tsx)
+ *
+ * @description
+ * 요양원 연계기록 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/connection-record
+ *
+ * @module component/nursing-home/pages/connection-record/ConnectionRecord
+ */
 import React, { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
@@ -353,9 +362,7 @@ export default function ConnectionRecord() {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					query: `SELECT ISNULL(MAX(CAST(MENUM AS INT)), 0) + 1 AS NEXT_MENUM 
-							FROM [돌봄시설DB].[dbo].[F11040] 
-							WHERE ANCD = @ancd AND PNUM = @pnum`,
+					action: 'connection.nextMenum',
 					params: { ancd, pnum }
 				})
 			});
@@ -421,20 +428,12 @@ export default function ConnectionRecord() {
 				? connectionList[selectedDateIndex] 
 				: null;
 
-			let query: string;
+			let action: string;
 			let params: any;
 
 			if (existingConnection && existingConnection.MENUM) {
-				// 수정 모드: UPDATE 쿼리
-				query = `
-					UPDATE [돌봄시설DB].[dbo].[F11040]
-					SET 
-						[MEDT] = @MEDT,
-						[MDIC] = @MDIC,
-						[MINFO] = @MINFO,
-						[ETC] = @ETC
-					WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [MENUM] = @MENUM
-				`;
+				// 수정 모드
+				action = 'connection.update';
 
 				params = {
 					ANCD: selectedMember.ANCD,
@@ -446,19 +445,11 @@ export default function ConnectionRecord() {
 					ETC: safeTrim(formData.remarks)
 				};
 			} else {
-				// 생성 모드: INSERT 쿼리
+				// 생성 모드
 				// MENUM 자동 생성
 				const nextMENUM = await getNextMENUM(selectedMember.ANCD, selectedMember.PNUM);
 
-				query = `
-					INSERT INTO [돌봄시설DB].[dbo].[F11040] (
-						[ANCD], [PNUM], [MEDT], [MDIC], [MINFO], [MENUM],
-						[INDT], [ETC], [INEMPNO], [INEMPNM]
-					) VALUES (
-						@ANCD, @PNUM, @MEDT, @MDIC, @MINFO, @MENUM,
-						@INDT, @ETC, @INEMPNO, @INEMPNM
-					)
-				`;
+				action = 'connection.insert';
 
 				params = {
 					ANCD: selectedMember.ANCD,
@@ -477,7 +468,7 @@ export default function ConnectionRecord() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query, params })
+				body: JSON.stringify({ action, params })
 			});
 
 			const result = await response.json();
@@ -872,11 +863,6 @@ export default function ConnectionRecord() {
 
 		setLoadingConnections(true);
 		try {
-			const deleteQuery = `
-				DELETE FROM [돌봄시설DB].[dbo].[F11040]
-				WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [MENUM] = @MENUM
-			`;
-
 			const params = {
 				ANCD: selectedMember.ANCD,
 				PNUM: selectedMember.PNUM,
@@ -886,7 +872,7 @@ export default function ConnectionRecord() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: deleteQuery, params })
+				body: JSON.stringify({ action: 'connection.delete', params })
 			});
 
 			const result = await response.json();

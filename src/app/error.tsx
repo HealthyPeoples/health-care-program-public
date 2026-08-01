@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file App Router 에러 바운더리
+ *
+ * @description
+ * 세그먼트 렌더 오류 시 표시하는 error.tsx입니다.
+ *
+ * @module app/error
+ */
 import { useEffect } from 'react';
 
 export default function Error({

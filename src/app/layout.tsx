@@ -1,5 +1,13 @@
 'use client'
 
+/**
+ * @file App Router 레이아웃 — root
+ *
+ * @description
+ * 해당 세그먼트의 공통 레이아웃(탭 셸·네비 등)을 정의합니다.
+ *
+ * @module app/layout
+ */
 import '../styles/globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'

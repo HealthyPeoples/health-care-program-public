@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 시설업무일지 결재 — 화면 컴포넌트 (FacilityWorkLogApproval.tsx)
+ *
+ * @description
+ * 요양원 시설업무일지 결재 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/facility-work-log-approval
+ *
+ * @module component/nursing-home/pages/facility-work-log-approval/FacilityWorkLogApproval
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type UserInfo = {

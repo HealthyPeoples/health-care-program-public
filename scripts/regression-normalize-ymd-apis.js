@@ -1,4 +1,12 @@
 /**
+ * @file 유지보수 스크립트 — regression-normalize-ymd-apis
+ *
+ * @description
+ * normalizeYmd API 회귀 검증
+ *
+ * @module scripts/regression-normalize-ymd-apis
+ */
+/**
  * normalizeYmd 사용 API 회귀 검증
  * - Request/Response/SQL 날짜 경로가 공통화 전후 동일한지 확인
  */

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 직원-수급자 매핑 — 화면 컴포넌트 (EmployeeBeneficiaryMapping.tsx)
+ *
+ * @description
+ * 요양원 직원-수급자 매핑 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/employee-beneficiary-mapping
+ *
+ * @module component/nursing-home/pages/employee-beneficiary-mapping/EmployeeBeneficiaryMapping
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 interface EmployeeRow {

@@ -1,3 +1,11 @@
+/**
+ * @file API /api/f60040 — 일정/스케줄 F60040
+ *
+ * @description
+ * 일정/스케줄 F60040 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/f60040/route
+ */
 import { connPool } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 

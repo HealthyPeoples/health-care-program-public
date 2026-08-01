@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 월 급여자료 — 화면 컴포넌트 (MonthlySalaryData.tsx)
+ *
+ * @description
+ * 요양원 월 급여자료 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-salary-data
+ *
+ * @module component/nursing-home/pages/monthly-salary-data/MonthlySalaryData
+ */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { formatCareGradeLabel } from "../../utils/careGrade";
 import { useTabRefresh } from "../../hooks/useTabRefresh";

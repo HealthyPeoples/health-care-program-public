@@ -1,3 +1,11 @@
+/**
+ * @file 요양원 유틸 — indwellingCatheterFields.ts
+ *
+ * @description
+ * 요양원 도메인 공통 유틸리티입니다.
+ *
+ * @module component/nursing-home/utils/indwellingCatheterFields
+ */
 import {
 	EXCRETION_TIME_SLOTS,
 	formatDateYmd,

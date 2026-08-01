@@ -1,4 +1,12 @@
 /**
+ * @file 공통 유틸 — normalizeYmd.test.js
+ *
+ * @description
+ * 날짜·응답·포맷 등 프로젝트 공통 유틸리티입니다.
+ *
+ * @module utils/normalizeYmd.test
+ */
+/**
  * normalizeYmd 공용 유틸 단위 테스트
  * 실행: npm test  또는  node --test src/utils/normalizeYmd.test.js
  */

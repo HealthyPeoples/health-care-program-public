@@ -1,4 +1,13 @@
 "use client";
+
+/**
+ * @file 낙상위험도측정 — 화면 컴포넌트 (FallRiskMeasurement.tsx)
+ *
+ * @description
+ * 요양원 낙상위험도측정 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/fall-risk-measurement
+ *
+ * @module component/nursing-home/pages/fall-risk-measurement/FallRiskMeasurement
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import {

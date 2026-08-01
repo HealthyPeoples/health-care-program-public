@@ -1,3 +1,11 @@
+/**
+ * @file 시설업무일지 — 인쇄 헬퍼 (facilityWorkLogPrint.ts)
+ *
+ * @description
+ * 요양원 시설업무일지 기능의 인쇄 헬퍼입니다. 폴더: component/nursing-home/pages/facility-work-log
+ *
+ * @module component/nursing-home/pages/facility-work-log/facilityWorkLogPrint
+ */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 
 export { openPrintPreviewWindow };

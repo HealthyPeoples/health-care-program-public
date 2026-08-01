@@ -1,5 +1,13 @@
 'use client';
 
+/**
+ * @file 공통 유틸 — auth.ts
+ *
+ * @description
+ * 날짜·응답·포맷 등 프로젝트 공통 유틸리티입니다.
+ *
+ * @module utils/auth
+ */
 // 클라이언트에서 쿠키 읽기
 export function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
@@ -38,9 +46,16 @@ export function deleteCookie(name: string) {
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
 }
 
-// 클라이언트에서 쿠키 설정
+/**
+ * @deprecated 세션 쿠키는 서버(httpOnly JWT)만 설정합니다. 클라이언트 setCookie로 세션을 만들지 마세요.
+ */
 export function setCookie(name: string, value: string, days: number = 1) {
   if (typeof document === 'undefined') return;
+  // 세션 관련 쿠키는 클라이언트에서 설정 불가 (위조 방지)
+  if (name === 'auth_token' || name === 'user_info') {
+    console.warn('[auth] 세션 쿠키는 서버만 설정할 수 있습니다:', name);
+    return;
+  }
   const expires = new Date();
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
   document.cookie = `${name}=${value}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;

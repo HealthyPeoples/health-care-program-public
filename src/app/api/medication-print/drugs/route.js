@@ -1,3 +1,11 @@
+/**
+ * @file API /api/medication-print/drugs — 투약 인쇄 데이터
+ *
+ * @description
+ * 투약 인쇄 데이터 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/medication-print/drugs/route
+ */
 import { connPool } from "../../../../config/server";
 import { assertAnCdMatchesSession } from "../../../../config/sessionServer";
 

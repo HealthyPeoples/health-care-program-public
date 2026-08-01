@@ -1,4 +1,12 @@
 /**
+ * @file 월 급여명세서 — 커스텀 훅 (useMonthlySalaryStatement.test.js)
+ *
+ * @description
+ * 요양원 월 급여명세서 기능의 커스텀 훅입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ *
+ * @module component/nursing-home/pages/monthly-salary-statement/useMonthlySalaryStatement.test
+ */
+/**
  * useMonthlySalaryStatement — 훅 export·부모 연결·핵심 핸들러 존재 최소 검증
  * (비즈니스 로직/fetch 실행 테스트 아님)
  */

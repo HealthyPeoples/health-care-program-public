@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * @file 장기요양 기능·인지 — 화면 컴포넌트 (LongtermFunctionalCognitive.tsx)
+ *
+ * @description
+ * 요양원 장기요양 기능·인지 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/longterm-functional-cognitive
+ *
+ * @module component/nursing-home/pages/longterm-functional-cognitive/LongtermFunctionalCognitive
+ */
 import { useState, useEffect, type ReactNode } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';

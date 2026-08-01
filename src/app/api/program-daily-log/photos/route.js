@@ -1,3 +1,11 @@
+/**
+ * @file API /api/program-daily-log/photos — 프로그램일지
+ *
+ * @description
+ * 프로그램일지 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ *
+ * @module app/api/program-daily-log/photos/route
+ */
 import { assertAnCdMatchesSession } from '../../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../../utils/apiResponse';
 
