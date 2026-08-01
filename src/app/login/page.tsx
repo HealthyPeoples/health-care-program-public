@@ -11,7 +11,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { checkAuth, setCookie } from '../../utils/auth';
+import { checkAuth } from '../../utils/auth';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -99,8 +99,12 @@ export default function LoginPage() {
     setError('');
   };
 
-  // 로그인 API 요청 함수
-  const loginRequest = async (ancd: string, uid: string, upw: string): Promise<{ success: boolean; message?: string; ipRestricted?: boolean; allowMockLogin?: boolean }> => {
+  // 로그인 API 요청 (세션 JWT는 서버 httpOnly 쿠키로만 설정)
+  const loginRequest = async (
+    ancd: string,
+    uid: string,
+    upw: string
+  ): Promise<{ success: boolean; message?: string }> => {
     try {
       const response = await fetch('/api/login', {
         method: 'POST',
@@ -110,44 +114,16 @@ export default function LoginPage() {
       });
       const data = await response.json();
       if (response.ok && data.success) {
-        return { 
-          success: true, 
-          message: data.message, 
-          ipRestricted: data.ipRestricted,
-          allowMockLogin: data.allowMockLogin
+        return {
+          success: true,
+          message: data.message,
         };
-      } else {
-        return { success: false, message: data.message || '로그인에 실패했습니다.' };
       }
+      return { success: false, message: data.message || '로그인에 실패했습니다.' };
     } catch (error) {
       console.error('로그인 요청 오류:', error);
       return { success: false, message: '서버 오류가 발생했습니다.' };
     }
-  };
-
-  // IP 제한 시 모의 로그인 처리 (쿠키 직접 설정)
-  const handleMockLogin = (ancd: string, uid: string) => {
-    // 토큰 생성 (간단한 랜덤 문자열)
-    const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
-    
-    const expiresIn = 24 * 60 * 60 * 1000; // 24시간
-    const expiresAt = new Date(Date.now() + expiresIn);
-
-    // 사용자 정보 객체 생성
-    const userInfo = {
-      ancd: ancd,
-      uid: uid,
-      token: token,
-      expiresAt: expiresAt.toISOString(),
-    };
-
-    // 쿠키에 토큰 저장
-    setCookie('auth_token', token, 1);
-    
-    // 사용자 정보도 쿠키에 저장
-    setCookie('user_info', JSON.stringify(userInfo), 1);
   };
 
   const showAlertMessage = (message: string, type: 'success' | 'error') => {
@@ -181,12 +157,6 @@ export default function LoginPage() {
       const result = await loginRequest(formData.ancd, formData.uid, formData.upw);
 
       if (result.success) {
-        // IP 제한으로 모의 로그인이 필요한 경우
-        if (result.allowMockLogin && result.ipRestricted) {
-          // 클라이언트에서 직접 쿠키 설정
-          handleMockLogin(formData.ancd, formData.uid);
-        }
-
         // 로그인 성공 시 아이디 저장 처리
         if (rememberId) {
           // 체크박스가 체크되어 있으면 저장

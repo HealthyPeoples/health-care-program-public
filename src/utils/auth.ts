@@ -46,9 +46,16 @@ export function deleteCookie(name: string) {
   document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
 }
 
-// 클라이언트에서 쿠키 설정
+/**
+ * @deprecated 세션 쿠키는 서버(httpOnly JWT)만 설정합니다. 클라이언트 setCookie로 세션을 만들지 마세요.
+ */
 export function setCookie(name: string, value: string, days: number = 1) {
   if (typeof document === 'undefined') return;
+  // 세션 관련 쿠키는 클라이언트에서 설정 불가 (위조 방지)
+  if (name === 'auth_token' || name === 'user_info') {
+    console.warn('[auth] 세션 쿠키는 서버만 설정할 수 있습니다:', name);
+    return;
+  }
   const expires = new Date();
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
   document.cookie = `${name}=${value}; expires=${expires.toUTCString()}; path=/; SameSite=Lax`;
