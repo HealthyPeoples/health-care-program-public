@@ -43,6 +43,11 @@ export default function LoginPage() {
   };
 
   const getRedirectPath = () => {
+    // middleware가 붙인 원래 목적지 우선
+    const fromMw = searchParams.get('redirect');
+    if (fromMw && fromMw.startsWith('/') && !fromMw.startsWith('//')) {
+      return fromMw;
+    }
     switch (pageType) {
       case 'nursingHome':
         return '/nursingHome';
