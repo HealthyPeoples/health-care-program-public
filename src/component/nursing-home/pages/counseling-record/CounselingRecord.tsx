@@ -421,9 +421,7 @@ export default function CounselingRecord() {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					query: `SELECT ISNULL(MAX(CAST(CSNUM AS INT)), 0) + 1 AS NEXT_CSNUM 
-							FROM [돌봄시설DB].[dbo].[F11020] 
-							WHERE ANCD = @ancd AND PNUM = @pnum`,
+					action: 'counseling.nextCsnum',
 					params: { ancd, pnum }
 				})
 			});
@@ -509,26 +507,12 @@ export default function CounselingRecord() {
 				? consultationList[selectedDateIndex] 
 				: null;
 
-			let query: string;
+			let action: string;
 			let params: any;
 
 			if (existingConsultation && existingConsultation.CSNUM) {
-				// 수정 모드: UPDATE 쿼리
-				query = `
-					UPDATE [돌봄시설DB].[dbo].[F11020]
-					SET 
-						[CSDT] = @CSDT,
-						[EMPNO] = @EMPNO,
-						[EMPNM] = @EMPNM,
-						[BHREL] = @BHREL,
-						[BHRELNM] = @BHRELNM,
-						[STM] = @STM,
-						[ETM] = @ETM,
-						[CSGU] = @CSGU,
-						[CSINFO] = @CSINFO,
-						[CSM] = @CSM
-					WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [CSNUM] = @CSNUM
-				`;
+				// 수정 모드
+				action = 'counseling.update';
 
 				params = {
 					ANCD: selectedMember.ANCD,
@@ -546,21 +530,11 @@ export default function CounselingRecord() {
 					CSM: safeTrim(formData.actionTaken)
 				};
 			} else {
-				// 생성 모드: INSERT 쿼리
+				// 생성 모드
 				// CSNUM 자동 생성
 				const nextCSNUM = await getNextCSNUM(selectedMember.ANCD, selectedMember.PNUM);
 
-				query = `
-					INSERT INTO [돌봄시설DB].[dbo].[F11020] (
-						[ANCD], [PNUM], [CSDT], [EMPNO], [EMPNM], [BHREL], [BHRELNM],
-						[STM], [ETM], [CSGU], [CSINFO], [CSM], [CSNUM],
-						[INDT], [ETC], [INEMPNO], [INEMPNM]
-					) VALUES (
-						@ANCD, @PNUM, @CSDT, @EMPNO, @EMPNM, @BHREL, @BHRELNM,
-						@STM, @ETM, @CSGU, @CSINFO, @CSM, @CSNUM,
-						@INDT, @ETC, @INEMPNO, @INEMPNM
-					)
-				`;
+				action = 'counseling.insert';
 
 				params = {
 					ANCD: selectedMember.ANCD,
@@ -586,7 +560,7 @@ export default function CounselingRecord() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query, params })
+				body: JSON.stringify({ action, params })
 			});
 
 			const result = await response.json();
@@ -941,11 +915,6 @@ export default function CounselingRecord() {
 
 		setLoadingConsultations(true);
 		try {
-			const deleteQuery = `
-				DELETE FROM [돌봄시설DB].[dbo].[F11020]
-				WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [CSNUM] = @CSNUM
-			`;
-
 			const params = {
 				ANCD: selectedMember.ANCD,
 				PNUM: selectedMember.PNUM,
@@ -955,7 +924,7 @@ export default function CounselingRecord() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: deleteQuery, params })
+				body: JSON.stringify({ action: 'counseling.delete', params })
 			});
 
 			const result = await response.json();

@@ -215,41 +215,6 @@ export function useMemberInfo() {
 			// 선택한 기관의 ANCD 가져오기 (수정 시 변경 가능)
 			const selectedANCD = editedMember.selectedANCD || selectedMember.ANCD;
 			
-			// UPDATE 쿼리 생성
-			const updateQuery = `
-				UPDATE [돌봄시설DB].[dbo].[F10010]
-				SET 
-					[ANCD] = @NEW_ANCD,
-					[P_NM] = @P_NM,
-					[P_BRDT] = @P_BRDT,
-					[P_NO] = @P_NO,
-					[P_SEX] = @P_SEX,
-					[P_ZIP] = @P_ZIP,
-					[P_ADDR] = @P_ADDR,
-					[P_TEL] = @P_TEL,
-					[P_HP] = @P_HP,
-					[P_GRD] = @P_GRD,
-					[P_YYNO] = @P_YYNO,
-					[P_YYDT] = @P_YYDT,
-					[P_ST] = @P_ST,
-					[P_CINFO] = @P_CINFO,
-					[P_CTDT] = @P_CTDT,
-					[P_SDT] = @P_SDT,
-					[P_SDT_TM] = @P_SDT_TM,
-					[P_EDT] = @P_EDT,
-					[P_EDT_TM] = @P_EDT_TM,
-					[HCANUM] = @HCANUM,
-					[HCAINFO] = @HCAINFO,
-					[HSPT] = @HSPT,
-					[DTNM] = @DTNM,
-					[DTTEL] = @DTTEL,
-					[ETC] = @ETC,
-					[P_YYSDT] = @P_YYSDT,
-					[P_YYEDT] = @P_YYEDT,
-					[P_FLOOR] = @P_FLOOR
-				WHERE [ANCD] = @OLD_ANCD AND [PNUM] = @PNUM
-			`;
-			
 			const params = {
 				OLD_ANCD: selectedMember.ANCD,
 				NEW_ANCD: selectedANCD,
@@ -286,7 +251,7 @@ export function useMemberInfo() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: updateQuery, params })
+				body: JSON.stringify({ action: 'member.update', params })
 			});
 
 			const result = await response.json();
@@ -352,12 +317,6 @@ export function useMemberInfo() {
 		if (confirm('정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
 			setLoading(true);
 			try {
-				// DELETE 쿼리 생성
-				const deleteQuery = `
-					DELETE FROM [돌봄시설DB].[dbo].[F10010]
-					WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM
-				`;
-
 				const params = {
 					ANCD: selectedMember.ANCD,
 					PNUM: selectedMember.PNUM
@@ -366,7 +325,7 @@ export function useMemberInfo() {
 				const response = await fetch('/api/f10010', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ query: deleteQuery, params })
+					body: JSON.stringify({ action: 'member.delete', params })
 				});
 
 				const result = await response.json();
@@ -429,9 +388,7 @@ export function useMemberInfo() {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					query: `SELECT ISNULL(MAX(CAST(PNUM AS INT)), 0) + 1 AS NEXT_PNUM 
-							FROM [돌봄시설DB].[dbo].[F10010] 
-							WHERE ANCD = @ancd`,
+					action: 'member.nextPnum',
 					params: { ancd }
 				})
 			});
@@ -496,25 +453,6 @@ export function useMemberInfo() {
 			const now = new Date();
 			const nowStr = now.toISOString().slice(0, 19).replace('T', ' ');
 
-			// INSERT 쿼리 생성
-			const insertQuery = `
-				INSERT INTO [돌봄시설DB].[dbo].[F10010] (
-					[ANCD], [PNUM], [P_NM], [P_BRDT], [P_NO], [P_SEX], 
-					[P_ZIP], [P_ADDR], [P_TEL], [P_HP], [P_GRD], 
-					[P_YYNO], [P_YYDT], [P_ST], [P_CINFO], 
-					[P_CTDT], [P_SDT], [P_SDT_TM], [P_EDT], [P_EDT_TM], 
-					[HCANUM], [HCAINFO], [HSPT], [DTNM], [DTTEL], 
-					[INDT], [ETC], [P_YYSDT], [P_YYEDT], [P_FLOOR]
-				) VALUES (
-					@ANCD, @PNUM, @P_NM, @P_BRDT, @P_NO, @P_SEX,
-					@P_ZIP, @P_ADDR, @P_TEL, @P_HP, @P_GRD,
-					@P_YYNO, @P_YYDT, @P_ST, @P_CINFO,
-					@P_CTDT, @P_SDT, @P_SDT_TM, @P_EDT, @P_EDT_TM,
-					@HCANUM, @HCAINFO, @HSPT, @DTNM, @DTTEL,
-					@INDT, @ETC, @P_YYSDT, @P_YYEDT, @P_FLOOR
-				)
-			`;
-
 			// 날짜 형식 변환 함수
 			const formatDate = (dateStr: string | undefined): string | null => {
 				if (!dateStr || dateStr.trim() === '') return null;
@@ -573,7 +511,7 @@ export function useMemberInfo() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: insertQuery, params })
+				body: JSON.stringify({ action: 'member.insert', params })
 			});
 
 			const result = await response.json();

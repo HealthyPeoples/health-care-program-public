@@ -230,9 +230,7 @@ export default function GuardianInfo() {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					query: `SELECT ISNULL(MAX(CAST(BHNUM AS INT)), 0) + 1 AS NEXT_BHNUM 
-							FROM [돌봄시설DB].[dbo].[F10020] 
-							WHERE ANCD = @ancd AND PNUM = @pnum`,
+					action: 'guardian.nextBhnum',
 					params: { ancd, pnum }
 				})
 			});
@@ -278,19 +276,6 @@ export default function GuardianInfo() {
 				? formData.BHETC?.trim() || null
 				: null;
 
-			// INSERT 쿼리 생성
-			const insertQuery = `
-				INSERT INTO [돌봄시설DB].[dbo].[F10020] (
-					[ANCD], [PNUM], [BHNUM], [BHNM], [BHREL], [BHETC], [BHJB],
-					[P_ZIP], [P_ADDR], [P_TEL], [P_HP], [P_EMAIL],
-					[INDT], [ETC], [INEMPNO], [INEMPNM], [CONGU]
-				) VALUES (
-					@ANCD, @PNUM, @BHNUM, @BHNM, @BHREL, @BHETC, @BHJB,
-					@P_ZIP, @P_ADDR, @P_TEL, @P_HP, @P_EMAIL,
-					@INDT, @ETC, @INEMPNO, @INEMPNM, @CONGU
-				)
-			`;
-
 			// 주소와 상세주소 합치기
 			const fullAddress = formData.P_ADDR?.trim() 
 				? (formData.P_ADDR.trim() + (detailAddress.trim() ? ' ' + detailAddress.trim() : ''))
@@ -319,7 +304,7 @@ export default function GuardianInfo() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: insertQuery, params })
+				body: JSON.stringify({ action: 'guardian.insert', params })
 			});
 
 			const result = await response.json();
@@ -407,24 +392,6 @@ export default function GuardianInfo() {
 				? formData.BHETC?.trim() || null
 				: null;
 
-			// UPDATE 쿼리 생성
-			const updateQuery = `
-				UPDATE [돌봄시설DB].[dbo].[F10020]
-				SET 
-					[BHNM] = @BHNM,
-					[BHREL] = @BHREL,
-					[BHETC] = @BHETC,
-					[BHJB] = @BHJB,
-					[P_ZIP] = @P_ZIP,
-					[P_ADDR] = @P_ADDR,
-					[P_TEL] = @P_TEL,
-					[P_HP] = @P_HP,
-					[P_EMAIL] = @P_EMAIL,
-					[ETC] = @ETC,
-					[CONGU] = @CONGU
-				WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [BHNUM] = @BHNUM
-			`;
-
 			const params = {
 				ANCD: selectedMember.ANCD,
 				PNUM: selectedMember.PNUM,
@@ -445,7 +412,7 @@ export default function GuardianInfo() {
 			const response = await fetch('/api/f10010', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ query: updateQuery, params })
+				body: JSON.stringify({ action: 'guardian.update', params })
 			});
 
 			const result = await response.json();
@@ -487,11 +454,6 @@ export default function GuardianInfo() {
 		if (confirm('정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
 			setSaving(true);
 			try {
-				const deleteQuery = `
-					DELETE FROM [돌봄시설DB].[dbo].[F10020]
-					WHERE [ANCD] = @ANCD AND [PNUM] = @PNUM AND [BHNUM] = @BHNUM
-				`;
-
 				const params = {
 					ANCD: selectedMember.ANCD,
 					PNUM: selectedMember.PNUM,
@@ -501,7 +463,7 @@ export default function GuardianInfo() {
 				const response = await fetch('/api/f10010', {
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ query: deleteQuery, params })
+					body: JSON.stringify({ action: 'guardian.delete', params })
 				});
 
 				const result = await response.json();
