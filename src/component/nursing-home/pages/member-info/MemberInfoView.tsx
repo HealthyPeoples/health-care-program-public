@@ -14,6 +14,7 @@ import MemberInfoDetailHeader from './MemberInfoDetailHeader';
 import MemberInfoForm from './MemberInfoForm';
 import MemberInfoContractCard from './MemberInfoContractCard';
 import MemberInfoGuardianCard from './MemberInfoGuardianCard';
+import MemberInfoDiseaseCard from './MemberInfoDiseaseCard';
 import { useMemberInfo } from './useMemberInfo';
 
 export default function MemberInfoView() {
@@ -170,6 +171,9 @@ export default function MemberInfoView() {
 													onFieldChange={handleFieldChange}
 												/>
 											</div>
+
+											{/* 질병내역 (F30030) — 읽기 전용 */}
+											<MemberInfoDiseaseCard selectedMember={selectedMember} />
 										</>
 									) : (
 										<>
@@ -178,6 +182,7 @@ export default function MemberInfoView() {
 												<MemberInfoContractCard placeholder />
 												<MemberInfoGuardianCard placeholder />
 											</div>
+											<MemberInfoDiseaseCard placeholder />
 										</>
 									)}
 								</div>
