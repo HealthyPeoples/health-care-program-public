@@ -82,8 +82,23 @@ function getConnectionPool() {
   return poolPromise;
 }
 
-// 기존 API와의 호환성을 위해 connPool export (지연 로딩)
-const connPool = getConnectionPool();
+/**
+ * 기존 API 호환용 thenable.
+ * 모듈 로드 시점에 Promise를 한 번만 캡처하면, 첫 연결 실패 후
+ * poolPromise가 초기화돼도 거부된 Promise가 영구히 남는다.
+ * 그래서 항상 getConnectionPool()을 경유해 재시도 가능하게 한다.
+ */
+const connPool = {
+  then(onFulfilled, onRejected) {
+    return getConnectionPool().then(onFulfilled, onRejected);
+  },
+  catch(onRejected) {
+    return getConnectionPool().catch(onRejected);
+  },
+  finally(onFinally) {
+    return getConnectionPool().finally(onFinally);
+  },
+};
 
 module.exports = {
   sql,

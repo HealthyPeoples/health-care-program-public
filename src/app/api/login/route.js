@@ -7,7 +7,7 @@
  *
  * @module app/api/login/route
  */
-import { connPool } from '../../../config/server';
+import { getConnectionPool } from '../../../config/server';
 import { NextResponse } from 'next/server';
 
 import { jsonError } from '../../../utils/apiResponse';
@@ -47,9 +47,23 @@ export async function POST(req) {
 			);
 		}
 
-		const pool = await connPool;
+		let pool;
+		try {
+			pool = await getConnectionPool();
+		} catch (dbErr) {
+			console.error('로그인 DB 연결 실패:', dbErr);
+			return jsonError({
+				success: false,
+				message: '데이터베이스 연결 실패',
+				error: dbErr?.message || String(dbErr),
+			});
+		}
 		if (!pool) {
-			return jsonError({ success: false, message: '데이터베이스 연결 실패' });
+			return jsonError({
+				success: false,
+				message: '데이터베이스 연결 실패',
+				error: 'DB_DEV_SERVER 등 DB 환경변수가 비어 있습니다.',
+			});
 		}
 
 		const body = await req.json();
@@ -116,7 +130,7 @@ export async function POST(req) {
 		return jsonError({
 			success: false,
 			message: '로그인 처리 중 오류가 발생했습니다.',
-			error: process.env.NODE_ENV === 'development' ? err?.message : undefined,
+			error: err?.message || String(err),
 		});
 	}
 }
