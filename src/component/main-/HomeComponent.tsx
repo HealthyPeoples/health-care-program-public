@@ -25,10 +25,10 @@ export const HomeComponent = () => {
 
   const handleMoveClick = async (type: 'nursingHome' | 'dayNightCare' | 'shortTermCare', e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
-    
+
     // 로그인 상태 확인
     const authenticated = await checkAuth();
-    
+
     if (authenticated) {
       // 로그인되어 있으면 해당 페이지로 직접 이동
       if (type === 'nursingHome') {
@@ -39,8 +39,9 @@ export const HomeComponent = () => {
         router.push('/shortTermCare');
       }
     } else {
-      // 로그인되어 있지 않으면 로그인 페이지로 이동 (새 창)
-      window.open(`/login?type=${type}`, '_blank', 'noopener,noreferrer');
+      // 비로그인: 같은 탭으로 로그인 이동
+      // (await 이후 window.open은 브라우저 팝업 차단에 걸려 아무 반응이 없을 수 있음)
+      router.push(`/login?type=${type}`);
     }
   };
 
