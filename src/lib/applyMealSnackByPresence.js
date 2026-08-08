@@ -116,7 +116,7 @@ function isPresentAtFacility(gyn, ioTmInfo, eventTime) {
 	if (g === '0') {
 		const start = toMinutes(parsed.start);
 		const end = toMinutes(parsed.end);
-		if (start == null) return true;
+		if (start == null) return true; // 시각 미입력 → 원내로 간주
 		if (end == null) return t < start;
 		return !(t >= start && t < end);
 	}
@@ -124,7 +124,7 @@ function isPresentAtFacility(gyn, ioTmInfo, eventTime) {
 	// 외박 출발일: 출발 시각 이후 부재
 	if (g === '2') {
 		const start = toMinutes(parsed.start);
-		if (start == null) return false;
+		if (start == null) return true; // 시각 미입력 → 원내로 간주
 		return t < start;
 	}
 
@@ -145,6 +145,73 @@ function computeMealSnackFlags(gyn, ioTmInfo) {
 		flags[slot.key] = isPresentAtFacility(gyn, ioTmInfo, slot.time) ? '1' : '2';
 	}
 	return flags;
+}
+
+/**
+ * UI 편집 중인 외출/외박 시각으로 IO_TM_INFO 문자열을 만듭니다.
+ * @param {{
+ *   gyn?: string,
+ *   gynStartTime?: string,
+ *   gynEndTime?: string,
+ *   returnTime?: string,
+ *   overnightOngoing?: boolean,
+ *   overnightLeaveDate?: string,
+ *   overnightLeaveTime?: string,
+ * }} row
+ */
+function buildIoTmInfoFromOutingFields(row) {
+	const gyn = String(row?.gyn ?? '').trim();
+	const returnTime = padTime5(row?.returnTime || '');
+	if (returnTime) return `R:${returnTime}`;
+
+	if (row?.overnightOngoing) {
+		const leaveDate = String(row.overnightLeaveDate || '').trim();
+		const leaveTime = padTime5(row.overnightLeaveTime || row.gynStartTime || '');
+		if (leaveDate && leaveTime) return `ON:${leaveDate}|${leaveTime}`;
+		if (leaveTime) return `ON:${leaveTime}`;
+		return 'ON:';
+	}
+
+	const start = padTime5(row?.gynStartTime || '');
+	const end = padTime5(row?.gynEndTime || '');
+	if (gyn === '2') return start;
+	if (!start && !end) return '';
+	if (!start || !end) return start || end;
+	return `${start}~${end}`;
+}
+
+/**
+ * 외출/외박 시각 → 화면 mealStatus / snackStatus
+ * @param {{
+ *   gyn?: string,
+ *   gynStartTime?: string,
+ *   gynEndTime?: string,
+ *   returnTime?: string,
+ *   overnightOngoing?: boolean,
+ *   overnightLeaveDate?: string,
+ *   overnightLeaveTime?: string,
+ * }} row
+ * @returns {{
+ *   mealStatus: { breakfast: string, lunch: string, dinner: string },
+ *   snackStatus: { morning: string, afternoon: string, evening: string },
+ * }}
+ */
+function mealSnackStatusFromOutingFields(row) {
+	const gyn = String(row?.gyn ?? '').trim() || '1';
+	const io = buildIoTmInfoFromOutingFields(row);
+	const flags = computeMealSnackFlags(gyn, io);
+	return {
+		mealStatus: {
+			breakfast: flags.MOST,
+			lunch: flags.LCST,
+			dinner: flags.DNST,
+		},
+		snackStatus: {
+			morning: flags.MGST,
+			afternoon: flags.AGST,
+			evening: flags.DGST,
+		},
+	};
 }
 
 /**
@@ -221,5 +288,7 @@ module.exports = {
 	parseIoTmInfo,
 	isPresentAtFacility,
 	computeMealSnackFlags,
+	buildIoTmInfoFromOutingFields,
+	mealSnackStatusFromOutingFields,
 	applyMealSnackByPresence,
 };

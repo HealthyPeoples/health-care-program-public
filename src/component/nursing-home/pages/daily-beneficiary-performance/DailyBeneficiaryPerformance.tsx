@@ -23,6 +23,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
+import { mealSnackStatusFromOutingFields } from '../../../../lib/applyMealSnackByPresence';
 
 /**
  * 식사종류(PH_MEAL_KIND / ST_KIND) 코드 → 표시명
@@ -677,7 +678,9 @@ export default function DailyBeneficiaryPerformance() {
 				alert('외박 시 나간 시간을 입력해주세요.');
 				return;
 			}
-			const payload = buildMealSavePayload(row);
+			// 저장 시 외출/외박 시각 기준으로 식사·간식 체크 반영
+			const rowToSave = withAutoMealSnack(row);
+			const payload = buildMealSavePayload(rowToSave);
 			try {
 				const saveRes = await fetch('/api/f14020', {
 					method: 'POST',
@@ -693,11 +696,11 @@ export default function DailyBeneficiaryPerformance() {
 					prev.map((r) =>
 						r.id === id
 							? {
-									...r,
+									...rowToSave,
 									payComGu: payload.payComGu,
-									gynStartTime: row.gyn === '0' || row.gyn === '2' ? r.gynStartTime : '',
-									gynEndTime: row.gyn === '0' ? r.gynEndTime : '',
-									returnTime: row.returnTime || ''
+									gynStartTime: rowToSave.gyn === '0' || rowToSave.gyn === '2' ? rowToSave.gynStartTime : '',
+									gynEndTime: rowToSave.gyn === '0' ? rowToSave.gynEndTime : '',
+									returnTime: rowToSave.returnTime || ''
 								}
 							: r
 					)
@@ -710,9 +713,12 @@ export default function DailyBeneficiaryPerformance() {
 				alert('저장 중 오류가 발생했습니다.');
 			}
 		} else {
+			// 수정 버튼: 진입 시 외출/외박 시각 기준으로 식사·간식 체크
 			const row = combinedData.find((r) => r.id === id);
 			if (row) {
-				setEditingBackup(JSON.parse(JSON.stringify(row)) as PerformanceData);
+				const adjusted = withAutoMealSnack(row);
+				setCombinedData((prev) => prev.map((r) => (r.id === id ? adjusted : r)));
+				setEditingBackup(JSON.parse(JSON.stringify(adjusted)) as PerformanceData);
 			} else {
 				setEditingBackup(null);
 			}
@@ -760,6 +766,12 @@ export default function DailyBeneficiaryPerformance() {
 		setEditingRowId(newRow.id); // 새로 추가된 행을 수정 모드로 설정
 		setEditingBackup(JSON.parse(JSON.stringify(newRow)) as PerformanceData);
 		setCurrentPage(1); // 첫 페이지로 이동
+	};
+
+	/** 외출/외박 시각 기준 식사·간식 체크 (수정 진입·저장 시에만 사용) */
+	const withAutoMealSnack = <T extends PerformanceData>(row: T): T => {
+		const { mealStatus, snackStatus } = mealSnackStatusFromOutingFields(row);
+		return { ...row, mealStatus, snackStatus };
 	};
 
 	const applyGynChange = (rowId: number, nextGyn: string) => {
