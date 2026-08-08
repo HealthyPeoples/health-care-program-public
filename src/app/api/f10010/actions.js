@@ -434,19 +434,56 @@ const ACTIONS = {
     );
   },
 
+  /**
+   * F11020 PK = (ANCD, PNUM, CSDT)
+   * 동일 수급자·동일 상담일자면 UPDATE, 없으면 INSERT (CSNUM 자동채번)
+   */
   async 'counseling.insert'(pool, sessionAncd, params) {
     assertSessionAncd(params, sessionAncd, ['ANCD', 'ancd']);
     const p = params || {};
     return run(
       pool,
       sessionAncd,
-      `INSERT INTO ${T_F11020} (
-        [ANCD],[PNUM],[CSDT],[EMPNO],[EMPNM],[BHREL],[BHRELNM],[STM],[ETM],
-        [CSGU],[CSINFO],[CSM],[CSNUM],[INDT],[ETC],[INEMPNO],[INEMPNM]
-      ) VALUES (
-        @ANCD,@PNUM,@CSDT,@EMPNO,@EMPNM,@BHREL,@BHRELNM,@STM,@ETM,
-        @CSGU,@CSINFO,@CSM,@CSNUM,@INDT,@ETC,@INEMPNO,@INEMPNM
-      )`,
+      `
+      DECLARE @nextCsnum INT;
+      SELECT @nextCsnum = ISNULL(MAX(CAST([CSNUM] AS INT)), 0) + 1
+      FROM ${T_F11020}
+      WHERE [ANCD] = @ANCD AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR);
+
+      MERGE ${T_F11020} AS T
+      USING (
+        SELECT
+          @ANCD AS ANCD,
+          @PNUM AS PNUM,
+          CAST(@CSDT AS DATE) AS CSDT
+      ) AS S
+        ON T.[ANCD] = S.ANCD
+       AND CAST(T.[PNUM] AS VARCHAR) = CAST(S.PNUM AS VARCHAR)
+       AND T.[CSDT] = S.CSDT
+      WHEN MATCHED THEN
+        UPDATE SET
+          [EMPNO] = @EMPNO,
+          [EMPNM] = @EMPNM,
+          [BHREL] = @BHREL,
+          [BHRELNM] = @BHRELNM,
+          [STM] = @STM,
+          [ETM] = @ETM,
+          [CSGU] = @CSGU,
+          [CSINFO] = @CSINFO,
+          [CSM] = @CSM,
+          [INDT] = COALESCE(@INDT, T.[INDT]),
+          [ETC] = @ETC,
+          [INEMPNO] = @INEMPNO,
+          [INEMPNM] = @INEMPNM
+      WHEN NOT MATCHED THEN
+        INSERT (
+          [ANCD],[PNUM],[CSDT],[EMPNO],[EMPNM],[BHREL],[BHRELNM],[STM],[ETM],
+          [CSGU],[CSINFO],[CSM],[CSNUM],[INDT],[ETC],[INEMPNO],[INEMPNM]
+        ) VALUES (
+          @ANCD,@PNUM,CAST(@CSDT AS DATE),@EMPNO,@EMPNM,@BHREL,@BHRELNM,@STM,@ETM,
+          @CSGU,@CSINFO,@CSM,COALESCE(TRY_CAST(@CSNUM AS INT), @nextCsnum),@INDT,@ETC,@INEMPNO,@INEMPNM
+        );
+      `,
       [
         ['ANCD', sessionAncd],
         ['PNUM', p.PNUM],
@@ -460,7 +497,7 @@ const ACTIONS = {
         ['CSGU', p.CSGU ?? null],
         ['CSINFO', p.CSINFO ?? null],
         ['CSM', p.CSM ?? null],
-        ['CSNUM', p.CSNUM],
+        ['CSNUM', p.CSNUM ?? null],
         ['INDT', p.INDT ?? null],
         ['ETC', p.ETC ?? null],
         ['INEMPNO', p.INEMPNO ?? null],
@@ -472,17 +509,63 @@ const ACTIONS = {
   async 'counseling.update'(pool, sessionAncd, params) {
     assertSessionAncd(params, sessionAncd, ['ANCD', 'ancd']);
     const p = params || {};
+    // 상담일자(CSDT)가 PK이므로, 일자 변경 시 대상 일자로 MERGE 후 이전 CSNUM 행 정리
     return run(
       pool,
       sessionAncd,
-      `UPDATE ${T_F11020}
-       SET [CSDT]=@CSDT,[EMPNO]=@EMPNO,[EMPNM]=@EMPNM,[BHREL]=@BHREL,[BHRELNM]=@BHRELNM,
-           [STM]=@STM,[ETM]=@ETM,[CSGU]=@CSGU,[CSINFO]=@CSINFO,[CSM]=@CSM
-       WHERE [ANCD]=@ANCD AND [PNUM]=@PNUM AND [CSNUM]=@CSNUM`,
+      `
+      DECLARE @oldCsdt DATE = NULL;
+
+      IF @CSNUM IS NOT NULL
+      BEGIN
+        SELECT TOP 1 @oldCsdt = [CSDT]
+        FROM ${T_F11020}
+        WHERE [ANCD] = @ANCD
+          AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+          AND CAST([CSNUM] AS VARCHAR) = CAST(@CSNUM AS VARCHAR);
+      END
+
+      MERGE ${T_F11020} AS T
+      USING (
+        SELECT @ANCD AS ANCD, @PNUM AS PNUM, CAST(@CSDT AS DATE) AS CSDT
+      ) AS S
+        ON T.[ANCD] = S.ANCD
+       AND CAST(T.[PNUM] AS VARCHAR) = CAST(S.PNUM AS VARCHAR)
+       AND T.[CSDT] = S.CSDT
+      WHEN MATCHED THEN
+        UPDATE SET
+          [EMPNO]=@EMPNO,[EMPNM]=@EMPNM,[BHREL]=@BHREL,[BHRELNM]=@BHRELNM,
+          [STM]=@STM,[ETM]=@ETM,[CSGU]=@CSGU,[CSINFO]=@CSINFO,[CSM]=@CSM
+      WHEN NOT MATCHED THEN
+        INSERT (
+          [ANCD],[PNUM],[CSDT],[EMPNO],[EMPNM],[BHREL],[BHRELNM],[STM],[ETM],
+          [CSGU],[CSINFO],[CSM],[CSNUM]
+        )
+        VALUES (
+          @ANCD,@PNUM,CAST(@CSDT AS DATE),@EMPNO,@EMPNM,@BHREL,@BHRELNM,@STM,@ETM,
+          @CSGU,@CSINFO,@CSM,
+          COALESCE(
+            TRY_CAST(@CSNUM AS INT),
+            (SELECT ISNULL(MAX(CAST([CSNUM] AS INT)), 0) + 1
+             FROM ${T_F11020}
+             WHERE [ANCD]=@ANCD AND CAST([PNUM] AS VARCHAR)=CAST(@PNUM AS VARCHAR))
+          )
+        );
+
+      -- 일자를 바꾼 경우 이전 일자 행 제거
+      IF @CSNUM IS NOT NULL AND @oldCsdt IS NOT NULL AND @oldCsdt <> CAST(@CSDT AS DATE)
+      BEGIN
+        DELETE FROM ${T_F11020}
+        WHERE [ANCD]=@ANCD
+          AND CAST([PNUM] AS VARCHAR)=CAST(@PNUM AS VARCHAR)
+          AND CAST([CSNUM] AS VARCHAR)=CAST(@CSNUM AS VARCHAR)
+          AND [CSDT]=@oldCsdt;
+      END
+      `,
       [
         ['ANCD', sessionAncd],
         ['PNUM', p.PNUM],
-        ['CSNUM', p.CSNUM],
+        ['CSNUM', p.CSNUM ?? null],
         ['CSDT', p.CSDT ?? null],
         ['EMPNO', p.EMPNO ?? null],
         ['EMPNM', p.EMPNM ?? null],

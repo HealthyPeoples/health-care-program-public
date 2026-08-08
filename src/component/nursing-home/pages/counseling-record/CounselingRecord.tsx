@@ -680,26 +680,37 @@ export default function CounselingRecord() {
 				return value.trim() || null;
 			};
 
-			// 기존 상담 기록이 있는지 확인 (수정 모드인지 확인)
-			const existingConsultation = selectedDateIndex !== null && consultationList[selectedDateIndex] 
-				? consultationList[selectedDateIndex] 
-				: null;
+			// PK가 (ANCD,PNUM,CSDT)이므로 동일 상담일자가 있으면 수정으로 처리
+			const saveDateDisp = formatDateDisplay(formData.consultationDate);
+			const selectedConsultation =
+				selectedDateIndex !== null && consultationList[selectedDateIndex]
+					? consultationList[selectedDateIndex]
+					: null;
+			const existingByDate = consultationList.find(
+				(c) => formatDateDisplay(String(c.CSDT || '')) === saveDateDisp
+			);
+			const existingConsultation =
+				selectedConsultation?.CSNUM &&
+				formatDateDisplay(String(selectedConsultation.CSDT || '')) === saveDateDisp
+					? selectedConsultation
+					: existingByDate || null;
 
 			let action: string;
 			let params: any;
 
 			const bhrelCode = safeTrim(formData.consultationSubstituteCode);
 			const bhrelNm = safeTrim(formData.consultationSubstitute);
+			const csdtForDb = formatDateForDB(formData.consultationDate);
 
 			if (existingConsultation && existingConsultation.CSNUM) {
-				// 수정 모드
+				// 수정 모드 (같은 일자 기존 건)
 				action = 'counseling.update';
 
 				params = {
 					ANCD: selectedMember.ANCD,
 					PNUM: selectedMember.PNUM,
 					CSNUM: existingConsultation.CSNUM,
-					CSDT: formatDateForDB(formData.consultationDate),
+					CSDT: csdtForDb,
 					EMPNO: safeTrim(formData.consultantCode),
 					EMPNM: safeTrim(formData.consultant),
 					BHREL: bhrelCode,
@@ -711,8 +722,7 @@ export default function CounselingRecord() {
 					CSM: safeTrim(formData.actionTaken)
 				};
 			} else {
-				// 생성 모드
-				// CSNUM 자동 생성
+				// 생성 모드 — 서버에서 PK(일자) 기준 MERGE (중복 일자면 UPDATE)
 				const nextCSNUM = await getNextCSNUM(selectedMember.ANCD, selectedMember.PNUM);
 
 				action = 'counseling.insert';
@@ -720,7 +730,7 @@ export default function CounselingRecord() {
 				params = {
 					ANCD: selectedMember.ANCD,
 					PNUM: selectedMember.PNUM,
-					CSDT: formatDateForDB(formData.consultationDate),
+					CSDT: csdtForDb,
 					EMPNO: safeTrim(formData.consultantCode),
 					EMPNM: safeTrim(formData.consultant),
 					BHREL: bhrelCode,
