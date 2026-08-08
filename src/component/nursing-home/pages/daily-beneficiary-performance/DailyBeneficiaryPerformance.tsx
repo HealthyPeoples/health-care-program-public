@@ -25,6 +25,30 @@ import { createPortal } from 'react-dom';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 
 /**
+ * 식사종류(PH_MEAL_KIND / ST_KIND) 코드 → 표시명
+ * 1 일반식, 2 일반식(콩밥), 3 일반식(저염식), 4 다진식, 5 죽, 6 유동식(미음), 7 경관식
+ */
+const MEAL_KIND_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+	{ value: '1', label: '일반식' },
+	{ value: '2', label: '일반식(콩밥)' },
+	{ value: '3', label: '일반식(저염식)' },
+	{ value: '4', label: '다진식' },
+	{ value: '5', label: '죽' },
+	{ value: '6', label: '유동식(미음)' },
+	{ value: '7', label: '경관식' },
+];
+
+const MEAL_KIND_LABEL_BY_CODE: Record<string, string> = Object.fromEntries(
+	MEAL_KIND_OPTIONS.map((o) => [o.value, o.label])
+);
+
+/** 식사종류 코드를 표시 문구로 변환합니다. */
+function mealKindLabel(code: string | null | undefined): string {
+	const key = String(code ?? '').trim();
+	return MEAL_KIND_LABEL_BY_CODE[key] || '';
+}
+
+/**
  * 화면 그리드 1행에 대응하는 F14020 실적 모델.
  * API 응답을 {@link mapApiItemToPerformance}로 변환해 사용합니다.
  */
@@ -53,7 +77,7 @@ interface PerformanceData {
 	dischargeTime?: string;
 	/** 식사장소 ST_PLAC */
 	mealLocation: string;
-	/** 식사종류 ST_KIND: 1일반식 2죽 3유동식 */
+	/** 식사종류 PH_MEAL_KIND/ST_KIND: 1~7 ({@link MEAL_KIND_OPTIONS}) */
 	mealType: string;
 	/** GYN: '0'=외출, '1'=입원, '2'=외박 */
 	gyn: string;
@@ -333,7 +357,7 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 		dischargeDate: toYmd(item.P_EDT),
 		dischargeTime: toHm(item.P_EDT_TM),
 		mealLocation: item.ST_PLAC || '',
-		mealType: item.ST_KIND || '1',
+		mealType: String(item.PH_MEAL_KIND || item.ST_KIND || '1').trim() || '1',
 		gyn,
 		gynStartTime: times.start,
 		gynEndTime: times.end,
@@ -364,11 +388,14 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
  * @returns pnum, 식사/간식, gyn, payComGu, ioTmInfo 등
  */
 function buildMealSavePayload(r: PerformanceData) {
+	const mealKind = String(r.mealType || '1').trim() || '1';
 	if (r.overnightOngoing) {
 		return {
 			pnum: r.pnum,
 			mealLocation: r.mealLocation,
-			mealType: r.mealType,
+			mealType: mealKind,
+			ST_KIND: mealKind,
+			PH_MEAL_KIND: mealKind,
 			gyn: '2',
 			mealStatus: r.mealStatus,
 			snackStatus: r.snackStatus,
@@ -391,7 +418,9 @@ function buildMealSavePayload(r: PerformanceData) {
 	return {
 		pnum: r.pnum,
 		mealLocation: r.mealLocation,
-		mealType: r.mealType,
+		mealType: mealKind,
+		ST_KIND: mealKind,
+		PH_MEAL_KIND: mealKind,
 		gyn: r.gyn,
 		mealStatus: r.mealStatus,
 		snackStatus: r.snackStatus,
@@ -563,14 +592,49 @@ export default function DailyBeneficiaryPerformance() {
 		};
 	}, [editingRowId]);
 
-	// 행 삭제 함수
-	const handleDeleteRow = (id: number) => {
-		if (confirm('정말 삭제하시겠습니까?')) {
-			setCombinedData(combinedData.filter(row => row.id !== id));
+	// 행 삭제: DB(F14020) 삭제 후 화면 반영 (미저장 신규 행은 로컬만 제거)
+	const handleDeleteRow = async (id: number) => {
+		if (!confirm('정말 삭제하시겠습니까?')) return;
+
+		const row = combinedData.find((r) => r.id === id);
+		if (!row) return;
+
+		const removeLocal = () => {
+			setCombinedData((prev) => prev.filter((r) => r.id !== id));
 			if (editingRowId === id) {
 				setEditingRowId(null);
 				setEditingBackup(null);
 			}
+			if (selectedMember === id) setSelectedMember(null);
+		};
+
+		const pnum = String(row.pnum ?? '').trim();
+		// 수급자 미선택 신규 행 → DB에 없으므로 화면만 제거
+		if (!pnum) {
+			removeLocal();
+			return;
+		}
+
+		const svdt = String(row.svdt || selectedDate || '').trim();
+		if (!svdt) {
+			alert('삭제할 일자가 없습니다.');
+			return;
+		}
+
+		try {
+			const res = await fetch(
+				`/api/f14020?pnum=${encodeURIComponent(pnum)}&svdt=${encodeURIComponent(svdt)}`,
+				{ method: 'DELETE' }
+			);
+			const json = await res.json();
+			if (!json?.success) {
+				alert(`삭제 실패: ${json?.error || '알 수 없는 오류'}`);
+				return;
+			}
+			removeLocal();
+		} catch (e) {
+			console.error('삭제 오류:', e);
+			alert('삭제 중 오류가 발생했습니다.');
 		}
 	};
 
@@ -1020,8 +1084,7 @@ export default function DailyBeneficiaryPerformance() {
 				const morningSnack = row.snackStatus.morning === '1' ? '○' : '';
 				const afternoonSnack = row.snackStatus.afternoon === '1' ? '○' : '';
 				const eveningSnack = row.snackStatus.evening === '1' ? '○' : '';
-				const mealTypeText =
-					row.mealType === '1' ? '일반식' : row.mealType === '2' ? '죽' : row.mealType === '3' ? '유동식(미음)' : '';
+				const mealTypeText = mealKindLabel(row.mealType);
 
 				return `
 								<tr>
@@ -1514,8 +1577,8 @@ export default function DailyBeneficiaryPerformance() {
 							const morningSnack = row.snackStatus.morning === '1' ? '○' : '';
 							const afternoonSnack = row.snackStatus.afternoon === '1' ? '○' : '';
 							const eveningSnack = row.snackStatus.evening === '1' ? '○' : '';
-							const mealTypeText = row.mealType === '1' ? '일반식' : row.mealType === '2' ? '죽' : row.mealType === '3' ? '유동식(미음)' : '';
-							
+							const mealTypeText = mealKindLabel(row.mealType);
+
 							return `
 								<tr>
 									<td>${row.name || ''}</td>
@@ -1664,7 +1727,7 @@ export default function DailyBeneficiaryPerformance() {
 									<th className="sticky left-0 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">연번</th>
 									<th className="sticky left-10 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">수급자명(생년월일)</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">식사장소</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-28">식사종류</th>
+									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-40">식사종류</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 min-w-[320px]">입원/외출/외박</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">식사상태</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">간식상태</th>
@@ -1810,8 +1873,8 @@ export default function DailyBeneficiaryPerformance() {
 												}`}
 											/>
 										</td>
-										{/* 식사종류 */}
-										<td className="text-center px-3 py-3 border-r border-blue-100 w-28">
+										{/* 식사종류 (PH_MEAL_KIND) */}
+										<td className="text-center px-3 py-3 border-r border-blue-100 w-40">
 											<select 
 												value={row.mealType}
 												onChange={(e) => {
@@ -1826,9 +1889,11 @@ export default function DailyBeneficiaryPerformance() {
 													editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 												}`}
 											>
-												<option value="1">일반식</option>
-												<option value="2">죽</option>
-												<option value="3">유동식(미음)</option>
+												{MEAL_KIND_OPTIONS.map((opt) => (
+													<option key={opt.value} value={opt.value}>
+														{opt.value}. {opt.label}
+													</option>
+												))}
 											</select>
 										</td>
 										{/* 입원/외출/외박 (GYN) — 입·퇴소/외박중은 문구만 표시 */}
