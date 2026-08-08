@@ -5,7 +5,7 @@
  *
  * @description
  * F14020 기준 오전/오후/저녁 간식(MGVOL/AGVOL/DGVOL) 일괄 등록과
- * 일자별 수급자별 등록 현황 조회를 제공합니다.
+ * 일자별 수급자별 등록 현황 조회를 제공 합니다.
  *
  * @module component/nursing-home/pages/snack-bulk-registration/SnackBulkRegistration
  */
