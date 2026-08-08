@@ -116,7 +116,7 @@ describe('MemberInfoPrint — HTML builders', () => {
 		assert.match(html, /인원: 0명/);
 	});
 
-	it('buildRecipientCardPrintHtml — 제목·보호자·계약 섹션', () => {
+	it('buildRecipientCardPrintHtml — 제목·보호자·계약·질병내역 섹션', () => {
 		const html = P.buildRecipientCardPrintHtml(
 			{
 				P_NM: '홍길동',
@@ -136,17 +136,37 @@ describe('MemberInfoPrint — HTML builders', () => {
 				contractDate: '2024-01-15',
 				admitDate: '2024-02-01',
 			},
-			'우리요양원'
+			'우리요양원',
+			[
+				{ JDES: '고혈압', JDT: '2023-05-01', ETC: '복약중' },
+				{ JDES: '당뇨', JDT: '2024-01-10', ETC: '' },
+			]
 		);
 		assert.match(html, /<title>홍길동 - 수급자카드<\/title>/);
 		assert.match(html, /class="sectionTitle">보호자 정보</);
 		assert.match(html, /class="sectionTitle">계약 정보</);
+		assert.match(html, /class="sectionTitle">질병내역</);
+		assert.match(html, /aria-label="질병내역"/);
+		assert.match(html, /고혈압/);
+		assert.match(html, /2023-05-01/);
+		assert.match(html, /복약중/);
+		assert.match(html, /당뇨/);
 		assert.match(html, /김보호/);
 		assert.match(html, /아들/);
 		assert.match(html, /기관<\/b> <span class="muted">우리요양원/);
 		// card 값이 없으면 selectedMember로 폴백
 		assert.match(html, /<td>남<\/td>/);
 		assert.match(html, /<td>입소<\/td>/);
+	});
+
+	it('buildRecipientCardPrintHtml — 질병내역 없으면 안내 문구', () => {
+		const html = P.buildRecipientCardPrintHtml(
+			{ P_NM: '홍길동' },
+			{ name: '홍길동' },
+			'우리요양원',
+			[]
+		);
+		assert.match(html, /등록된 질병내역이 없습니다/);
 	});
 
 	it('openPrintPreviewWindow — 팝업 차단 시 false', () => {
@@ -196,7 +216,8 @@ describe('MemberInfoPrint — HTML builders', () => {
 		assert.doesNotMatch(view, /window\.open\(/);
 
 		const hook = fs.readFileSync(HOOK_TS, 'utf8');
-		assert.match(hook, /buildRecipientCardPrintHtml\(selectedMember, card, instName\)/);
+		assert.match(hook, /buildRecipientCardPrintHtml\(selectedMember, card, instName, diseases\)/);
+		assert.match(hook, /\/api\/f30030\?pnum=/);
 		assert.match(hook, /buildV10010AListPrintHtml\(list, instName\)/);
 		assert.match(hook, /openPrintPreviewWindow\(html\)/);
 	});

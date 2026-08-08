@@ -23,6 +23,96 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
+import { mealSnackStatusFromOutingFields } from '../../../../lib/applyMealSnackByPresence';
+
+/**
+ * 식사종류(PH_MEAL_KIND / ST_KIND) 코드 → 표시명
+ * 1 일반식, 2 일반식(콩밥), 3 일반식(저염식), 4 다진식, 5 죽, 6 유동식(미음), 7 경관식
+ */
+const MEAL_KIND_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+	{ value: '1', label: '일반식' },
+	{ value: '2', label: '일반식(콩밥)' },
+	{ value: '3', label: '일반식(저염식)' },
+	{ value: '4', label: '다진식' },
+	{ value: '5', label: '죽' },
+	{ value: '6', label: '유동식(미음)' },
+	{ value: '7', label: '경관식' },
+];
+
+const MEAL_KIND_LABEL_BY_CODE: Record<string, string> = Object.fromEntries(
+	MEAL_KIND_OPTIONS.map((o) => [o.value, o.label])
+);
+
+/** 식사종류 코드를 표시 문구로 변환합니다. */
+function mealKindLabel(code: string | null | undefined): string {
+	const key = String(code ?? '').trim();
+	return MEAL_KIND_LABEL_BY_CODE[key] || '';
+}
+
+/**
+ * 간식 체크 + 체크 시 간식명(MGVOL/AGVOL/DGVOL) 호버 툴팁.
+ * disabled input은 native title이 안 뜨므로 body Portal로 표시합니다.
+ */
+function SnackStatusCheck({
+	label,
+	checked,
+	snackName,
+	editing,
+	onCheckedChange,
+}: {
+	label: string;
+	checked: boolean;
+	snackName?: string;
+	editing: boolean;
+	onCheckedChange: (checked: boolean) => void;
+}) {
+	const tip = checked ? String(snackName || '').trim() : '';
+	const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+
+	return (
+		<>
+			<span
+				className={`inline-flex items-center gap-1 ${
+					tip ? 'cursor-help' : editing ? 'cursor-pointer' : 'cursor-not-allowed'
+				}`}
+				onMouseEnter={(e) => {
+					if (tip) setHoverRect(e.currentTarget.getBoundingClientRect());
+				}}
+				onMouseLeave={() => setHoverRect(null)}
+			>
+				<label className="flex items-center gap-1">
+					<input
+						type="checkbox"
+						checked={checked}
+						onChange={(e) => onCheckedChange(e.target.checked)}
+						disabled={!editing}
+						className={`${editing ? 'cursor-pointer' : 'pointer-events-none'} ${
+							!editing && checked ? 'disabled-checked-blue' : ''
+						}`}
+					/>
+					<span className="text-xs">{label}</span>
+				</label>
+			</span>
+			{typeof document !== 'undefined' &&
+				tip &&
+				hoverRect &&
+				createPortal(
+					<div
+						role="tooltip"
+						className="pointer-events-none fixed z-[10050] whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-xs text-white shadow-lg"
+						style={{
+							top: hoverRect.top - 6,
+							left: hoverRect.left + hoverRect.width / 2,
+							transform: 'translate(-50%, -100%)',
+						}}
+					>
+						{tip}
+					</div>,
+					document.body
+				)}
+		</>
+	);
+}
 
 /**
  * 화면 그리드 1행에 대응하는 F14020 실적 모델.
@@ -53,7 +143,7 @@ interface PerformanceData {
 	dischargeTime?: string;
 	/** 식사장소 ST_PLAC */
 	mealLocation: string;
-	/** 식사종류 ST_KIND: 1일반식 2죽 3유동식 */
+	/** 식사종류 PH_MEAL_KIND/ST_KIND: 1~7 ({@link MEAL_KIND_OPTIONS}) */
 	mealType: string;
 	/** GYN: '0'=외출, '1'=입원, '2'=외박 */
 	gyn: string;
@@ -77,6 +167,8 @@ interface PerformanceData {
 	specialNotes: string;
 	/** 오전/오후/저녁 간식 MGST, AGST, DGST: '1'=양호, '2'=이상 */
 	snackStatus: { morning: string; afternoon: string; evening: string };
+	/** 간식명 — F14020.MGVOL / AGVOL / DGVOL (호버 표시용) */
+	snackNames?: { morning: string; afternoon: string; evening: string };
 }
 
 /**
@@ -333,7 +425,7 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 		dischargeDate: toYmd(item.P_EDT),
 		dischargeTime: toHm(item.P_EDT_TM),
 		mealLocation: item.ST_PLAC || '',
-		mealType: item.ST_KIND || '1',
+		mealType: String(item.PH_MEAL_KIND || item.ST_KIND || '1').trim() || '1',
 		gyn,
 		gynStartTime: times.start,
 		gynEndTime: times.end,
@@ -352,6 +444,11 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 			morning: item.MGST || '1',
 			afternoon: item.AGST || '1',
 			evening: item.DGST || '1'
+		},
+		snackNames: {
+			morning: String(item.MGVOL ?? '').trim(),
+			afternoon: String(item.AGVOL ?? '').trim(),
+			evening: String(item.DGVOL ?? '').trim()
 		}
 	};
 }
@@ -364,11 +461,14 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
  * @returns pnum, 식사/간식, gyn, payComGu, ioTmInfo 등
  */
 function buildMealSavePayload(r: PerformanceData) {
+	const mealKind = String(r.mealType || '1').trim() || '1';
 	if (r.overnightOngoing) {
 		return {
 			pnum: r.pnum,
 			mealLocation: r.mealLocation,
-			mealType: r.mealType,
+			mealType: mealKind,
+			ST_KIND: mealKind,
+			PH_MEAL_KIND: mealKind,
 			gyn: '2',
 			mealStatus: r.mealStatus,
 			snackStatus: r.snackStatus,
@@ -391,7 +491,9 @@ function buildMealSavePayload(r: PerformanceData) {
 	return {
 		pnum: r.pnum,
 		mealLocation: r.mealLocation,
-		mealType: r.mealType,
+		mealType: mealKind,
+		ST_KIND: mealKind,
+		PH_MEAL_KIND: mealKind,
 		gyn: r.gyn,
 		mealStatus: r.mealStatus,
 		snackStatus: r.snackStatus,
@@ -421,6 +523,13 @@ export default function DailyBeneficiaryPerformance() {
 	const [searchResults, setSearchResults] = useState<{ [key: number | string]: any[] }>({});
 	const [showSearchResults, setShowSearchResults] = useState<{ [key: number | string]: boolean }>({});
 	const searchInputRefs = useRef<{ [key: number | string]: HTMLInputElement | null }>({});
+	/** 행 수급자명 검색 드롭다운 위치 (table sticky/overflow 클립 방지용 Portal) */
+	const [rowSearchDropdownLayout, setRowSearchDropdownLayout] = useState<{
+		rowId: number;
+		top: number;
+		left: number;
+		width: number;
+	} | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 10;
@@ -563,14 +672,49 @@ export default function DailyBeneficiaryPerformance() {
 		};
 	}, [editingRowId]);
 
-	// 행 삭제 함수
-	const handleDeleteRow = (id: number) => {
-		if (confirm('정말 삭제하시겠습니까?')) {
-			setCombinedData(combinedData.filter(row => row.id !== id));
+	// 행 삭제: DB(F14020) 삭제 후 화면 반영 (미저장 신규 행은 로컬만 제거)
+	const handleDeleteRow = async (id: number) => {
+		if (!confirm('정말 삭제하시겠습니까?')) return;
+
+		const row = combinedData.find((r) => r.id === id);
+		if (!row) return;
+
+		const removeLocal = () => {
+			setCombinedData((prev) => prev.filter((r) => r.id !== id));
 			if (editingRowId === id) {
 				setEditingRowId(null);
 				setEditingBackup(null);
 			}
+			if (selectedMember === id) setSelectedMember(null);
+		};
+
+		const pnum = String(row.pnum ?? '').trim();
+		// 수급자 미선택 신규 행 → DB에 없으므로 화면만 제거
+		if (!pnum) {
+			removeLocal();
+			return;
+		}
+
+		const svdt = String(row.svdt || selectedDate || '').trim();
+		if (!svdt) {
+			alert('삭제할 일자가 없습니다.');
+			return;
+		}
+
+		try {
+			const res = await fetch(
+				`/api/f14020?pnum=${encodeURIComponent(pnum)}&svdt=${encodeURIComponent(svdt)}`,
+				{ method: 'DELETE' }
+			);
+			const json = await res.json();
+			if (!json?.success) {
+				alert(`삭제 실패: ${json?.error || '알 수 없는 오류'}`);
+				return;
+			}
+			removeLocal();
+		} catch (e) {
+			console.error('삭제 오류:', e);
+			alert('삭제 중 오류가 발생했습니다.');
 		}
 	};
 
@@ -606,7 +750,9 @@ export default function DailyBeneficiaryPerformance() {
 				alert('외박 시 나간 시간을 입력해주세요.');
 				return;
 			}
-			const payload = buildMealSavePayload(row);
+			// 저장 시 외출/외박 시각 기준으로 식사·간식 체크 반영
+			const rowToSave = withAutoMealSnack(row);
+			const payload = buildMealSavePayload(rowToSave);
 			try {
 				const saveRes = await fetch('/api/f14020', {
 					method: 'POST',
@@ -622,11 +768,11 @@ export default function DailyBeneficiaryPerformance() {
 					prev.map((r) =>
 						r.id === id
 							? {
-									...r,
+									...rowToSave,
 									payComGu: payload.payComGu,
-									gynStartTime: row.gyn === '0' || row.gyn === '2' ? r.gynStartTime : '',
-									gynEndTime: row.gyn === '0' ? r.gynEndTime : '',
-									returnTime: row.returnTime || ''
+									gynStartTime: rowToSave.gyn === '0' || rowToSave.gyn === '2' ? rowToSave.gynStartTime : '',
+									gynEndTime: rowToSave.gyn === '0' ? rowToSave.gynEndTime : '',
+									returnTime: rowToSave.returnTime || ''
 								}
 							: r
 					)
@@ -639,9 +785,12 @@ export default function DailyBeneficiaryPerformance() {
 				alert('저장 중 오류가 발생했습니다.');
 			}
 		} else {
+			// 수정 버튼: 진입 시 외출/외박 시각 기준으로 식사·간식 체크
 			const row = combinedData.find((r) => r.id === id);
 			if (row) {
-				setEditingBackup(JSON.parse(JSON.stringify(row)) as PerformanceData);
+				const adjusted = withAutoMealSnack(row);
+				setCombinedData((prev) => prev.map((r) => (r.id === id ? adjusted : r)));
+				setEditingBackup(JSON.parse(JSON.stringify(adjusted)) as PerformanceData);
 			} else {
 				setEditingBackup(null);
 			}
@@ -689,6 +838,12 @@ export default function DailyBeneficiaryPerformance() {
 		setEditingRowId(newRow.id); // 새로 추가된 행을 수정 모드로 설정
 		setEditingBackup(JSON.parse(JSON.stringify(newRow)) as PerformanceData);
 		setCurrentPage(1); // 첫 페이지로 이동
+	};
+
+	/** 외출/외박 시각 기준 식사·간식 체크 (수정 진입·저장 시에만 사용) */
+	const withAutoMealSnack = <T extends PerformanceData>(row: T): T => {
+		const { mealStatus, snackStatus } = mealSnackStatusFromOutingFields(row);
+		return { ...row, mealStatus, snackStatus };
 	};
 
 	const applyGynChange = (rowId: number, nextGyn: string) => {
@@ -1020,8 +1175,7 @@ export default function DailyBeneficiaryPerformance() {
 				const morningSnack = row.snackStatus.morning === '1' ? '○' : '';
 				const afternoonSnack = row.snackStatus.afternoon === '1' ? '○' : '';
 				const eveningSnack = row.snackStatus.evening === '1' ? '○' : '';
-				const mealTypeText =
-					row.mealType === '1' ? '일반식' : row.mealType === '2' ? '죽' : row.mealType === '3' ? '유동식(미음)' : '';
+				const mealTypeText = mealKindLabel(row.mealType);
 
 				return `
 								<tr>
@@ -1315,6 +1469,42 @@ export default function DailyBeneficiaryPerformance() {
 		};
 	}, [showMemberSearchResults, memberSearchResults]);
 
+	// 행 수급자명 검색 드롭다운 위치 (sticky 셀·가로스크롤에 가려지지 않도록 body Portal)
+	useLayoutEffect(() => {
+		const openRowId = Object.keys(showSearchResults)
+			.map(Number)
+			.find((id) => showSearchResults[id] && (searchResults[id]?.length ?? 0) > 0);
+
+		if (openRowId == null || !Number.isFinite(openRowId)) {
+			setRowSearchDropdownLayout(null);
+			return;
+		}
+
+		const updateLayout = () => {
+			const el = searchInputRefs.current[openRowId];
+			if (!el) {
+				setRowSearchDropdownLayout(null);
+				return;
+			}
+			const r = el.getBoundingClientRect();
+			setRowSearchDropdownLayout({
+				rowId: openRowId,
+				top: r.bottom + 2,
+				left: r.left,
+				width: Math.max(r.width, 200)
+			});
+		};
+
+		updateLayout();
+		const onScrollOrResize = () => updateLayout();
+		window.addEventListener('scroll', onScrollOrResize, true);
+		window.addEventListener('resize', onScrollOrResize);
+		return () => {
+			window.removeEventListener('scroll', onScrollOrResize, true);
+			window.removeEventListener('resize', onScrollOrResize);
+		};
+	}, [showSearchResults, searchResults]);
+
 	// 수급자 선택 (모달용)
 	const handleSelectMemberForPrint = (member: any) => {
 		setSelectedMemberForPrint(member);
@@ -1514,8 +1704,8 @@ export default function DailyBeneficiaryPerformance() {
 							const morningSnack = row.snackStatus.morning === '1' ? '○' : '';
 							const afternoonSnack = row.snackStatus.afternoon === '1' ? '○' : '';
 							const eveningSnack = row.snackStatus.evening === '1' ? '○' : '';
-							const mealTypeText = row.mealType === '1' ? '일반식' : row.mealType === '2' ? '죽' : row.mealType === '3' ? '유동식(미음)' : '';
-							
+							const mealTypeText = mealKindLabel(row.mealType);
+
 							return `
 								<tr>
 									<td>${row.name || ''}</td>
@@ -1664,7 +1854,7 @@ export default function DailyBeneficiaryPerformance() {
 									<th className="sticky left-0 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">연번</th>
 									<th className="sticky left-10 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">수급자명(생년월일)</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">식사장소</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-28">식사종류</th>
+									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-40">식사종류</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 min-w-[320px]">입원/외출/외박</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">식사상태</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">간식상태</th>
@@ -1756,40 +1946,6 @@ export default function DailyBeneficiaryPerformance() {
 													<span className="text-xs text-gray-500 mt-1">({row.birthDate})</span>
 												)}
 											</div>
-											{/* 검색 결과 드롭다운 - fixed 포지셔닝으로 표 밖에 표시 */}
-											{showSearchResults[row.id] && searchResults[row.id] && searchResults[row.id].length > 0 && searchInputRefs.current[row.id] && (() => {
-												const input = searchInputRefs.current[row.id];
-												const rect = input?.getBoundingClientRect();
-												return (
-													<div 
-														className="fixed z-[9999] bg-white border border-blue-300 rounded shadow-lg max-h-60 overflow-y-auto text-black"
-														style={{
-															top: rect ? `${rect.bottom + window.scrollY}px` : '0',
-															left: rect ? `${rect.left + window.scrollX}px` : '0',
-															width: rect ? `${rect.width}px` : 'auto',
-															minWidth: '200px'
-														}}
-													>
-														{searchResults[row.id].map((member: any, memberIdx: number) => (
-															<div
-																key={memberIdx}
-																onMouseDown={(e) => {
-																	e.preventDefault();
-																	e.stopPropagation();
-																	handleSelectMember(row.id, member);
-																}}
-																className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-b-0 text-black"
-															>
-																<div className="font-medium text-black">{member.P_NM}</div>
-																<div className="text-xs text-black">
-																	{member.P_BRDT && `(${formatDate(member.P_BRDT)})`}
-																	{/* {member.PNUM && ` | 수급자번호: ${member.PNUM}`} */}
-																</div>
-															</div>
-														))}
-													</div>
-												);
-											})()}
 										</td>
 										{/* 식사장소 */}
 										<td className="text-center px-3 py-3 border-r border-blue-100 w-32">
@@ -1810,8 +1966,8 @@ export default function DailyBeneficiaryPerformance() {
 												}`}
 											/>
 										</td>
-										{/* 식사종류 */}
-										<td className="text-center px-3 py-3 border-r border-blue-100 w-28">
+										{/* 식사종류 (PH_MEAL_KIND) */}
+										<td className="text-center px-3 py-3 border-r border-blue-100 w-40">
 											<select 
 												value={row.mealType}
 												onChange={(e) => {
@@ -1826,9 +1982,11 @@ export default function DailyBeneficiaryPerformance() {
 													editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 												}`}
 											>
-												<option value="1">일반식</option>
-												<option value="2">죽</option>
-												<option value="3">유동식(미음)</option>
+												{MEAL_KIND_OPTIONS.map((opt) => (
+													<option key={opt.value} value={opt.value}>
+														{opt.value}. {opt.label}
+													</option>
+												))}
 											</select>
 										</td>
 										{/* 입원/외출/외박 (GYN) — 입·퇴소/외박중은 문구만 표시 */}
@@ -1995,54 +2153,72 @@ export default function DailyBeneficiaryPerformance() {
 												</label>
 											</div>
 										</td>
-										{/* 간식상태 */}
+										{/* 간식상태 — 체크된 항목만 MGVOL/AGVOL/DGVOL 호버 표시 */}
 										<td className="text-center px-3 py-3 border-r border-blue-100">
 											<div className="flex justify-center gap-3" onClick={(e) => e.stopPropagation()}>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.snackStatus.morning === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, snackStatus: { ...r.snackStatus, morning: e.target.checked ? '1' : '2' } } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.morning === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">오전</span>
-												</label>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.snackStatus.afternoon === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, snackStatus: { ...r.snackStatus, afternoon: e.target.checked ? '1' : '2' } } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.afternoon === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">오후</span>
-												</label>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.snackStatus.evening === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, snackStatus: { ...r.snackStatus, evening: e.target.checked ? '1' : '2' } } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.evening === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">저녁</span>
-												</label>
+												<SnackStatusCheck
+													label="오전"
+													checked={row.snackStatus.morning === '1'}
+													snackName={row.snackNames?.morning}
+													editing={editingRowId === row.id}
+													onCheckedChange={(checked) => {
+														setCombinedData((prev) =>
+															prev.map((r) =>
+																r.id === row.id
+																	? {
+																			...r,
+																			snackStatus: {
+																				...r.snackStatus,
+																				morning: checked ? '1' : '2',
+																			},
+																		}
+																	: r
+															)
+														);
+													}}
+												/>
+												<SnackStatusCheck
+													label="오후"
+													checked={row.snackStatus.afternoon === '1'}
+													snackName={row.snackNames?.afternoon}
+													editing={editingRowId === row.id}
+													onCheckedChange={(checked) => {
+														setCombinedData((prev) =>
+															prev.map((r) =>
+																r.id === row.id
+																	? {
+																			...r,
+																			snackStatus: {
+																				...r.snackStatus,
+																				afternoon: checked ? '1' : '2',
+																			},
+																		}
+																	: r
+															)
+														);
+													}}
+												/>
+												<SnackStatusCheck
+													label="저녁"
+													checked={row.snackStatus.evening === '1'}
+													snackName={row.snackNames?.evening}
+													editing={editingRowId === row.id}
+													onCheckedChange={(checked) => {
+														setCombinedData((prev) =>
+															prev.map((r) =>
+																r.id === row.id
+																	? {
+																			...r,
+																			snackStatus: {
+																				...r.snackStatus,
+																				evening: checked ? '1' : '2',
+																			},
+																		}
+																	: r
+															)
+														);
+													}}
+												/>
 											</div>
 										</td>
 										<td className="text-center px-3 py-3 border-r border-blue-100 w-80">
@@ -2444,6 +2620,39 @@ export default function DailyBeneficiaryPerformance() {
 					</div>
 				</div>
 			)}
+			{/* 행 수급자명 검색 드롭다운 — body Portal로 표/sticky 셀에 가려지지 않음 */}
+			{typeof document !== 'undefined' &&
+				rowSearchDropdownLayout &&
+				showSearchResults[rowSearchDropdownLayout.rowId] &&
+				(searchResults[rowSearchDropdownLayout.rowId]?.length ?? 0) > 0 &&
+				createPortal(
+					<div
+						className="fixed z-[10000] bg-white border border-blue-300 rounded shadow-lg max-h-60 overflow-y-auto text-black"
+						style={{
+							top: rowSearchDropdownLayout.top,
+							left: rowSearchDropdownLayout.left,
+							width: rowSearchDropdownLayout.width
+						}}
+					>
+						{searchResults[rowSearchDropdownLayout.rowId].map((member: any, memberIdx: number) => (
+							<div
+								key={memberIdx}
+								onMouseDown={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+									handleSelectMember(rowSearchDropdownLayout.rowId, member);
+								}}
+								className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-b-0 text-black"
+							>
+								<div className="font-medium text-black">{member.P_NM}</div>
+								<div className="text-xs text-black">
+									{member.P_BRDT && `(${formatDate(member.P_BRDT)})`}
+								</div>
+							</div>
+						))}
+					</div>,
+					document.body
+				)}
 		</div>
 	);
 }

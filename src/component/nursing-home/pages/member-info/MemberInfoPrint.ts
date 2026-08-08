@@ -111,11 +111,20 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 9pt
 </html>`;
 }
 
+/** 수급자카드 출력용 질병내역(F30030) 행 */
+export interface RecipientCardDiseaseRow {
+	JDES?: string;
+	JDT?: string;
+	ETC?: string;
+	SEQ?: number | string;
+}
+
 /** V10010C(수급자카드) 출력 HTML */
 export function buildRecipientCardPrintHtml(
 	selectedMember: MemberData,
 	card: MemberData,
-	instName: string
+	instName: string,
+	diseases: RecipientCardDiseaseRow[] = []
 ): string {
 	const memberName = String(card.name || selectedMember.P_NM || '').trim();
 	const title = `${memberName} - 수급자카드`;
@@ -155,6 +164,19 @@ export function buildRecipientCardPrintHtml(
 	const address = card.address || '';
 	const homePhone = card.homePhone || '';
 	const addrDisp = [zip, address].filter(Boolean).join(' ');
+
+	const diseaseRowsHtml =
+		diseases.length === 0
+			? `<tr><td class="center" colspan="3">등록된 질병내역이 없습니다</td></tr>`
+			: diseases
+					.map(
+						(d) => `<tr>
+          <td>${escapeHtml(String(d.JDES || '').trim() || '-')}</td>
+          <td class="center nowrap">${escapeHtml(String(d.JDT || '').trim() || '-')}</td>
+          <td>${escapeHtml(String(d.ETC || '').trim() || '-')}</td>
+        </tr>`
+					)
+					.join('');
 
 	return `<!doctype html>
 <html lang="ko">
@@ -238,14 +260,15 @@ export function buildRecipientCardPrintHtml(
       height: 7.5mm;
     }
 
-    .guardTable, .contractTable {
+    .guardTable, .contractTable, .diseaseTable {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
       font-size: 12px;
     }
     .guardTable th, .guardTable td,
-    .contractTable th, .contractTable td {
+    .contractTable th, .contractTable td,
+    .diseaseTable th, .diseaseTable td {
       border-top: 1px solid #000;
       border-bottom: 1px solid #000;
       padding: 3px 5px;
@@ -253,7 +276,8 @@ export function buildRecipientCardPrintHtml(
     }
 
     .guardTable thead th,
-    .contractTable thead th {
+    .contractTable thead th,
+    .diseaseTable thead th {
       border-top: 2px solid #000;
       border-bottom: 1px solid #000;
       font-weight: 700;
@@ -262,9 +286,17 @@ export function buildRecipientCardPrintHtml(
     }
 
     .guardTable tbody td,
-    .contractTable tbody td {
+    .contractTable tbody td,
+    .diseaseTable tbody td {
       border-top: 0;
       border-bottom: 1px solid #000;
+    }
+
+    .diseaseTable thead th {
+      text-align: center;
+    }
+    .diseaseTable tbody td {
+      word-break: break-word;
     }
 
     .muted { color: #000; }
@@ -417,6 +449,20 @@ export function buildRecipientCardPrintHtml(
           <td class="right">${escapeHtml(selectedMember.ETAMT || '')}</td>
           <td class="right">${escapeHtml(selectedMember.ESAMT || '')}</td>
         </tr>
+      </tbody>
+    </table>
+
+    <div class="sectionTitle">질병내역</div>
+    <table class="diseaseTable" aria-label="질병내역">
+      <thead>
+        <tr>
+          <th style="width:45%;">진단명</th>
+          <th style="width:20%;">진단일자</th>
+          <th style="width:35%;">비고</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${diseaseRowsHtml}
       </tbody>
     </table>
   </div>

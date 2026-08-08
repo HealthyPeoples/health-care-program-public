@@ -355,11 +355,26 @@ export function useMemberInfo() {
 
 	const handleFieldChange = (field: string, value: any) => {
 		hasUnsavedChanges.current = true;
-		setEditedMember((prev) => (prev ? { ...prev, [field]: value } : null));
+		setEditedMember((prev) => {
+			if (!prev) return null;
+			const next = { ...prev, [field]: value };
+			// 퇴소일자 입력 시 상태를 퇴소(9)로 자동 변경
+			if (field === 'P_EDT' && String(value ?? '').trim() !== '') {
+				next.P_ST = '9';
+			}
+			return next;
+		});
 	};
 
 	const handleNewMemberFieldChange = (field: string, value: any) => {
-		setNewMember((prev) => ({ ...prev, [field]: value }));
+		setNewMember((prev) => {
+			const next = { ...prev, [field]: value };
+			// 퇴소일자 입력 시 상태를 퇴소(9)로 자동 변경
+			if (field === 'P_EDT' && String(value ?? '').trim() !== '') {
+				next.P_ST = '9';
+			}
+			return next;
+		});
 	};
 
 	// 연락처는 P_HP/P_TEL 동시 반영
@@ -756,8 +771,11 @@ export function useMemberInfo() {
 		}
 
 		try {
-			const res = await fetch(`/api/v10010c?pnum=${encodeURIComponent(pnum)}`);
-			const json = await res.json();
+			const [cardRes, diseaseRes] = await Promise.all([
+				fetch(`/api/v10010c?pnum=${encodeURIComponent(pnum)}`),
+				fetch(`/api/f30030?pnum=${encodeURIComponent(pnum)}`, { cache: 'no-store' }),
+			]);
+			const json = await cardRes.json();
 			if (!json.success) {
 				alert(json.error || 'V10010C(수급자카드) 조회에 실패했습니다.');
 				return;
@@ -768,11 +786,21 @@ export function useMemberInfo() {
 				return;
 			}
 
+			let diseases: Array<{ JDES?: string; JDT?: string; ETC?: string; SEQ?: number | string }> = [];
+			try {
+				const diseaseJson = await diseaseRes.json();
+				if (diseaseJson?.success && Array.isArray(diseaseJson.data)) {
+					diseases = diseaseJson.data;
+				}
+			} catch (diseaseErr) {
+				console.warn('질병내역(F30030) 조회 경고:', diseaseErr);
+			}
+
 			const instName =
 				institutions.find((i) => String(i.ANCD) === String(selectedMember.ANCD))?.ANNM ||
 				String(selectedMember.ANCD ?? '');
 
-			const html = buildRecipientCardPrintHtml(selectedMember, card, instName);
+			const html = buildRecipientCardPrintHtml(selectedMember, card, instName, diseases);
 			openPrintPreviewWindow(html);
 		} catch (e) {
 			console.error(e);

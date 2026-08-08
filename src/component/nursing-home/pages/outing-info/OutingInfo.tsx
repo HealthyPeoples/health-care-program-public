@@ -109,9 +109,16 @@ function emptyRow(id: number, serialNo: number, selectedDate = ""): OutingRow {
 	};
 }
 
+type ViewMode = "day" | "month";
+
 function todayYmd(): string {
 	const d = new Date();
 	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function todayYm(): string {
+	const d = new Date();
+	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
 }
 
 function shiftYmd(ymd: string, days: number): string {
@@ -120,8 +127,22 @@ function shiftYmd(ymd: string, days: number): string {
 	return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
+function shiftYm(ym: string, months: number): string {
+	const [y, m] = ym.split("-").map(Number);
+	const date = new Date(y, (m || 1) - 1 + months, 1);
+	return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
+}
+
+function formatYmLabel(ym: string): string {
+	if (!/^\d{4}-\d{2}$/.test(ym)) return ym;
+	return `${ym.slice(0, 4)}년 ${Number(ym.slice(5, 7))}월`;
+}
+
 export default function OutingInfo() {
+	/** 기본 진입: 월단위 */
+	const [viewMode, setViewMode] = useState<ViewMode>("month");
 	const [selectedDate, setSelectedDate] = useState(todayYmd);
+	const [selectedMonth, setSelectedMonth] = useState(todayYm);
 	const [rows, setRows] = useState<OutingRow[]>([]);
 	const [nextId, setNextId] = useState(1);
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
@@ -132,15 +153,44 @@ export default function OutingInfo() {
 	const [showSearchResults, setShowSearchResults] = useState<{ [key: number]: boolean }>({});
 	const searchInputRefs = useRef<{ [key: number]: HTMLInputElement | null }>({});
 
-	const handleDateChange = (days: number) => {
-		setSelectedDate((prev) => shiftYmd(prev, days));
+	const itemsPerPage = 5;
+	const [currentPage, setCurrentPage] = useState(1);
+	const totalPages = Math.max(1, Math.ceil(rows.length / itemsPerPage));
+	const pageStart = (currentPage - 1) * itemsPerPage;
+	const currentRows = rows.slice(pageStart, pageStart + itemsPerPage);
+
+	const handlePeriodChange = (delta: number) => {
+		if (viewMode === "day") {
+			setSelectedDate((prev) => shiftYmd(prev, delta));
+		} else {
+			setSelectedMonth((prev) => shiftYm(prev, delta));
+		}
 		setEditingRowId(null);
+		setCurrentPage(1);
 	};
 
-	const fetchList = async (svdt: string) => {
+	const switchViewMode = (mode: ViewMode) => {
+		if (mode === viewMode) return;
+		if (mode === "day") {
+			if (/^\d{4}-\d{2}$/.test(selectedMonth) && !selectedDate.startsWith(selectedMonth)) {
+				setSelectedDate(`${selectedMonth}-01`);
+			}
+		} else if (/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
+			setSelectedMonth(selectedDate.slice(0, 7));
+		}
+		setViewMode(mode);
+		setEditingRowId(null);
+		setCurrentPage(1);
+	};
+
+	const fetchList = async () => {
 		setLoading(true);
 		try {
-			const res = await fetch(`/api/outing-info?svdt=${encodeURIComponent(svdt)}`);
+			const url =
+				viewMode === "day"
+					? `/api/outing-info?svdt=${encodeURIComponent(selectedDate)}`
+					: `/api/outing-info?yyyymm=${encodeURIComponent(selectedMonth.replace(/-/g, ""))}`;
+			const res = await fetch(url);
 			const json = await res.json();
 			if (!json?.success || !Array.isArray(json.data)) {
 				setRows([]);
@@ -149,19 +199,26 @@ export default function OutingInfo() {
 			const mapped = json.data.map((item: any, idx: number) => mapApiToRow(item, idx));
 			setRows(mapped);
 			setNextId(mapped.length > 0 ? Math.max(...mapped.map((r: OutingRow) => r.id)) + 1 : 1);
+			setCurrentPage(1);
 		} catch (e) {
 			console.error("외출/외박 목록 조회 오류:", e);
 			alert("목록 조회 중 오류가 발생했습니다.");
 			setRows([]);
+			setCurrentPage(1);
 		} finally {
 			setLoading(false);
 		}
 	};
 
 	useEffect(() => {
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return;
-		fetchList(selectedDate);
-	}, [selectedDate]);
+		if (viewMode === "day") {
+			if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return;
+		} else if (!/^\d{4}-\d{2}$/.test(selectedMonth)) {
+			return;
+		}
+		void fetchList();
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- 기간/모드 변경 시만 재조회
+	}, [viewMode, selectedDate, selectedMonth]);
 
 	const updateRow = (id: number, patch: Partial<OutingRow>) => {
 		setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -221,11 +278,19 @@ export default function OutingInfo() {
 		}
 	};
 
+	const defaultRowDate = () => {
+		if (viewMode === "day") return selectedDate;
+		const today = todayYmd();
+		if (today.startsWith(selectedMonth)) return today;
+		return `${selectedMonth}-01`;
+	};
+
 	const handleAddRow = () => {
-		const newRow = emptyRow(nextId, rows.length + 1, selectedDate);
+		const newRow = emptyRow(nextId, rows.length + 1, defaultRowDate());
 		setRows((prev) => [...prev, newRow]);
 		setNextId((n) => n + 1);
 		setEditingRowId(newRow.id);
+		setCurrentPage(Math.ceil((rows.length + 1) / itemsPerPage));
 	};
 
 	const handleDeleteRow = async (row: OutingRow) => {
@@ -246,11 +311,14 @@ export default function OutingInfo() {
 				return;
 			}
 		}
-		setRows((prev) =>
-			prev
+		setRows((prev) => {
+			const next = prev
 				.filter((r) => r.id !== row.id)
-				.map((r, idx) => ({ ...r, serialNo: idx + 1 }))
-		);
+				.map((r, idx) => ({ ...r, serialNo: idx + 1 }));
+			const maxPage = Math.max(1, Math.ceil(next.length / itemsPerPage));
+			setCurrentPage((p) => Math.min(p, maxPage));
+			return next;
+		});
 		if (editingRowId === row.id) setEditingRowId(null);
 	};
 
@@ -312,7 +380,7 @@ export default function OutingInfo() {
 					alert(`저장 실패: ${json?.error || "알 수 없는 오류"}`);
 					return;
 				}
-				await fetchList(selectedDate);
+				await fetchList();
 				setEditingRowId(null);
 				alert("저장되었습니다");
 			} catch (e) {
@@ -346,11 +414,28 @@ export default function OutingInfo() {
 			})
 			.join("");
 
-		const weekdayLabels = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
-		const dayObj = new Date(`${selectedDate}T12:00:00`);
-		const dayName = weekdayLabels[dayObj.getDay()] || "";
+		const periodLabel =
+			viewMode === "day"
+				? (() => {
+						const weekdayLabels = [
+							"일요일",
+							"월요일",
+							"화요일",
+							"수요일",
+							"목요일",
+							"금요일",
+							"토요일",
+						];
+						const dayObj = new Date(`${selectedDate}T12:00:00`);
+						const dayName = weekdayLabels[dayObj.getDay()] || "";
+						return `일자: ${selectedDate} ${dayName}`;
+					})()
+				: `기준월: ${formatYmLabel(selectedMonth)}`;
 
-		const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>외출/외박 처리</title>
+		const printTitle =
+			viewMode === "day" ? "외출/외박 처리 대장" : "외출/외박 처리 대장 (월간)";
+
+		const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${printTitle}</title>
       <style>
         body{font-family:'Malgun Gothic',sans-serif;font-size:11pt;margin:12mm}
         h1{text-align:center;font-size:16pt;margin:0 0 12px}
@@ -360,8 +445,8 @@ export default function OutingInfo() {
         th{background:#eef}
         @page{size:A4 landscape;margin:10mm}
       </style></head><body>
-      <h1>외출/외박 처리 대장</h1>
-      <div class="meta">일자: ${selectedDate} ${dayName}</div>
+      <h1>${printTitle}</h1>
+      <div class="meta">${periodLabel}</div>
       <table>
         <thead>
           <tr>
@@ -387,29 +472,71 @@ export default function OutingInfo() {
 		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="mx-auto w-full max-w-[1600px] min-w-0 p-3 sm:p-4">
 				<div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 pb-3 relative">
+					{/* 일단위 / 월단위 전환 */}
+					<div className="flex rounded border border-blue-300 overflow-hidden text-sm shrink-0">
+						<button
+							type="button"
+							onClick={() => switchViewMode("day")}
+							className={`px-3 py-1.5 font-medium ${
+								viewMode === "day"
+									? "bg-blue-200 text-blue-900"
+									: "bg-white text-blue-900/80 hover:bg-blue-50"
+							}`}
+						>
+							일단위
+						</button>
+						<button
+							type="button"
+							onClick={() => switchViewMode("month")}
+							className={`px-3 py-1.5 font-medium border-l border-blue-300 ${
+								viewMode === "month"
+									? "bg-blue-200 text-blue-900"
+									: "bg-white text-blue-900/80 hover:bg-blue-50"
+							}`}
+						>
+							월단위
+						</button>
+					</div>
+
 					<div className="w-full sm:w-auto sm:absolute sm:left-1/2 sm:-translate-x-1/2 flex flex-wrap items-center justify-center gap-4">
 						<button
 							type="button"
-							onClick={() => handleDateChange(-1)}
+							onClick={() => handlePeriodChange(-1)}
 							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
+							title={viewMode === "day" ? "이전 일" : "이전 월"}
 						>
 							<span>◀</span>
 						</button>
 						<div className="flex items-center gap-2">
-							<input
-								type="date"
-								value={selectedDate}
-								onChange={(e) => {
-									setSelectedDate(e.target.value);
-									setEditingRowId(null);
-								}}
-								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white text-blue-900"
-							/>
+							{viewMode === "day" ? (
+								<input
+									type="date"
+									value={selectedDate}
+									onChange={(e) => {
+										setSelectedDate(e.target.value);
+										setEditingRowId(null);
+										setCurrentPage(1);
+									}}
+									className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white text-blue-900"
+								/>
+							) : (
+								<input
+									type="month"
+									value={selectedMonth}
+									onChange={(e) => {
+										setSelectedMonth(e.target.value);
+										setEditingRowId(null);
+										setCurrentPage(1);
+									}}
+									className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white text-blue-900"
+								/>
+							)}
 						</div>
 						<button
 							type="button"
-							onClick={() => handleDateChange(1)}
+							onClick={() => handlePeriodChange(1)}
 							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
+							title={viewMode === "day" ? "다음 일" : "다음 월"}
 						>
 							<span>▶</span>
 						</button>
@@ -421,7 +548,7 @@ export default function OutingInfo() {
 							disabled={loading || rows.length === 0}
 							className="px-4 py-1.5 text-sm border border-orange-400 rounded bg-orange-200 hover:bg-orange-300 text-orange-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
-							외출/외박 대장 출력
+							{viewMode === "day" ? "외출/외박 대장 출력" : "월간 외출/외박 대장 출력"}
 						</button>
 					</div>
 				</div>
@@ -443,8 +570,16 @@ export default function OutingInfo() {
 				</div> */}
 
 				<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
-					<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
-						<h2 className="text-xl font-semibold text-blue-900">외출/외박 처리</h2>
+					<div className="bg-blue-100 border-b border-blue-300 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+						<h2 className="text-xl font-semibold text-blue-900">
+							외출/외박 처리
+							<span className="ml-2 text-sm font-medium text-blue-900/70">
+								{viewMode === "day"
+									? `(일단위 · ${selectedDate})`
+									: `(월단위 · ${formatYmLabel(selectedMonth)})`}
+							</span>
+						</h2>
+						<span className="text-xs text-blue-900/60">{rows.length}건</span>
 					</div>
 					<div className="overflow-x-auto w-full min-w-0">
 						<style>{`
@@ -501,7 +636,7 @@ export default function OutingInfo() {
 										</td>
 									</tr>
 								) : (
-									rows.map((row) => (
+									currentRows.map((row) => (
 										<tr key={row.id} className="border-b border-blue-50 hover:bg-blue-50">
 											<td className="text-center px-3 py-3 border-r border-blue-100">{row.serialNo}</td>
 											<td className="text-center px-3 py-3 border-r border-blue-100 relative">
@@ -734,6 +869,75 @@ export default function OutingInfo() {
 							</tbody>
 						</table>
 					</div>
+
+					{/* 페이지네이션 (5건 단위) */}
+					{rows.length > 0 && (
+						<div className="flex flex-wrap items-center justify-center gap-2 px-4 py-3 border-t border-blue-200 bg-blue-50/40">
+							<button
+								type="button"
+								onClick={() => setCurrentPage(1)}
+								disabled={currentPage <= 1}
+								className="px-2 py-1 text-xs border border-blue-300 rounded bg-white text-blue-900 disabled:opacity-40"
+							>
+								처음
+							</button>
+							<button
+								type="button"
+								onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+								disabled={currentPage <= 1}
+								className="px-2 py-1 text-xs border border-blue-300 rounded bg-white text-blue-900 disabled:opacity-40"
+							>
+								이전
+							</button>
+							{Array.from({ length: totalPages }, (_, i) => i + 1)
+								.filter((pageNum) => {
+									if (totalPages <= 7) return true;
+									if (pageNum === 1 || pageNum === totalPages) return true;
+									return Math.abs(pageNum - currentPage) <= 2;
+								})
+								.map((pageNum, idx, arr) => {
+									const prev = arr[idx - 1];
+									const showEllipsis = prev != null && pageNum - prev > 1;
+									return (
+										<span key={pageNum} className="inline-flex items-center gap-1">
+											{showEllipsis && (
+												<span className="px-1 text-blue-900/50 text-xs">…</span>
+											)}
+											<button
+												type="button"
+												onClick={() => setCurrentPage(pageNum)}
+												className={`min-w-[28px] px-2 py-1 text-xs border rounded font-medium ${
+													currentPage === pageNum
+														? "border-blue-500 bg-blue-200 text-blue-900"
+														: "border-blue-300 bg-white text-blue-900 hover:bg-blue-50"
+												}`}
+											>
+												{pageNum}
+											</button>
+										</span>
+									);
+								})}
+							<button
+								type="button"
+								onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+								disabled={currentPage >= totalPages}
+								className="px-2 py-1 text-xs border border-blue-300 rounded bg-white text-blue-900 disabled:opacity-40"
+							>
+								다음
+							</button>
+							<button
+								type="button"
+								onClick={() => setCurrentPage(totalPages)}
+								disabled={currentPage >= totalPages}
+								className="px-2 py-1 text-xs border border-blue-300 rounded bg-white text-blue-900 disabled:opacity-40"
+							>
+								마지막
+							</button>
+							<span className="text-xs text-blue-900/70 ml-2 tabular-nums">
+								{currentPage}/{totalPages}페이지 · 전체 {rows.length}건 (페이지당 {itemsPerPage}건)
+							</span>
+						</div>
+					)}
 				</div>
 
 				<div className="flex justify-center mt-4">

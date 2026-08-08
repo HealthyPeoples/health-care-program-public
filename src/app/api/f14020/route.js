@@ -4,6 +4,7 @@
  * @description
  * 식사·케어 필드 MERGE, 전체추가(generate), 외박복귀(returnFromOvernight),
  * 입퇴소 급여50% 동기화(syncAdmitDischargePay), 간식일괄(bulkSnack)을 처리합니다.
+ * F14020 생성·저장 시 활력증상(F30120) 공란 명단도 함께 보장합니다.
  * 모든 핸들러는 `assertAnCdMatchesSession`으로 세션 ANCD를 검사합니다.
  *
  * @actions
@@ -25,6 +26,9 @@ const {
 	syncOutingFromF14020Row,
 	syncOutingOnF14020Delete
 } = require('../../../lib/outingF14020Sync');
+
+const { ensureF30120FromF14020 } = require('../../../lib/ensureF30120FromF14020');
+const { applyMealSnackByPresence } = require('../../../lib/applyMealSnackByPresence');
 
 /** @type {string[]} 일일 케어(요양·간호·재활 등) 컬럼 — DailyLongtermCare와 공유 */
 const CARE_COLUMNS = [
@@ -545,6 +549,22 @@ export async function POST(req) {
 
 			const overnightPending = await fetchOvernightPending(pool, gate.sessionAncd, svdtIso);
 
+			// 외출·외박 시각 기준 식사/간식 체크 자동 반영 (원내 없으면 미체크)
+			let mealSnackApplied = { ok: false, updated: 0 };
+			try {
+				mealSnackApplied = await applyMealSnackByPresence(pool, gate.sessionAncd, svdtIso);
+			} catch (mealErr) {
+				console.warn('전체추가 후 식사/간식 자동 반영 경고:', mealErr);
+			}
+
+			// 당일 급여실적 명단 → 활력증상(F30120) 공란 명단 보장
+			let vitalSeed = { ok: false, inserted: 0 };
+			try {
+				vitalSeed = await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso);
+			} catch (vitalErr) {
+				console.warn('전체추가 후 F30120 공란 생성 경고:', vitalErr);
+			}
+
 			return jsonOk({
 				success: true,
 				action: 'generate',
@@ -552,7 +572,9 @@ export async function POST(req) {
 				svdt: svdtIso,
 				overnightPending,
 				overnightPendingCount: overnightPending.length,
-				overnightRegisteredCount: registered.length
+				overnightRegisteredCount: registered.length,
+				mealSnackUpdated: mealSnackApplied.updated,
+				vitalSignsSeeded: vitalSeed.inserted
 			});
 		}
 
@@ -643,6 +665,13 @@ export async function POST(req) {
 				results.push({ index: i, pnum, ok: true, returnTime, payComGu });
 			}
 
+			const okPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
+			try {
+				await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, okPnums);
+			} catch (vitalErr) {
+				console.warn('외박복귀 후 F30120 공란 생성 경고:', vitalErr);
+			}
+
 			return jsonOk({
 				success: true,
 				action: 'returnFromOvernight',
@@ -695,6 +724,13 @@ export async function POST(req) {
 				`);
 
 				results.push({ index: i, pnum, ok: true, kind, time, payComGu });
+			}
+
+			const okPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
+			try {
+				await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, okPnums);
+			} catch (vitalErr) {
+				console.warn('입·퇴소 동기화 후 F30120 공란 생성 경고:', vitalErr);
 			}
 
 			return jsonOk({
@@ -866,6 +902,13 @@ export async function POST(req) {
 					console.warn('F14020 → OUTING_INFO 동기화 경고:', syncErr);
 				}
 			}
+		}
+
+		const savedPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
+		try {
+			await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, savedPnums);
+		} catch (vitalErr) {
+			console.warn('F14020 저장 후 F30120 공란 생성 경고:', vitalErr);
 		}
 
 		return jsonOk({ success: true, data: results, count: results.length });

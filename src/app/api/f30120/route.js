@@ -10,6 +10,8 @@ import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 
+const { ensureF30120FromF14020 } = require('../../../lib/ensureF30120FromF14020');
+
 const F30120_SELECT = `
         f30120.[ANCD],
         f30120.[PNUM],
@@ -137,6 +139,16 @@ export async function GET(req) {
 			}
 			query += ` AND f30120.[RSDT] = @rsdt`;
 			request.input('rsdt', formatDateForDB(rsdt));
+
+			// 일 급여실적(F14020)에 있는 수급자인데 활력명단이 없으면 공란 생성
+			try {
+				const svdtIso = String(rsdt).includes('-')
+					? String(rsdt).slice(0, 10)
+					: `${String(rsdt).slice(0, 4)}-${String(rsdt).slice(4, 6)}-${String(rsdt).slice(6, 8)}`;
+				await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso);
+			} catch (seedErr) {
+				console.warn('F30120 조회 전 F14020 기준 공란 생성 경고:', seedErr);
+			}
 		} else {
 			return jsonError({ success: false, error: 'RSDT 또는 startDate/endDate 파라미터가 필요합니다' }, 400);
 		}
