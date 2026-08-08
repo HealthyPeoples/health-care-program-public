@@ -771,8 +771,11 @@ export function useMemberInfo() {
 		}
 
 		try {
-			const res = await fetch(`/api/v10010c?pnum=${encodeURIComponent(pnum)}`);
-			const json = await res.json();
+			const [cardRes, diseaseRes] = await Promise.all([
+				fetch(`/api/v10010c?pnum=${encodeURIComponent(pnum)}`),
+				fetch(`/api/f30030?pnum=${encodeURIComponent(pnum)}`, { cache: 'no-store' }),
+			]);
+			const json = await cardRes.json();
 			if (!json.success) {
 				alert(json.error || 'V10010C(수급자카드) 조회에 실패했습니다.');
 				return;
@@ -783,11 +786,21 @@ export function useMemberInfo() {
 				return;
 			}
 
+			let diseases: Array<{ JDES?: string; JDT?: string; ETC?: string; SEQ?: number | string }> = [];
+			try {
+				const diseaseJson = await diseaseRes.json();
+				if (diseaseJson?.success && Array.isArray(diseaseJson.data)) {
+					diseases = diseaseJson.data;
+				}
+			} catch (diseaseErr) {
+				console.warn('질병내역(F30030) 조회 경고:', diseaseErr);
+			}
+
 			const instName =
 				institutions.find((i) => String(i.ANCD) === String(selectedMember.ANCD))?.ANNM ||
 				String(selectedMember.ANCD ?? '');
 
-			const html = buildRecipientCardPrintHtml(selectedMember, card, instName);
+			const html = buildRecipientCardPrintHtml(selectedMember, card, instName, diseases);
 			openPrintPreviewWindow(html);
 		} catch (e) {
 			console.error(e);
