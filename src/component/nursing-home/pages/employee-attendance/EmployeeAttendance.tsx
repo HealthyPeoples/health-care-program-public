@@ -801,7 +801,7 @@ export default function EmployeeAttendance() {
 	};
 
 	return (
-		<div className="flex flex-col min-h-screen bg-white text-black">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			{/* 상단: 제목 + 날짜 + 버튼 */}
 			<div className="flex flex-wrap items-center gap-4 border-b border-blue-200 bg-blue-50/50 p-4">
 				<h1 className="rounded border border-blue-300 bg-blue-100 px-4 py-2 text-base font-semibold text-blue-900">
@@ -837,7 +837,7 @@ export default function EmployeeAttendance() {
 						+1일
 					</button> */}
 				</div>
-				<div className="ml-auto flex gap-2">
+				<div className="ml-auto flex flex-wrap gap-2">
 					{/* <button
 						type="button"
 						onClick={handleSearch}
@@ -870,9 +870,9 @@ export default function EmployeeAttendance() {
 			</div>
 
 			{/* 메인 콘텐츠 영역 */}
-			<div className="flex flex-1 gap-4 p-4">
+			<div className="flex flex-col xl:flex-row flex-1 gap-4 p-4 min-h-0">
 				{/* 왼쪽: 근태 목록 테이블 */}
-				<div className="w-[440px] shrink-0 flex flex-col overflow-hidden rounded-lg border border-blue-300 bg-white">
+				<div className="w-full max-w-full xl:w-[440px] min-w-0 shrink-0 flex flex-col overflow-hidden rounded-lg border border-blue-300 bg-white xl:h-full xl:min-h-0">
 					<div className="border-b border-blue-300 bg-blue-100 px-3 py-2 font-semibold text-blue-900">
 						근태 목록
 					</div>
@@ -1251,7 +1251,7 @@ export default function EmployeeAttendance() {
 			{isCreateModalOpen && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
 					<div className="flex w-full max-w-5xl max-h-[90vh] flex-col overflow-hidden rounded-lg border border-blue-300 bg-white shadow-lg">
-						<div className="flex shrink-0 items-center justify-between border-b border-blue-200 bg-blue-100 px-6 py-4">
+						<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-100 px-6 py-4">
 							<h2 className="text-lg font-semibold text-blue-900">사원 근태 개별 생성</h2>
 							<button
 								type="button"

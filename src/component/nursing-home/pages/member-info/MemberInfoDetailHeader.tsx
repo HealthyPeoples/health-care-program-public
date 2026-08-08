@@ -36,9 +36,9 @@ export default function MemberInfoDetailHeader({
 }: MemberInfoDetailHeaderProps) {
 	if (mode === 'create') {
 		return (
-			<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
-				<h2 className="text-xl font-semibold text-blue-900">수급자 생성</h2>
-				<div className="flex items-center gap-2">
+			<div className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4 bg-blue-100 border-b border-blue-200">
+				<h2 className="text-lg sm:text-xl font-semibold text-blue-900 shrink-0">수급자 생성</h2>
+				<div className="flex flex-wrap items-center gap-2">
 					<button 
 						onClick={onSave}
 						disabled={loading}
@@ -58,9 +58,9 @@ export default function MemberInfoDetailHeader({
 	}
 
 	return (
-		<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
-			<h2 className="text-xl font-semibold text-blue-900">개인정보</h2>
-			<div className="flex items-center gap-2">
+		<div className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4 bg-blue-100 border-b border-blue-200">
+			<h2 className="text-lg sm:text-xl font-semibold text-blue-900 shrink-0">개인정보</h2>
+			<div className="flex flex-wrap items-center gap-2">
 				<button
 					onClick={onPrintRecipientCard}
 					disabled={!canPrintCard}

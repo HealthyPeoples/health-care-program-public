@@ -627,10 +627,10 @@ export default function GuardianInfo() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
-			<div className="flex h-[calc(80vh-56px)]">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측 패널: 수급자 목록 (CounselingRecord 스타일) */}
-				<div className="w-1/4 border-r border-blue-200 bg-white flex flex-col p-4">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					{/* 필터 헤더 */}
 					<div className="mb-3">
 						<h3 className="text-sm font-semibold text-blue-900 mb-2">수급자 목록</h3>
@@ -696,8 +696,8 @@ export default function GuardianInfo() {
 					</div>
 
 					{/* 수급자 목록 테이블 - 라운드 박스 */}
-					<div className="border border-blue-300 rounded-lg overflow-hidden bg-white flex flex-col">
-						<div className="overflow-y-auto">
+					<div className="border border-blue-300 rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-h-0">
+						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
@@ -806,8 +806,8 @@ export default function GuardianInfo() {
 				</div>
 
 				{/* 중간 패널: 보호자 목록 */}
-				<div className="w-1/4 border-r border-blue-200 bg-white flex flex-col p-4">
-					<div className="mb-3 flex items-center justify-between">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
+					<div className="mb-3 flex flex-wrap items-center justify-between gap-2">
 						<h3 className="text-sm font-semibold text-blue-900">보호자 목록</h3>
 						{selectedMember && (
 							<button
@@ -818,8 +818,8 @@ export default function GuardianInfo() {
 							</button>
 						)}
 					</div>
-					<div className="border border-blue-300 rounded-lg overflow-hidden bg-white">
-						<div className="overflow-y-auto h-full">
+					<div className="border border-blue-300 rounded-lg overflow-hidden bg-white flex-1 flex flex-col min-h-0">
+						<div className="overflow-y-auto flex-1 min-h-0">
 							<table className="w-full text-xs">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
@@ -886,14 +886,14 @@ export default function GuardianInfo() {
 				</div>
 
 				{/* 우측 패널: 보호자 정보 */}
-				<div className="relative flex-1 overflow-y-auto p-4 bg-white">
+				<div className="relative flex-1 min-w-0 min-h-0 overflow-y-auto p-4 bg-white">
 					<div
 						className={
 							!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
 						}
 					>
 					<div className="mb-4">
-						<div className="flex items-center justify-between mb-4">
+						<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
 							<h2 className="text-lg font-semibold text-blue-900">보호자 정보</h2>
 							{isCreating ? (
 								<div className="flex gap-2">

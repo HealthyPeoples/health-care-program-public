@@ -426,7 +426,7 @@ export default function FacilityWorkLogApproval() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="p-4 space-y-4">
 				<div className="flex flex-wrap items-stretch gap-3">
 					<div className="flex-1 min-w-[240px] rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
@@ -484,8 +484,8 @@ export default function FacilityWorkLogApproval() {
 						<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 text-sm font-semibold text-blue-900">
 							업무일자
 						</div>
-						<div className="max-h-[640px] overflow-auto">
-							<table className="w-full text-sm">
+						<div className="max-h-[640px] overflow-x-auto overflow-y-auto w-full min-w-0">
+							<table className="w-max max-w-none min-w-[200px] text-sm">
 								<tbody>
 									{loading ? (
 										<tr>

@@ -1106,8 +1106,8 @@ export default function MemberContractInfo() {
 	const recipientBurdenWon = recipientBurdenAmountWon(burdenRow);
 
 	return (
-		<div className="min-h-screen bg-white text-black flex flex-col">
-			<div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-blue-200 bg-white">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black flex flex-col">
+			<div className="flex-shrink-0 flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-blue-200 bg-white">
 				{/* <h1 className="text-sm font-semibold text-blue-900">수급자 계약정보</h1> */}
 				<button
 					type="button"
@@ -1118,9 +1118,9 @@ export default function MemberContractInfo() {
 					{printLoading ? '출력 준비 중...' : '전체 계약서 출력'}
 				</button>
 			</div>
-			<div className="flex h-[calc(80vh-56px)] min-h-0 flex-1">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0 flex-1">
 				{/* 좌측: 수급자 목록 (보호자정보등록과 동일 패턴) */}
-				<div className="w-1/4 min-w-0 border-r border-blue-200 bg-white flex flex-col p-4">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<div className="mb-3">
 						<h3 className="text-sm font-semibold text-blue-900 mb-2">수급자 목록</h3>
 						<div className="space-y-2">
@@ -1205,7 +1205,7 @@ export default function MemberContractInfo() {
 						</button>
 					</div>
 					<div className="border border-blue-300 rounded-lg overflow-hidden bg-white flex flex-col flex-1 min-h-0">
-						<div className="overflow-y-auto flex-1 min-h-0">
+						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
@@ -1332,8 +1332,8 @@ export default function MemberContractInfo() {
 				</div>
 
 				{/* 중간: 계약 목록 */}
-				<div className="w-1/4 min-w-0 border-r border-blue-200 bg-white flex flex-col p-4">
-					<div className="mb-3 flex items-center justify-between gap-2">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
+					<div className="mb-3 flex flex-wrap items-center justify-between gap-2">
 						<h3 className="text-sm font-semibold text-blue-900">계약 목록</h3>
 						{selectedMember && (
 							<button
@@ -1410,7 +1410,7 @@ export default function MemberContractInfo() {
 						>
 						{/* 계약정보 카드 */}
 						<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
-							<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
+							<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-100">
 								<h2 className="text-xl font-semibold text-blue-900">계약정보</h2>
 								<div className="flex items-center gap-2 flex-wrap">
 									{contractInfo && !isEditing ? (
@@ -1799,7 +1799,7 @@ export default function MemberContractInfo() {
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 							{/* 요양급여 상세 */}
 							<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
-								<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
+								<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-100">
 									<h3 className="text-lg font-semibold text-blue-900">요양급여 상세</h3>
 									{/* <button className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900">상세보기</button> */}
 								</div>
@@ -1847,7 +1847,7 @@ export default function MemberContractInfo() {
 
 							{/* 부담금 정보 */}
 							<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
-								<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
+								<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-100">
 									<h3 className="text-lg font-semibold text-blue-900">부담금 정보</h3>
 									{/* <button className="px-3 py-1 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900">부담금 관리</button> */}
 								</div>
@@ -1902,7 +1902,7 @@ export default function MemberContractInfo() {
 						aria-modal="true"
 						aria-labelledby="contract-create-title"
 					>
-						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
 							<h2 id="contract-create-title" className="text-base font-semibold text-blue-900">
 								계약정보 생성
 							</h2>

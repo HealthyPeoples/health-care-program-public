@@ -564,14 +564,14 @@ export default function UDCPage() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="p-4 space-y-3">
-				<div className="flex items-stretch gap-3">
-					<div className="w-[280px] rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
+				<div className="flex flex-col lg:flex-row items-stretch gap-3">
+					<div className="w-full lg:w-[280px] shrink-0 rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
 						일반코드관리
 					</div>
 
-					<div className="flex-1 rounded border border-blue-300 bg-white p-2 flex flex-wrap items-center justify-between gap-3">
+					<div className="flex-1 min-w-0 rounded border border-blue-300 bg-white p-2 flex flex-wrap items-center justify-between gap-3">
 						<div className="flex flex-wrap items-center gap-2">
 							<span className={labelCls}>설명</span>
 							<input
@@ -621,8 +621,8 @@ export default function UDCPage() {
 						<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 text-sm font-semibold text-blue-900">
 							코드구분 (F01001)
 						</div>
-						<div className="max-h-[680px] overflow-auto">
-							<table className="w-full text-sm">
+						<div className="max-h-[680px] overflow-x-auto overflow-y-auto w-full min-w-0">
+							<table className="w-max max-w-none min-w-[480px] text-sm">
 								<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50">
 									<tr>
 										<th className="border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900 w-[90px]">
@@ -768,8 +768,8 @@ export default function UDCPage() {
 								추가
 							</button>
 						</div>
-						<div className="max-h-[680px] overflow-auto">
-							<table className="w-full text-sm">
+						<div className="max-h-[680px] overflow-x-auto overflow-y-auto w-full min-w-0">
+							<table className="w-max max-w-none min-w-[480px] text-sm">
 								<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50">
 									<tr>
 										<th className="border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900 w-[80px]">

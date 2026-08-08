@@ -343,14 +343,14 @@ export default function FacilityUserManagement() {
 		setEditModalOpen(true);
 	};
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="p-4 space-y-3">
 				{/* 상단 타이틀/고객명 */}
 				<div className="flex flex-wrap items-stretch gap-3">
-					<div className="flex-1 min-w-[320px] rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
+					<div className="flex-1 min-w-0 sm:min-w-[240px] rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
 						사용자계정(ID)관리
 					</div>
-					<div className="flex-[2] min-w-[420px] rounded border border-blue-300 bg-white px-4 py-3">
+					<div className="flex-[2] min-w-0 sm:min-w-[280px] rounded border border-blue-300 bg-white px-4 py-3">
 						<div className="flex items-center gap-2">
 							<span className="rounded border border-blue-300 bg-blue-100 px-4 py-2 text-sm font-medium text-blue-900 shrink-0">
 								고객명
@@ -435,8 +435,8 @@ export default function FacilityUserManagement() {
 
 				{/* 목록 테이블 */}
 				<div className="rounded-lg border border-blue-300 bg-white overflow-hidden">
-					<div className="max-h-[520px] overflow-auto">
-						<table className="w-full text-sm">
+					<div className="max-h-[520px] overflow-x-auto overflow-y-auto w-full min-w-0">
+						<table className="w-max max-w-none min-w-[720px] text-sm">
 							<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-100">
 								<tr>
 									<th className="border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900">

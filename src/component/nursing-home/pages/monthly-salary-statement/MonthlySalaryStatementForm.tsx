@@ -74,7 +74,7 @@ export default function MonthlySalaryStatementForm({
 				aria-hidden={!selectedPnum}
 			>
 				<div className="flex flex-wrap gap-x-8 gap-y-3">
-					<div className="flex min-w-[220px] flex-1 items-center gap-2">
+					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
 						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">수급자</label>
 						<input
 							type="text"
@@ -83,7 +83,7 @@ export default function MonthlySalaryStatementForm({
 							className={readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-[220px] flex-1 items-center gap-2">
+					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
 						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">생년월일</label>
 						<input
 							type="text"
@@ -93,7 +93,7 @@ export default function MonthlySalaryStatementForm({
 							className={readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-[220px] flex-1 items-center gap-2">
+					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
 						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">전달자</label>
 						<input
 							type="text"
@@ -102,7 +102,7 @@ export default function MonthlySalaryStatementForm({
 							className={readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-[220px] flex-1 items-center gap-2">
+					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
 						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">전달방법</label>
 						<select
 							value={formData.deliveryMethod}
@@ -116,7 +116,7 @@ export default function MonthlySalaryStatementForm({
 							<option value="4">SMS</option>
 						</select>
 					</div>
-					<div className="flex min-w-[220px] flex-1 items-center gap-2">
+					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
 						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">수령자</label>
 						<input
 							type="text"
@@ -126,7 +126,7 @@ export default function MonthlySalaryStatementForm({
 							className={formEditMode ? editableInputClass : readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-[280px] flex-[1.4] items-start gap-2">
+					<div className="flex min-w-0 sm:min-w-[280px] flex-[1.4] items-start gap-2">
 						<label className="w-20 shrink-0 pt-1.5 text-sm font-medium text-blue-900">수령내용</label>
 						<textarea
 							value={formData.receiveContent}

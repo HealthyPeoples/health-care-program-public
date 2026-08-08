@@ -631,8 +631,8 @@ export default function MonthlySalaryData() {
 	};
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				<div className="flex flex-1 flex-col overflow-hidden bg-white">
 					{/* 상단: 제목 + 급여년월/계산단위 + 버튼 */}
 					<div className="flex flex-wrap items-center gap-4 border-b border-blue-200 bg-blue-50/50 p-4">
@@ -703,9 +703,9 @@ export default function MonthlySalaryData() {
 					</div>
 
 					{/* 중앙: 급여 테이블 */}
-					<div className="flex-1 overflow-hidden border-b border-blue-200">
-						<div className="h-full overflow-auto">
-							<table className="w-full min-w-[900px] text-xs">
+					<div className="flex-1 overflow-hidden border-b border-blue-200 min-w-0">
+						<div className="h-full overflow-x-auto overflow-y-auto w-full min-w-0">
+							<table className="w-max max-w-none min-w-[900px] text-xs">
 								<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-100">
 									<tr>
 										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
@@ -1284,8 +1284,8 @@ export default function MonthlySalaryData() {
 							</div>
 						</div>
 
-						<div className="min-h-0 flex-1 overflow-auto p-2">
-							<table className="w-full min-w-[1300px] border-collapse text-xs">
+						<div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto w-full min-w-0 p-2">
+							<table className="w-max max-w-none min-w-[1300px] border-collapse text-xs">
 								<thead className="sticky top-0 z-10 bg-blue-100">
 									<tr>
 										{[

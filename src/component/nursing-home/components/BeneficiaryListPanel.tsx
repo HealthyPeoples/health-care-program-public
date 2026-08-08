@@ -147,14 +147,14 @@ export default function BeneficiaryListPanel({
   const currentMembers = filteredMembers.slice(startIndex, endIndex);
 
   return (
-    <div className={`flex flex-col p-4 bg-white border-r border-blue-200 ${className ?? ""}`}>
-      <div className="mb-3">
+    <div className={`flex flex-col min-h-0 w-full p-3 sm:p-4 bg-white border-r border-blue-200 ${className ?? ""}`}>
+      <div className="mb-3 shrink-0">
         <h3 className="mb-2 text-sm font-semibold text-blue-900">{title}</h3>
-        <div className="space-y-2">
-          <div className="space-y-1">
+        <div className="grid grid-cols-2 gap-2 xl:grid-cols-1">
+          <div className="space-y-1 col-span-2 xl:col-span-1">
             <div className="text-xs text-blue-900/80">이름 검색</div>
             <input
-              className="w-full px-2 py-1 text-xs bg-white border border-blue-300 rounded"
+              className="w-full min-w-0 px-2 py-1 text-xs bg-white border border-blue-300 rounded"
               placeholder="예) 홍길동"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -165,7 +165,7 @@ export default function BeneficiaryListPanel({
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value)}
-              className="w-full px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
+              className="w-full min-w-0 px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
             >
               <option value="">현황 전체</option>
               <option value="입소">입소</option>
@@ -177,7 +177,7 @@ export default function BeneficiaryListPanel({
             <select
               value={selectedGrade}
               onChange={(e) => setSelectedGrade(e.target.value)}
-              className="w-full px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
+              className="w-full min-w-0 px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
             >
               <option value="">등급 전체</option>
               <option value="1">1등급</option>
@@ -188,12 +188,12 @@ export default function BeneficiaryListPanel({
               <option value="9">인지지원</option>
             </select>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 col-span-2 sm:col-span-1 xl:col-span-1">
             <div className="text-xs text-blue-900/80">층수</div>
             <select
               value={selectedFloor}
               onChange={(e) => setSelectedFloor(e.target.value)}
-              className="w-full px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
+              className="w-full min-w-0 px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
             >
               <option value="">층수 전체</option>
               <option value={NO_ROOM_VALUE}>방번호 없음</option>
@@ -207,9 +207,9 @@ export default function BeneficiaryListPanel({
         </div>
       </div>
 
-      <div className="flex flex-col overflow-hidden bg-white border border-blue-300 rounded-lg">
-        <div className="overflow-y-auto">
-          <table className="w-full text-xs">
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
+        <div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-auto">
+          <table className="w-full min-w-[320px] text-xs">
             <thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
               <tr>
                 <th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
@@ -246,7 +246,9 @@ export default function BeneficiaryListPanel({
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">
                       {String(member.P_ST ?? "").trim() === "1" ? "입소" : String(member.P_ST ?? "").trim() === "9" ? "퇴소" : "-"}
                     </td>
-                    <td className="px-2 py-1.5 text-center border-r border-blue-100">{String(member.P_NM ?? "-")}</td>
+                    <td className="px-2 py-1.5 text-center border-r border-blue-100 break-words">
+                      {String(member.P_NM ?? "-")}
+                    </td>
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">{formatCareGradeLabel(String(member.P_GRD ?? ""))}</td>
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">
                       {extractMemberFloor(member) !== null ? `${extractMemberFloor(member)}층` : "-"}
@@ -260,8 +262,8 @@ export default function BeneficiaryListPanel({
         </div>
 
         {totalPages > 1 && (
-          <div className="p-2 bg-white border-t border-blue-200">
-            <div className="flex items-center justify-center gap-1">
+          <div className="p-2 bg-white border-t border-blue-200 shrink-0">
+            <div className="flex flex-wrap items-center justify-center gap-1">
               <button
                 onClick={() => setCurrentPage(1)}
                 disabled={currentPage === 1}

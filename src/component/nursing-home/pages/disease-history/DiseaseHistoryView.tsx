@@ -10,6 +10,7 @@
  */
 import React, { useState } from "react";
 import BeneficiaryListPanel, { BeneficiaryMember } from "../../components/BeneficiaryListPanel";
+import { NH_ASIDE_QUARTER } from "../../components/NhSplitLayout";
 
 type DiseaseRow = {
 	ANCD?: number | string;
@@ -285,15 +286,15 @@ export default function DiseaseHistoryView() {
 	const rightLocked = !selectedMember;
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				<BeneficiaryListPanel
 					selectedMember={selectedMember}
 					onSelect={handleSelectMember}
-					className="w-1/4"
+					className={`${NH_ASIDE_QUARTER} min-h-0`}
 				/>
 
-				<div className="relative flex flex-1 overflow-hidden bg-slate-50">
+				<div className="relative flex flex-col md:flex-row flex-1 min-w-0 min-h-0 overflow-hidden bg-slate-50">
 					{rightLocked && (
 						<div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
 							<p className="text-sm font-medium text-blue-900/70">수급자를 선택해주세요</p>
@@ -301,29 +302,29 @@ export default function DiseaseHistoryView() {
 					)}
 
 					{/* 진단 목록 */}
-					<div className="flex flex-col w-1/2 min-w-[320px] border-r border-blue-200 bg-white">
-						<div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-50">
-							<h2 className="text-sm font-semibold text-blue-900">질병내역 목록</h2>
+					<div className="flex flex-col w-full md:w-1/2 min-w-0 min-h-[280px] md:min-h-0 border-b md:border-b-0 md:border-r border-blue-200 bg-white">
+						<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b border-blue-200 bg-blue-50">
+							<h2 className="text-sm font-semibold text-blue-900 shrink-0">질병내역 목록</h2>
 							<button
 								type="button"
 								onClick={openAddModal}
 								disabled={!selectedMember || saving || modalSaving}
-								className="px-3 py-1 text-xs font-medium border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 disabled:opacity-40"
+								className="shrink-0 px-3 py-1 text-xs font-medium border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 disabled:opacity-40"
 							>
 								추가
 							</button>
 						</div>
-						<div className="flex-1 overflow-auto">
-							<table className="w-full text-sm">
+						<div className="flex-1 min-h-0 overflow-auto">
+							<table className="w-full min-w-[280px] text-sm">
 								<thead className="sticky top-0 bg-blue-50 border-b border-blue-200">
 									<tr>
-										<th className="px-3 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
+										<th className="px-2 sm:px-3 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
 											진단명
 										</th>
-										<th className="w-28 px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">
+										<th className="w-24 sm:w-28 px-2 sm:px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">
 											진단일자
 										</th>
-										<th className="w-16 px-2 py-2 font-semibold text-center text-blue-900">
+										<th className="w-14 sm:w-16 px-1 sm:px-2 py-2 font-semibold text-center text-blue-900">
 											삭제
 										</th>
 									</tr>
@@ -350,13 +351,13 @@ export default function DiseaseHistoryView() {
 													selectedSeq === Number(row.SEQ) ? "bg-blue-100" : ""
 												}`}
 											>
-												<td className="px-3 py-2.5 border-r border-blue-100 break-words">
+												<td className="px-2 sm:px-3 py-2.5 border-r border-blue-100 break-words">
 													{row.JDES || "-"}
 												</td>
-												<td className="px-3 py-2.5 text-center whitespace-nowrap border-r border-blue-100">
+												<td className="px-2 sm:px-3 py-2.5 text-center whitespace-nowrap border-r border-blue-100">
 													{row.JDT || "-"}
 												</td>
-												<td className="px-2 py-2 text-center">
+												<td className="px-1 sm:px-2 py-2 text-center">
 													<button
 														type="button"
 														onClick={(e) => handleDelete(Number(row.SEQ), e)}
@@ -375,15 +376,15 @@ export default function DiseaseHistoryView() {
 					</div>
 
 					{/* 우측 상세 폼 */}
-					<div className="flex flex-col flex-1 min-w-[280px] bg-white">
-						<div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-50">
-							<h2 className="text-sm font-semibold text-blue-900">질병내역 상세</h2>
-							<div className="flex items-center gap-2">
+					<div className="flex flex-col flex-1 w-full min-w-0 min-h-[280px] md:min-h-0 bg-white">
+						<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b border-blue-200 bg-blue-50">
+							<h2 className="text-sm font-semibold text-blue-900 shrink-0">질병내역 상세</h2>
+							<div className="flex flex-wrap items-center gap-2">
 								<button
 									type="button"
 									onClick={handleEditOrSave}
 									disabled={!selectedMember || saving || (!isEditMode && selectedSeq == null)}
-									className={`px-3 py-1 text-xs font-medium border rounded disabled:opacity-40 ${
+									className={`shrink-0 px-3 py-1 text-xs font-medium border rounded disabled:opacity-40 ${
 										isEditMode
 											? "border-green-400 bg-green-100 hover:bg-green-200 text-green-900"
 											: "border-blue-400 bg-blue-100 hover:bg-blue-200 text-blue-900"
@@ -396,17 +397,17 @@ export default function DiseaseHistoryView() {
 										type="button"
 										onClick={handleCancelEdit}
 										disabled={saving}
-										className="px-3 py-1 text-xs font-medium border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-40"
+										className="shrink-0 px-3 py-1 text-xs font-medium border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-40"
 									>
 										취소
 									</button>
 								)}
 							</div>
 						</div>
-						<div className="flex-1 p-5 overflow-y-auto">
+						<div className="flex-1 p-4 sm:p-5 overflow-y-auto min-h-0">
 							<div className="mb-5">
 								<label className="block mb-1.5 text-sm font-medium text-blue-900">수급자</label>
-								<div className="px-3 py-2 text-sm border border-blue-200 rounded bg-blue-50 text-blue-900">
+								<div className="px-3 py-2 text-sm border border-blue-200 rounded bg-blue-50 text-blue-900 break-words">
 									{selectedMember?.P_NM || "-"}
 								</div>
 							</div>
@@ -425,7 +426,7 @@ export default function DiseaseHistoryView() {
 									disabled={fieldsDisabled}
 									maxLength={100}
 									placeholder="진단명을 입력하세요"
-									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
+									className="w-full min-w-0 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
 								/>
 							</div>
 
@@ -439,7 +440,7 @@ export default function DiseaseHistoryView() {
 									value={formData.JDT}
 									onChange={(e) => handleFieldChange("JDT", e.target.value)}
 									disabled={fieldsDisabled}
-									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
+									className="w-full min-w-0 max-w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-100 disabled:cursor-not-allowed"
 								/>
 							</div>
 
@@ -455,13 +456,13 @@ export default function DiseaseHistoryView() {
 
 			{/* 신규 등록 모달 */}
 			{showAddModal && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-					<div className="w-full max-w-md p-5 bg-white border border-blue-300 rounded-lg shadow-xl">
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+					<div className="w-full max-w-md max-h-[90vh] overflow-y-auto p-4 sm:p-5 bg-white border border-blue-300 rounded-lg shadow-xl">
 						<h3 className="mb-4 text-lg font-semibold text-blue-900">질병내역 신규 등록</h3>
 
 						<div className="mb-3">
 							<label className="block mb-1.5 text-sm font-medium text-blue-900">수급자</label>
-							<div className="px-3 py-2 text-sm border border-blue-200 rounded bg-blue-50 text-blue-900">
+							<div className="px-3 py-2 text-sm border border-blue-200 rounded bg-blue-50 text-blue-900 break-words">
 								{selectedMember?.P_NM || "-"}
 							</div>
 						</div>
@@ -477,7 +478,7 @@ export default function DiseaseHistoryView() {
 								onChange={(e) => setModalForm((prev) => ({ ...prev, JDES: e.target.value }))}
 								maxLength={100}
 								placeholder="진단명을 입력하세요"
-								className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded"
+								className="w-full min-w-0 px-3 py-2 text-sm bg-white border border-blue-300 rounded"
 								autoFocus
 							/>
 						</div>
@@ -491,11 +492,11 @@ export default function DiseaseHistoryView() {
 								type="date"
 								value={modalForm.JDT}
 								onChange={(e) => setModalForm((prev) => ({ ...prev, JDT: e.target.value }))}
-								className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded"
+								className="w-full min-w-0 max-w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded"
 							/>
 						</div>
 
-						<div className="flex justify-end gap-2">
+						<div className="flex flex-wrap justify-end gap-2">
 							<button
 								type="button"
 								onClick={handleModalSave}

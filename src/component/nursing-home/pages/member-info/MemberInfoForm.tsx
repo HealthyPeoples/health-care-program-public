@@ -51,7 +51,7 @@ export default function MemberInfoForm({
 	if (mode === 'placeholder') {
 		return (
 			<div className="bg-white border border-blue-300 rounded-lg shadow-sm min-h-[420px]">
-				<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
+				<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-blue-100 border-b border-blue-200">
 					<h2 className="text-xl font-semibold text-blue-900">개인정보</h2>
 				</div>
 				<div className="p-8 grid grid-cols-12 gap-3 opacity-50">

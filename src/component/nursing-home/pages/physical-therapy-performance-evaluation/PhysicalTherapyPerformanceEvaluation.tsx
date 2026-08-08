@@ -385,9 +385,9 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 	const isFormEnabled = !!selectedMember && (isCreatingNew || selectedDateIndex !== null);
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
-				<BeneficiaryListPanel selectedMember={selectedMember} onSelect={handleSelectMember} className="w-1/4" />
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
+				<BeneficiaryListPanel selectedMember={selectedMember} onSelect={handleSelectMember} className="w-full xl:w-1/4 xl:min-w-[240px] xl:max-w-sm shrink-0 border-b xl:border-b-0 xl:h-full xl:min-h-0 min-h-0 xl:overflow-hidden" />
 
 				{/* 우측 패널: 평가 폼 */}
 				<div className={`relative flex flex-col flex-1 ${selectedMember ? 'bg-white' : 'bg-gray-100'}`}>
@@ -411,7 +411,7 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 						</div>
 					)}
 					{/* 상단: 탭과 수급자 필드 */}
-					<div className="flex items-center justify-between p-4 border-b border-blue-200 bg-blue-50">
+					<div className="flex flex-wrap items-center justify-between gap-2 p-4 border-b border-blue-200 bg-blue-50">
 						<div className="flex items-center gap-2">
 							{tabs.map((tab) => (
 								<button

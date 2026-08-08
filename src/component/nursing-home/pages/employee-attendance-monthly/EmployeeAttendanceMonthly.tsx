@@ -334,7 +334,7 @@ export default function EmployeeAttendanceMonthly() {
 	}, [selectedEmployee, startDateStr, endDateStr, loadEmployeeAttendance]);
 
 	return (
-		<div className="flex flex-col min-h-screen bg-white text-black">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			{/* 상단: 제목 + 근무일자 + 근무상태 + 버튼 */}
 			<div className="flex flex-wrap items-center gap-4 border-b border-blue-200 bg-blue-50/50 p-4">
 				<h1 className="rounded border border-blue-300 bg-blue-100 px-4 py-2 text-base font-semibold text-blue-900">
@@ -414,7 +414,7 @@ export default function EmployeeAttendanceMonthly() {
 			{/* 메인: 좌측 직원 목록 + 우측 근태 상세 */}
 			<div className="flex flex-1 gap-4 p-4 overflow-hidden">
 				{/* 왼쪽: 직원 목록 (사원명, 근무상태, 핸드폰번호) */}
-				<div className="w-[420px] shrink-0 flex flex-col overflow-hidden rounded-lg border border-blue-300 bg-white">
+				<div className="w-full max-w-full lg:w-[420px] min-w-0 shrink-0 flex flex-col overflow-hidden rounded-lg border border-blue-300 bg-white">
 					<div className="border-b border-blue-300 bg-blue-100 px-3 py-2 font-semibold text-blue-900">
 						직원 목록
 					</div>

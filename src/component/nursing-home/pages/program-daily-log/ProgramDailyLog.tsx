@@ -1393,8 +1393,8 @@ export default function ProgramDailyLog() {
 		!formAreaLocked && editingDseq != null && !isAddingNewProgram && !formFieldsUnlocked;
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex items-center justify-between p-4 border-b border-blue-200 bg-blue-50 print:hidden">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-wrap items-center justify-between gap-2 p-4 border-b border-blue-200 bg-blue-50 print:hidden">
 				<h1 className="text-xl font-semibold text-blue-900">프로그램 일지</h1>
 				<div className="flex flex-wrap items-center gap-4">
 					<div className="flex items-center gap-2">
@@ -1432,8 +1432,8 @@ export default function ProgramDailyLog() {
 				<div className="px-4 py-2 text-sm text-red-700 bg-red-50 border-b border-red-200">{listError}</div>
 			) : null}
 
-			<div className="flex flex-1 min-h-0 overflow-hidden">
-				<div className="flex flex-col w-[22%] min-w-[200px] shrink-0 bg-white border-r border-blue-200">
+			<div className="flex flex-col xl:flex-row flex-1 min-h-0 overflow-hidden">
+				<div className="flex flex-col w-full xl:w-[22%] xl:min-w-[200px] min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<label className="text-sm font-medium text-blue-900">프로그램</label>
 					</div>
@@ -1532,8 +1532,8 @@ export default function ProgramDailyLog() {
 
 				<div className="flex flex-col flex-1 min-w-0 bg-white">
 					<div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-						<div className="shrink-0 border-b border-blue-200 bg-white flex flex-col">
-							<table className="w-full text-sm min-w-[640px] table-fixed border-collapse">
+						<div className="shrink-0 border-b border-blue-200 bg-white flex flex-col overflow-x-auto w-full min-w-0">
+							<table className="w-max max-w-none text-sm min-w-[640px] table-fixed border-collapse">
 								<thead>
 									<tr className="h-10 border-b border-blue-200 bg-blue-50">
 										<th className="px-2 font-semibold text-center text-blue-900 border-r border-blue-200 whitespace-nowrap align-middle">

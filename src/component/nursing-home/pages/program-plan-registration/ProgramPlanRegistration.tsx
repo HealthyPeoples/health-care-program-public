@@ -867,13 +867,13 @@ export default function ProgramPlanRegistration() {
 
 	return (
 		<>
-		<div className="min-h-screen bg-white text-black">
-			<div className="mx-auto max-w-[1200px] p-4">
-				<div className="flex gap-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<div className="mx-auto w-full max-w-[1200px] min-w-0 p-3 sm:p-4">
+				<div className="flex flex-col lg:flex-row gap-4">
 					{/* 좌측: 프로그램 목록 */}
-					<aside className="w-72 shrink-0">
+					<aside className="w-full max-w-full lg:w-72 min-w-0 shrink-0">
 						<div className="border border-blue-300 rounded-lg overflow-hidden bg-white shadow-sm">
-							<div className="flex items-center justify-between gap-2 bg-blue-100 border-b border-blue-300 px-3 py-2">
+							<div className="flex flex-wrap items-center justify-between gap-2 bg-blue-100 border-b border-blue-300 px-3 py-2">
 								<span className="text-blue-900 font-semibold">프로그램 목록</span>
 								<button
 									type="button"
@@ -1017,7 +1017,7 @@ export default function ProgramPlanRegistration() {
 					</aside>
 
 					{/* 우측: 프로그램 계획서 상세 영역 */}
-					<section className="flex-1 space-y-4">
+					<section className="flex-1 min-w-0 space-y-4">
 						{!selectedRow ? (
 							<div className="flex min-h-[360px] items-center justify-center rounded-lg border border-blue-200 bg-white p-8 shadow-sm">
 								<p className="text-center text-lg font-medium text-blue-900/85">

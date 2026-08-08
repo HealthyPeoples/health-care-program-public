@@ -19,7 +19,7 @@ import React from 'react';
  */
 export default function DailyBeneficiaryPerformanceView() {
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			DailyBeneficiaryPerformanceView
 		</div>
     );

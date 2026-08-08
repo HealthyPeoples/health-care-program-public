@@ -440,8 +440,8 @@ export default function VitalSignsPeriodic() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
-			<div className="mx-auto max-w-[1600px] p-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<div className="mx-auto w-full max-w-[1600px] min-w-0 p-3 sm:p-4">
 				{/* 상단: 날짜 네비게이션 및 출력 */}
 				<div className="mb-4 flex items-center border-b border-blue-200 pb-3 relative">
 					{/* 가운데: 날짜 네비게이션 */}
@@ -516,7 +516,7 @@ export default function VitalSignsPeriodic() {
 						<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
 							<h2 className="text-lg font-semibold text-blue-900">활력증상 등록(주기)</h2>
 						</div>
-						<div className="overflow-x-auto">
+						<div className="overflow-x-auto w-full min-w-0">
 							<table className="w-full text-sm">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
@@ -910,7 +910,7 @@ export default function VitalSignsPeriodic() {
 			{/* 출력 모달 */}
 			{showPrintModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-					<div className="bg-white rounded-lg border border-blue-400 w-[600px] max-h-[90vh] overflow-y-auto p-6 shadow-xl">
+					<div className="bg-white rounded-lg border border-blue-400 w-full max-w-[600px] max-h-[90vh] overflow-y-auto p-6 shadow-xl">
 						<div className="mb-4">
 							<h2 className="text-xl font-semibold text-blue-900 mb-4">건강 관리 기록부 출력</h2>
 

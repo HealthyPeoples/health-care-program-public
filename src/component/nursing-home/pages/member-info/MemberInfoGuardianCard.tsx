@@ -44,7 +44,7 @@ export default function MemberInfoGuardianCard({
 
 	return (
 		<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
-			<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
+			<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-blue-100 border-b border-blue-200">
 				<h3 className="text-lg font-semibold text-blue-900">보호자 정보</h3>
 				{/* <button className="px-3 py-1 text-sm text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300">보호자 관리</button> */}
 			</div>

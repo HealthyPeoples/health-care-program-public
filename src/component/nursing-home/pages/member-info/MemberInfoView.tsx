@@ -65,9 +65,9 @@ export default function MemberInfoView() {
 	} = useMemberInfo();
 
 	return (
-		<div className="min-h-screen text-black bg-white">
-			<div className="mx-auto max-w-[1200px] p-4">
-				<div className="flex gap-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="mx-auto w-full max-w-[1200px] min-w-0 p-3 sm:p-4">
+				<div className="flex flex-col gap-4 lg:flex-row lg:items-start">
 					{/* 좌측: 수급자 목록 */}
 					<MemberInfoList
 						currentMembers={currentMembers}
@@ -95,7 +95,7 @@ export default function MemberInfoView() {
 					/>
 
 					{/* 우측: 상세 영역 */}
-					<section className="relative flex-1 space-y-4">
+					<section className="relative flex-1 min-w-0 space-y-4">
 						{isCreating ? (
 							<>
 								{/* 수급자 생성 폼 */}

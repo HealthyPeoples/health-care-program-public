@@ -581,7 +581,7 @@ export default function EvaluationChecklist() {
 	const planColSpan = 12;
 
 	return (
-		<div className="relative min-h-screen bg-white text-black">
+		<div className="relative min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			{(loading || saving) && (
 				<div
 					className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40"
@@ -716,8 +716,8 @@ export default function EvaluationChecklist() {
 						</div>
 					</div>
 
-					<div className="overflow-auto p-3">
-						<table className="w-full min-w-[1280px] table-fixed border-collapse text-sm">
+					<div className="overflow-x-auto overflow-y-auto w-full min-w-0 p-3">
+						<table className="w-max max-w-none min-w-[1280px] table-fixed border-collapse text-sm">
 							<colgroup>
 								<col style={{ width: 72 }} />
 								<col style={{ width: 100 }} />

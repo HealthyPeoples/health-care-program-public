@@ -30,6 +30,8 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
   const [institutionName, setInstitutionName] = useState<string>('');
   /** 사원명(F00120 EMPNM), 없으면 로그인 아이디(uid) */
   const [accountDisplayName, setAccountDisplayName] = useState<string>('');
+  /** lg 미만: 사이드바 오버레이 열림 */
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // 인증 체크 및 강제 로그아웃
   useEffect(() => {
@@ -73,6 +75,11 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
       cancelled = true;
     };
   }, []);
+
+  // 경로 변경 시 모바일/태블릿 사이드바 닫기
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
   
   const handleLogoClick = () => {
     if (pathname?.includes('nursingHome')) {
@@ -132,7 +139,7 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
   };
 
   return (
-    <div className="nh-root-shell w-full min-h-screen bg-gray-50 h-fit">
+    <div className="nh-root-shell w-full min-h-screen min-w-0 max-w-[100vw] overflow-x-hidden bg-gray-50 h-fit">
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -145,35 +152,43 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
                 width: 100% !important;
                 max-width: none !important;
               }
+              .nh-sidebar-overlay { display: none !important; }
             }
           `,
         }}
       />
       {/* 상단 헤더 고정 */}
       <header
-        className="print:hidden fixed top-0 left-0 right-0 z-50 flex items-center justify-between bg-blue-600 h-14 px-6 text-white shadow w-full"
+        className="print:hidden fixed top-0 left-0 right-0 z-50 flex flex-wrap items-center justify-between gap-2 bg-blue-600 h-14 px-3 sm:px-6 text-white shadow w-full min-w-0"
         style={{ height: HEADER_HEIGHT }}
       >
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+          <button
+            type="button"
+            className="lg:hidden shrink-0 px-2.5 py-1.5 bg-blue-700 rounded text-sm hover:bg-blue-800 transition-colors"
+            aria-label="메뉴 열기"
+            aria-expanded={sidebarOpen}
+            onClick={() => setSidebarOpen(true)}
+          >
+            메뉴
+          </button>
           <button
             onClick={handleMainMoveClick}
-            className="px-3 py-1.5 bg-blue-700 rounded text-sm hover:bg-blue-800 transition-colors"
+            className="shrink-0 px-2 sm:px-3 py-1.5 bg-blue-700 rounded text-xs sm:text-sm hover:bg-blue-800 transition-colors"
           >
             메인으로 이동
           </button>
           <span 
-            className="text-2xl font-bold tracking-wide cursor-pointer transition-opacity"
+            className="text-base sm:text-2xl font-bold tracking-wide cursor-pointer transition-opacity truncate min-w-0"
             // onClick={handleLogoClick}
           >
             {displayText}
           </span>
-          {/* <button className="ml-2 px-2 py-1 bg-blue-700 rounded text-xs">최근내역</button>
-          <button className="ml-1 px-2 py-1 bg-blue-700 rounded text-xs">즐겨찾기</button> */}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 shrink-0">
           {institutionName || accountDisplayName ? (
             <span
-              className="text-sm font-medium text-white/95 max-w-[min(100%,420px)] truncate inline-block align-middle"
+              className="text-sm font-medium text-white/95 max-w-[min(40vw,280px)] sm:max-w-[min(100%,420px)] truncate inline-block align-middle"
               title={
                 [institutionName && `기관명 ${institutionName}`, accountDisplayName && `${accountDisplayName}님`]
                   .filter(Boolean)
@@ -199,30 +214,58 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
           ) : null}
           <button 
             onClick={handleLogout}
-            className="px-2 py-1 bg-blue-700 rounded text-xs hover:bg-blue-800 transition-colors"
+            className="shrink-0 px-2 py-1 bg-blue-700 rounded text-xs hover:bg-blue-800 transition-colors"
           >
             로그아웃
           </button>
         </div>
       </header>
-      {/* 왼쪽 메뉴 고정 */}
+
+      {/* lg 미만 사이드바 오버레이 배경 */}
+      {sidebarOpen ? (
+        <button
+          type="button"
+          aria-label="메뉴 닫기"
+          className="nh-sidebar-overlay print:hidden lg:hidden fixed inset-0 z-30 bg-black/40"
+          onClick={() => setSidebarOpen(false)}
+        />
+      ) : null}
+
+      {/* 왼쪽 메뉴: lg 이상 고정, 미만 오버레이 */}
       <aside
-        className="print:hidden fixed z-40 top-14 left-0 h-[calc(100vh-56px)] bg-white border-r border-gray-200 overflow-y-auto"
+        className={[
+          'print:hidden fixed z-40 left-0 h-[calc(100vh-56px)] bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          'lg:translate-x-0',
+        ].join(' ')}
         style={{ width: SIDEBAR_WIDTH, top: HEADER_HEIGHT }}
       >
+        <div className="lg:hidden flex items-center justify-between px-3 py-2 border-b border-gray-200">
+          <span className="text-sm font-semibold text-blue-900">메뉴</span>
+          <button
+            type="button"
+            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+            onClick={() => setSidebarOpen(false)}
+          >
+            닫기
+          </button>
+        </div>
         {renderMenu()}
       </aside>
-      {/* 본문 컨텐츠: TabHost를 항상 표시 */}
+
+      {/* 본문 컨텐츠: TabHost를 항상 표시
+          w-full + ml-64 조합은 뷰포트보다 넓어져 페이지(탭 포함) 가로 스크롤이 생기므로
+          lg에서는 사이드바 폭만큼 뺀 너비를 사용한다. */}
       <main
-        className="nh-main-content min-h-screen p-0"
-        style={{ marginLeft: SIDEBAR_WIDTH, marginTop: HEADER_HEIGHT }}
+        className="nh-main-content min-h-screen min-w-0 p-0 w-full max-w-[100vw] overflow-x-hidden lg:ml-64 lg:w-[calc(100%-16rem)] lg:max-w-[calc(100vw-16rem)]"
+        style={{ marginTop: HEADER_HEIGHT }}
       >
         <TabHost />
       </main>
 
       {/* 확인 모달 */}
       {showConfirmModal && (
-        <div className="print:hidden fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50">
+        <div className="print:hidden fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 p-4">
           <div className="bg-white rounded-lg shadow-xl p-6 Tab:p-8 PC:p-10 max-w-md w-full mx-4">
             <div className="text-center">
               <h3 className="text-lg Tab:text-xl PC:text-2xl font-bold text-gray-900 mb-4 PC:mb-6">
@@ -232,7 +275,7 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
                 로그아웃 후 이동합니다.<br />
                 정말로 이동하시겠습니까?
               </p>
-              <div className="flex gap-3 Tab:gap-4 justify-center">
+              <div className="flex flex-wrap gap-3 Tab:gap-4 justify-center">
                 <button
                   onClick={handleCancelMove}
                   className="px-6 Tab:px-8 PC:px-10 py-2 Tab:py-2.5 PC:py-3 bg-gray-200 text-gray-700 rounded-lg PC:rounded-xl hover:bg-gray-300 transition-colors text-sm Tab:text-base PC:text-lg font-medium"

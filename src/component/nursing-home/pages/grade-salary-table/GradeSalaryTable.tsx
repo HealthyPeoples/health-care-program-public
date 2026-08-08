@@ -278,7 +278,7 @@ export default function GradeSalaryTable() {
 	const pkLocked = isEdit;
 
 	return (
-		<div className="flex flex-col min-h-screen bg-white text-black">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="border-b border-blue-200 bg-blue-50/50 px-6 py-4">
 				<div className="relative flex items-center justify-center">
 					<h1 className="text-lg font-semibold text-blue-900">수급자 급여단가 관리</h1>
@@ -301,8 +301,8 @@ export default function GradeSalaryTable() {
 
 			<div className="flex flex-1 flex-col p-4">
 				<div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-blue-300 bg-white">
-					<div className="flex-1 overflow-auto">
-						<table className="w-full text-sm">
+					<div className="flex-1 overflow-x-auto overflow-y-auto w-full min-w-0">
+						<table className="w-max max-w-none min-w-[720px] text-sm">
 							<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-100">
 								<tr>
 									<th className="border-r border-blue-200 px-3 py-2 text-center font-semibold text-blue-900">

@@ -644,9 +644,9 @@ export default function FacilityDailySchedule() {
 				: [];
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="p-4 space-y-4">
-				<div className="flex items-stretch gap-3">
+				<div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch gap-3 min-w-0">
 					<div className="flex-1 rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
 						센터 일과표
 					</div>

@@ -661,10 +661,10 @@ export default function CaseManagement() {
 	};
 
 	return (
-		<div className="min-h-screen text-black bg-white">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			{/* 상단 헤더 */}
 			<div className="p-4 border-b border-blue-200 bg-blue-50">
-				<div className="flex items-center justify-between gap-4">
+				<div className="flex flex-wrap items-center justify-between gap-4">
 					<h1 className="text-2xl font-bold text-blue-900 shrink-0">사례관리</h1>
 					<div className="flex flex-wrap items-center justify-end gap-4">
 						<div className="flex items-center gap-2">
@@ -711,9 +711,9 @@ export default function CaseManagement() {
 			</div>
 
 			{/* 메인 컨텐츠 영역 */}
-			<div className="flex h-[calc(100vh-120px)]">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-120px)] min-h-0">
 				{/* 좌측 패널: 사례 목록 */}
-				<div className="flex flex-col w-1/3 bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full lg:w-1/3 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b lg:border-b-0 lg:h-full lg:min-h-0 lg:overflow-hidden">
 					<div className="flex items-center justify-between gap-2 p-2 border-b border-blue-200 bg-blue-50">
 						<div className="text-sm font-semibold text-blue-900">
 							사례 목록

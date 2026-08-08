@@ -533,7 +533,7 @@ export default function FacilityWorkLog() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="p-4 space-y-4">
 				<div className="flex flex-wrap items-stretch gap-3">
 					<div className="flex-1 min-w-[240px] rounded border border-blue-300 bg-blue-100 px-6 py-4 text-center text-2xl font-semibold text-blue-900">
@@ -854,7 +854,7 @@ export default function FacilityWorkLog() {
 						aria-labelledby="work-log-create-title"
 						onClick={(e) => e.stopPropagation()}
 					>
-						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-50 px-4 py-3">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-3">
 							<h2 id="work-log-create-title" className="flex-1 text-center text-lg font-semibold text-blue-900">
 								센터 업무일지 등록
 							</h2>

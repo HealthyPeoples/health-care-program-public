@@ -342,10 +342,10 @@ export default function IndwellingCatheter() {
 	const currentRecords = catheterList.slice(listStartIndex, listEndIndex);
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측 패널: 수급자 목록 */}
-				<div className="flex flex-col w-1/4 p-4 bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					{/* 필터 헤더 */}
 					<div className="mb-3">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
@@ -404,8 +404,8 @@ export default function IndwellingCatheter() {
 					</div>
 
 					{/* 수급자 목록 테이블 */}
-					<div className="flex flex-col overflow-hidden bg-white border border-blue-300 rounded-lg">
-						<div className="overflow-y-auto">
+					<div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
+						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
@@ -509,15 +509,15 @@ export default function IndwellingCatheter() {
 					</div>
 				</div>
 
-				<div className="relative flex flex-1 min-w-0">
+				<div className="relative flex flex-col xl:flex-row flex-1 min-w-0 min-h-0">
 					<div
-						className={`flex flex-1 min-w-0 ${
+						className={`flex flex-col xl:flex-row flex-1 min-w-0 min-h-0 ${
 							!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
 						}`}
 					>
 				{/* 중간 패널: 유치도뇨관리 목록 테이블 */}
-				<div className="flex flex-col w-1/3 bg-white border-r border-blue-200">
-					<div className="flex flex-col flex-1 overflow-hidden">
+				<div className="flex flex-col w-full lg:w-1/3 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b lg:border-b-0 lg:h-full lg:min-h-0 lg:overflow-hidden">
+					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto">
 							<table className="w-full text-xs border-collapse table-fixed">
 								<colgroup>

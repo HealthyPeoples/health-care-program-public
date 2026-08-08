@@ -139,86 +139,88 @@ export function MemberListPanel({
   const handlePageChange = (page: number) => setCurrentPage(page);
 
   return (
-    <div className={className}>
-      <div className="overflow-hidden bg-white border border-blue-300 rounded-lg shadow-sm">
-        <div className="px-3 py-2 font-semibold text-blue-900 bg-blue-100 border-b border-blue-300">
+    <div className={`w-full min-w-0 flex flex-col ${className}`.trim()}>
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg shadow-sm">
+        <div className="px-3 py-2 font-semibold text-blue-900 bg-blue-100 border-b border-blue-300 shrink-0">
           {title}
         </div>
-        <div className="px-3 py-2 space-y-2 border-b border-blue-100">
-          <div className="space-y-1">
-            <div className="text-xs text-blue-900/80">현황</div>
-            <select
-              value={selectedStatus}
-              onChange={(e) => {
-                setSelectedStatus(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-2 py-1 text-sm text-blue-900 bg-white border border-blue-300 rounded"
-            >
-              <option value="">현황 전체</option>
-              <option value="입소">입소</option>
-              <option value="퇴소">퇴소</option>
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs text-blue-900/80">등급</div>
-            <select
-              value={selectedGrade}
-              onChange={(e) => {
-                setSelectedGrade(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-2 py-1 text-sm text-blue-900 bg-white border border-blue-300 rounded"
-            >
-              <option value="">등급 전체</option>
-              <option value="1">1등급</option>
-              <option value="2">2등급</option>
-              <option value="3">3등급</option>
-              <option value="4">4등급</option>
-              <option value="5">5등급</option>
-              <option value="9">인지지원</option>
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs text-blue-900/80">층수</div>
-            <select
-              value={selectedFloor}
-              onChange={(e) => {
-                setSelectedFloor(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full px-2 py-1 text-sm text-blue-900 bg-white border border-blue-300 rounded"
-            >
-              <option value="">층수 전체</option>
-              <option value={NO_ROOM_VALUE}>방번호 없음</option>
-              {availableFloors.map((floor) => (
-                <option key={floor} value={String(floor)}>
-                  {floor}층
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <div className="text-xs text-blue-900/80">이름 검색</div>
-            <input
-              className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-              placeholder="예) 홍길동"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
+        <div className="px-3 py-2 border-b border-blue-100 shrink-0">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs text-blue-900/80">현황</div>
+              <select
+                value={selectedStatus}
+                onChange={(e) => {
+                  setSelectedStatus(e.target.value);
                   setCurrentPage(1);
-                  fetchMembers(searchTerm);
-                }
-              }}
-            />
+                }}
+                className="w-full min-w-0 px-2 py-1 text-sm text-blue-900 bg-white border border-blue-300 rounded"
+              >
+                <option value="">현황 전체</option>
+                <option value="입소">입소</option>
+                <option value="퇴소">퇴소</option>
+              </select>
+            </div>
+
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs text-blue-900/80">등급</div>
+              <select
+                value={selectedGrade}
+                onChange={(e) => {
+                  setSelectedGrade(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full min-w-0 px-2 py-1 text-sm text-blue-900 bg-white border border-blue-300 rounded"
+              >
+                <option value="">등급 전체</option>
+                <option value="1">1등급</option>
+                <option value="2">2등급</option>
+                <option value="3">3등급</option>
+                <option value="4">4등급</option>
+                <option value="5">5등급</option>
+                <option value="9">인지지원</option>
+              </select>
+            </div>
+
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs text-blue-900/80">층수</div>
+              <select
+                value={selectedFloor}
+                onChange={(e) => {
+                  setSelectedFloor(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="w-full min-w-0 px-2 py-1 text-sm text-blue-900 bg-white border border-blue-300 rounded"
+              >
+                <option value="">층수 전체</option>
+                <option value={NO_ROOM_VALUE}>방번호 없음</option>
+                {availableFloors.map((floor) => (
+                  <option key={floor} value={String(floor)}>
+                    {floor}층
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs text-blue-900/80">이름 검색</div>
+              <input
+                className="w-full min-w-0 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+                placeholder="예) 홍길동"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    setCurrentPage(1);
+                    fetchMembers(searchTerm);
+                  }
+                }}
+              />
+            </div>
           </div>
 
           <button
-            className="w-full py-1 text-sm text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+            className="w-full mt-2 py-1 text-sm text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
             onClick={() => {
               setCurrentPage(1);
               fetchMembers(searchTerm);
@@ -228,8 +230,8 @@ export function MemberListPanel({
           </button>
         </div>
 
-        <div className="max-h-[540px] overflow-auto">
-          <table className="w-full text-sm">
+        <div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-auto">
+          <table className="w-full min-w-[260px] text-sm">
             <thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
               <tr>
                 <th className="px-2 py-2 font-semibold text-left text-blue-900">이름</th>
@@ -286,7 +288,7 @@ export function MemberListPanel({
         {totalPages > 1 && (
           <div className="p-3 border-t border-blue-100">
             <div className="flex items-center justify-center">
-              <div className="flex gap-1">
+              <div className="flex flex-wrap justify-center gap-1">
                 <button
                   onClick={() => handlePageChange(1)}
                   disabled={currentPage === 1}

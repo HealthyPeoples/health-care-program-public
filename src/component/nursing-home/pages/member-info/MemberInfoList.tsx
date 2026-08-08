@@ -65,10 +65,10 @@ export default function MemberInfoList({
 	onPrintAllMembers,
 }: MemberInfoListProps) {
 	return (
-		<aside className="w-1/3 shrink-0">
+		<aside className="w-full lg:w-1/3 lg:max-w-md shrink-0 min-w-0">
 			<div className="overflow-hidden bg-white border border-blue-300 rounded-lg shadow-sm">
-				<div className="flex items-center justify-between gap-2 px-3 py-2 font-semibold text-blue-900 bg-blue-100 border-b border-blue-300">
-					<span>수급자 목록</span>
+				<div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 font-semibold text-blue-900 bg-blue-100 border-b border-blue-300">
+					<span className="shrink-0">수급자 목록</span>
 					<button
 						type="button"
 						onClick={onPrintAllMembers}
@@ -93,8 +93,8 @@ export default function MemberInfoList({
 					onSearch={onSearch}
 				/>
 				{/* 목록 테이블 */}
-				<div className="max-h-[540px] overflow-auto">
-					<table className="w-full text-sm">
+				<div className="min-h-[220px] max-h-[min(540px,55vh)] overflow-auto">
+					<table className="w-full min-w-[280px] text-sm">
 						<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 							<tr>
 								<th className="px-2 py-2 font-semibold text-left text-blue-900">이름</th>
@@ -159,7 +159,7 @@ export default function MemberInfoList({
 							{/* <div className="text-sm text-blue-900/80">
 								총 {filteredMembers.length}개 중 {startIndex + 1}-{Math.min(endIndex, filteredMembers.length)}개 표시
 							</div> */}
-							<div className="flex gap-1">
+							<div className="flex flex-wrap justify-center gap-1">
 								<button
 									onClick={() => onPageChange(1)}
 									disabled={currentPage === 1}

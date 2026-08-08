@@ -1101,9 +1101,9 @@ export default function MonthlySalaryCollection() {
 	};
 
 	return (
-		<div className="flex min-h-screen flex-col bg-white text-black">
-			<div className="flex h-[calc(100vh-56px)] flex-col overflow-hidden">
-				<div className="flex flex-1 flex-col overflow-hidden bg-white">
+		<div className="flex min-h-screen w-full max-w-full min-w-0 overflow-x-hidden flex-col bg-white text-black">
+			<div className="flex h-[calc(100vh-56px)] w-full max-w-full min-w-0 flex-col overflow-hidden">
+				<div className="flex flex-1 flex-col min-w-0 overflow-hidden bg-white">
 					<div className="flex flex-wrap items-center gap-4 border-b border-blue-200 bg-blue-50/50 p-4">
 						<h2 className="text-lg font-semibold text-blue-900">급여 수금내역 관리</h2>
 						<div className="flex items-center gap-2">
@@ -1190,8 +1190,8 @@ export default function MonthlySalaryCollection() {
 					</div>
 
 					<div className="min-h-0 flex-1 overflow-hidden border-b border-blue-200">
-						<div className="h-full overflow-auto">
-							<table className="w-full min-w-[700px] text-xs">
+						<div className="h-full overflow-x-auto overflow-y-auto w-full min-w-0">
+							<table className="w-max max-w-none min-w-[700px] text-xs">
 								<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-100">
 									<tr>
 										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
@@ -1283,8 +1283,8 @@ export default function MonthlySalaryCollection() {
 									신규 수금 데이터 생성
 								</button>
 							</div>
-							<div className="overflow-auto">
-								<table className="w-full min-w-[520px] text-xs">
+							<div className="overflow-x-auto w-full min-w-0">
+								<table className="w-max max-w-none min-w-[520px] text-xs">
 									<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 										<tr>
 											<th className="whitespace-nowrap border-r border-blue-200 px-2 py-1.5 text-center font-semibold text-blue-900">

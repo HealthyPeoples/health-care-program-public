@@ -220,8 +220,8 @@ export default function PhysicalTherapyStandardTime() {
 	};
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측: 표준시간 폼 */}
 				<div className="flex-1 p-6 overflow-y-auto">
 					<div className="mb-6">
@@ -238,22 +238,22 @@ export default function PhysicalTherapyStandardTime() {
 						</div>
 					</div>
 
-					<div className="flex gap-6 mb-6">
-						<div className="flex-1 p-4 bg-white border border-blue-300 rounded-lg">
+					<div className="flex flex-col lg:flex-row gap-6 mb-6">
+						<div className="flex-1 min-w-0 p-4 bg-white border border-blue-300 rounded-lg">
 							<div className="pb-2 mb-4 border-b border-blue-200">
 								<h3 className="text-base font-semibold text-blue-900">운동치료 - 기구이용</h3>
 							</div>
 							<div className="space-y-1">{equipmentItems.map((it) => renderItem(it.key, it.label))}</div>
 						</div>
 
-						<div className="flex-1 p-4 bg-white border border-blue-300 rounded-lg">
+						<div className="flex-1 min-w-0 p-4 bg-white border border-blue-300 rounded-lg">
 							<div className="pb-2 mb-4 border-b border-blue-200">
 								<h3 className="text-base font-semibold text-blue-900">운동치료 - 단순운동</h3>
 							</div>
 							<div className="space-y-1">{simpleItems.map((it) => renderItem(it.key, it.label))}</div>
 						</div>
 
-						<div className="flex-1 p-4 bg-white border border-blue-300 rounded-lg">
+						<div className="flex-1 min-w-0 p-4 bg-white border border-blue-300 rounded-lg">
 							<div className="pb-2 mb-4 border-b border-blue-200">
 								<h3 className="text-base font-semibold text-blue-900">Modalities</h3>
 							</div>
@@ -261,8 +261,8 @@ export default function PhysicalTherapyStandardTime() {
 						</div>
 					</div>
 
-					<div className="flex items-start gap-6 mb-6">
-						<div className="flex-1 p-4 bg-white border border-blue-300 rounded-lg">
+					<div className="flex flex-col lg:flex-row items-stretch lg:items-start gap-6 mb-6">
+						<div className="flex-1 min-w-0 p-4 bg-white border border-blue-300 rounded-lg">
 							<div className="text-sm font-semibold text-blue-900 mb-2">비고</div>
 							<textarea
 								value={String((formData as any).ETC ?? '')}
@@ -271,7 +271,7 @@ export default function PhysicalTherapyStandardTime() {
 								className="w-full min-h-[96px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:border-blue-200"
 							/>
 						</div>
-						<div className="w-[320px] p-4 bg-white border border-blue-300 rounded-lg">
+						<div className="w-full max-w-full lg:w-[320px] min-w-0 shrink-0 p-4 bg-white border border-blue-300 rounded-lg">
 							<div className="text-sm font-semibold text-blue-900 mb-2">등록자</div>
 							<div className="space-y-2 employee-dropdown-container relative">
 								<input

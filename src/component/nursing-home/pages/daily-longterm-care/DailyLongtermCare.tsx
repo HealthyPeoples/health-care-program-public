@@ -646,8 +646,8 @@ export default function DailyLongtermCare() {
 	const contentLocked = noMember || noRecord;
 
 	return (
-		<div className="min-h-screen text-black bg-white">
-			<div className="mx-auto max-w-[1400px] p-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="mx-auto w-full max-w-[1400px] min-w-0 p-3 sm:p-4">
 				{/* 상단: 서비스일자 */}
 				<div className="mb-4 flex items-center justify-center gap-3 border-b border-blue-200 pb-3">
 					<button
@@ -678,9 +678,9 @@ export default function DailyLongtermCare() {
 					</button>
 				</div>
 
-				<div className="flex gap-4">
+				<div className="flex flex-col lg:flex-row gap-4 min-w-0">
 					{/* 좌측: 수급자 목록 */}
-					<aside className="w-1/3 shrink-0">
+					<aside className="w-full lg:w-1/3 lg:max-w-md shrink-0 min-w-0">
 						<div className="overflow-hidden bg-white border border-blue-300 rounded-lg shadow-sm">
 							<div className="px-3 py-2 font-semibold text-blue-900 bg-blue-100 border-b border-blue-300">
 								수급자 목록
@@ -757,7 +757,7 @@ export default function DailyLongtermCare() {
 								</button>
 							</div>
 
-							<div className="overflow-y-auto max-h-[520px]">
+							<div className="min-h-[220px] max-h-[min(540px,55vh)] overflow-y-auto">
 								<table className="w-full text-xs">
 									<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 										<tr>

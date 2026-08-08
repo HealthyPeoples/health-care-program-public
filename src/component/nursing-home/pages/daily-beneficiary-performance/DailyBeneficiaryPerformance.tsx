@@ -1578,12 +1578,12 @@ export default function DailyBeneficiaryPerformance() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
-			<div className="mx-auto max-w-[1600px] p-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<div className="mx-auto w-full max-w-full min-w-0 p-3 sm:p-4">
 				{/* 상단: 날짜 네비게이션 */}
-				<div className="mb-4 flex items-center border-b border-blue-200 pb-3 relative">
-					{/* 가운데: 날짜 네비게이션 */}
-					<div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-4">
+				<div className="mb-4 flex flex-col gap-3 border-b border-blue-200 pb-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+					{/* 날짜 네비게이션 */}
+					<div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 lg:flex-1">
 						<button 
 							onClick={() => handleDateChange(-1)}
 							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
@@ -1608,7 +1608,7 @@ export default function DailyBeneficiaryPerformance() {
 						</button>
 					</div>
 					{/* 오른쪽 상단 버튼 */}
-					<div className="ml-auto flex items-center gap-2">
+					<div className="flex flex-wrap items-center justify-center gap-2 lg:justify-end">
 						<button
 							type="button"
 							onClick={handleBulkAddAdmittedMembers}
@@ -1652,17 +1652,17 @@ export default function DailyBeneficiaryPerformance() {
 					</div>
 				</div>
 
-				{/* 통합 테이블: 수급자 목록 + 실적 등록 */}
-				<div className="border border-blue-300 rounded-lg bg-white shadow-sm">
+				{/* 통합 테이블: 수급자 목록 + 실적 등록 — 표 영역만 가로 스크롤 */}
+				<div className="w-full max-w-full min-w-0 border border-blue-300 rounded-lg bg-white shadow-sm">
 					<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
 						<h2 className="text-lg font-semibold text-blue-900">일 수급자급여실적 등록</h2>
 					</div>
-					<div className="overflow-x-auto">
-						<table className="w-full text-sm">
+					<div className="block w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain">
+						<table className="text-sm min-w-[1400px] w-max max-w-none">
 							<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 								<tr>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">연번</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">수급자명(생년월일)</th>
+									<th className="sticky left-0 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">연번</th>
+									<th className="sticky left-10 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">수급자명(생년월일)</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">식사장소</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-28">식사종류</th>
 									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 min-w-[320px]">입원/외출/외박</th>
@@ -1705,9 +1705,9 @@ export default function DailyBeneficiaryPerformance() {
 										onClick={() => setSelectedMember(row.id)}
 									>
 										{/* 연번 */}
-										<td className="text-center px-3 py-3 border-r border-blue-100">{row.serialNo}</td>
+										<td className="sticky left-0 z-10 bg-white text-center px-3 py-3 border-r border-blue-100">{row.serialNo}</td>
 										{/* 수급자명(생년월일) */}
-										<td className="text-center px-3 py-3 border-r border-blue-100 relative w-32">
+										<td className="sticky left-10 z-10 bg-white text-center px-3 py-3 border-r border-blue-100 relative w-32">
 											<div className="flex flex-col">
 												<input
 													ref={(el) => {
@@ -2179,7 +2179,7 @@ export default function DailyBeneficiaryPerformance() {
 						onClick={(e) => e.stopPropagation()}
 					>
 						{/* 모달 헤더 */}
-						<div className="bg-blue-200 border-b border-blue-400 px-4 py-3 flex items-center justify-between">
+						<div className="bg-blue-200 border-b border-blue-400 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
 							<h3 className="text-lg font-semibold text-blue-900">수급자별 출력</h3>
 							<button
 								onClick={handleCloseMemberPrintModal}
@@ -2315,7 +2315,7 @@ export default function DailyBeneficiaryPerformance() {
 						className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col"
 						onClick={(e) => e.stopPropagation()}
 					>
-						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-50 px-4 py-3">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-50 px-4 py-3">
 							<h3 className="text-lg font-semibold text-blue-900">외박 수급자 복귀 처리</h3>
 							<button
 								type="button"

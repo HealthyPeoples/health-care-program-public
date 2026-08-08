@@ -489,9 +489,9 @@ export default function BedsoreManagement() {
 	const showCancel = isEditMode && (originalForm !== null || isNewRecord);
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
-				<div className="flex flex-col w-1/4 p-4 bg-white border-r border-blue-200">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<div className="mb-3">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
 						<div className="space-y-2">
@@ -544,8 +544,8 @@ export default function BedsoreManagement() {
 						</div>
 					</div>
 
-					<div className="flex flex-col overflow-hidden bg-white border border-blue-300 rounded-lg">
-						<div className="overflow-y-auto">
+					<div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
+						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
@@ -651,11 +651,11 @@ export default function BedsoreManagement() {
 					</div>
 				</div>
 
-				<div className="flex flex-col w-1/4 bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<label className="text-sm font-medium text-blue-900">관찰일자</label>
 					</div>
-					<div className="flex flex-col flex-1 overflow-hidden">
+					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto bg-white">
 							{loadingObservations ? (
 								<div className="px-3 py-2 text-sm text-blue-900/60">로딩 중...</div>
