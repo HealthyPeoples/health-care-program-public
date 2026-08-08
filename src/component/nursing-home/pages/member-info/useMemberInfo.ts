@@ -355,11 +355,26 @@ export function useMemberInfo() {
 
 	const handleFieldChange = (field: string, value: any) => {
 		hasUnsavedChanges.current = true;
-		setEditedMember((prev) => (prev ? { ...prev, [field]: value } : null));
+		setEditedMember((prev) => {
+			if (!prev) return null;
+			const next = { ...prev, [field]: value };
+			// 퇴소일자 입력 시 상태를 퇴소(9)로 자동 변경
+			if (field === 'P_EDT' && String(value ?? '').trim() !== '') {
+				next.P_ST = '9';
+			}
+			return next;
+		});
 	};
 
 	const handleNewMemberFieldChange = (field: string, value: any) => {
-		setNewMember((prev) => ({ ...prev, [field]: value }));
+		setNewMember((prev) => {
+			const next = { ...prev, [field]: value };
+			// 퇴소일자 입력 시 상태를 퇴소(9)로 자동 변경
+			if (field === 'P_EDT' && String(value ?? '').trim() !== '') {
+				next.P_ST = '9';
+			}
+			return next;
+		});
 	};
 
 	// 연락처는 P_HP/P_TEL 동시 반영
