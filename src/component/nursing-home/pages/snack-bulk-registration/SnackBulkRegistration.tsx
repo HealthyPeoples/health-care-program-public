@@ -26,6 +26,8 @@ type SnackRow = {
 
 type ListFilter = 'all' | 'registered' | 'empty';
 
+const LIST_PAGE_SIZE = 5;
+
 const todayYmd = () => {
 	const today = new Date();
 	const year = today.getFullYear();
@@ -124,6 +126,7 @@ export default function SnackBulkRegistration() {
 	const [listError, setListError] = useState('');
 	const [listFilter, setListFilter] = useState<ListFilter>('all');
 	const [nameQuery, setNameQuery] = useState('');
+	const [currentPage, setCurrentPage] = useState(1);
 
 	const fetchSnackList = useCallback(async (svdt: string) => {
 		if (!svdt) {
@@ -188,6 +191,25 @@ export default function SnackBulkRegistration() {
 			return true;
 		});
 	}, [rows, listFilter, nameQuery]);
+
+	const totalPages = Math.max(1, Math.ceil(filteredRows.length / LIST_PAGE_SIZE));
+	const startIndex = (currentPage - 1) * LIST_PAGE_SIZE;
+	const endIndex = startIndex + LIST_PAGE_SIZE;
+	const paginatedRows = filteredRows.slice(startIndex, endIndex);
+
+	useEffect(() => {
+		setCurrentPage(1);
+	}, [queryDate, listFilter, nameQuery]);
+
+	useEffect(() => {
+		if (currentPage > totalPages) {
+			setCurrentPage(totalPages);
+		}
+	}, [currentPage, totalPages]);
+
+	const handlePageChange = (page: number) => {
+		setCurrentPage(Math.min(Math.max(1, page), totalPages));
+	};
 
 	const handleSubmit = async () => {
 		if (!mealDate) {
@@ -514,13 +536,13 @@ export default function SnackBulkRegistration() {
 											</td>
 										</tr>
 									) : (
-										filteredRows.map((row, idx) => (
+										paginatedRows.map((row, idx) => (
 											<tr
-												key={`${row.PNUM}-${row.SVDT}-${idx}`}
+												key={`${row.PNUM}-${row.SVDT}-${startIndex + idx}`}
 												className="border-b border-blue-50 hover:bg-blue-50/50"
 											>
 												<td className="px-2 py-2.5 text-center text-blue-900/80 border-r border-blue-100">
-													{idx + 1}
+													{startIndex + idx + 1}
 												</td>
 												<td className="px-3 py-2.5 whitespace-nowrap border-r border-blue-100">
 													{row.SVDT || queryDate}
@@ -543,6 +565,66 @@ export default function SnackBulkRegistration() {
 								</tbody>
 							</table>
 						</div>
+
+						{!loadingList && !listError && filteredRows.length > 0 && (
+							<div className="p-3 border-t border-blue-200 bg-white">
+								<div className="flex items-center justify-center gap-1">
+									<button
+										type="button"
+										onClick={() => handlePageChange(1)}
+										disabled={currentPage === 1}
+										className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+									>
+										&lt;&lt;
+									</button>
+									<button
+										type="button"
+										onClick={() => handlePageChange(currentPage - 1)}
+										disabled={currentPage === 1}
+										className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+									>
+										&lt;
+									</button>
+									{Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+										const pageNum =
+											Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
+										return (
+											<button
+												key={pageNum}
+												type="button"
+												onClick={() => handlePageChange(pageNum)}
+												className={`px-2 py-1 text-xs border rounded ${
+													currentPage === pageNum
+														? 'bg-blue-500 text-white border-blue-500'
+														: 'border-blue-300 hover:bg-blue-50'
+												}`}
+											>
+												{pageNum}
+											</button>
+										);
+									})}
+									<button
+										type="button"
+										onClick={() => handlePageChange(currentPage + 1)}
+										disabled={currentPage === totalPages}
+										className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+									>
+										&gt;
+									</button>
+									<button
+										type="button"
+										onClick={() => handlePageChange(totalPages)}
+										disabled={currentPage === totalPages}
+										className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+									>
+										&gt;&gt;
+									</button>
+									<span className="ml-4 text-xs text-blue-900 tabular-nums">
+										{`${startIndex + 1}-${Math.min(endIndex, filteredRows.length)} / ${filteredRows.length}`}
+									</span>
+								</div>
+							</div>
+						)}
 					</section>
 				</div>
 			</div>
