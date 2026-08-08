@@ -50,6 +50,71 @@ function mealKindLabel(code: string | null | undefined): string {
 }
 
 /**
+ * 간식 체크 + 체크 시 간식명(MGVOL/AGVOL/DGVOL) 호버 툴팁.
+ * disabled input은 native title이 안 뜨므로 body Portal로 표시합니다.
+ */
+function SnackStatusCheck({
+	label,
+	checked,
+	snackName,
+	editing,
+	onCheckedChange,
+}: {
+	label: string;
+	checked: boolean;
+	snackName?: string;
+	editing: boolean;
+	onCheckedChange: (checked: boolean) => void;
+}) {
+	const tip = checked ? String(snackName || '').trim() : '';
+	const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+
+	return (
+		<>
+			<span
+				className={`inline-flex items-center gap-1 ${
+					tip ? 'cursor-help' : editing ? 'cursor-pointer' : 'cursor-not-allowed'
+				}`}
+				onMouseEnter={(e) => {
+					if (tip) setHoverRect(e.currentTarget.getBoundingClientRect());
+				}}
+				onMouseLeave={() => setHoverRect(null)}
+			>
+				<label className="flex items-center gap-1">
+					<input
+						type="checkbox"
+						checked={checked}
+						onChange={(e) => onCheckedChange(e.target.checked)}
+						disabled={!editing}
+						className={`${editing ? 'cursor-pointer' : 'pointer-events-none'} ${
+							!editing && checked ? 'disabled-checked-blue' : ''
+						}`}
+					/>
+					<span className="text-xs">{label}</span>
+				</label>
+			</span>
+			{typeof document !== 'undefined' &&
+				tip &&
+				hoverRect &&
+				createPortal(
+					<div
+						role="tooltip"
+						className="pointer-events-none fixed z-[10050] whitespace-nowrap rounded bg-slate-800 px-2 py-1 text-xs text-white shadow-lg"
+						style={{
+							top: hoverRect.top - 6,
+							left: hoverRect.left + hoverRect.width / 2,
+							transform: 'translate(-50%, -100%)',
+						}}
+					>
+						{tip}
+					</div>,
+					document.body
+				)}
+		</>
+	);
+}
+
+/**
  * 화면 그리드 1행에 대응하는 F14020 실적 모델.
  * API 응답을 {@link mapApiItemToPerformance}로 변환해 사용합니다.
  */
@@ -102,6 +167,8 @@ interface PerformanceData {
 	specialNotes: string;
 	/** 오전/오후/저녁 간식 MGST, AGST, DGST: '1'=양호, '2'=이상 */
 	snackStatus: { morning: string; afternoon: string; evening: string };
+	/** 간식명 — F14020.MGVOL / AGVOL / DGVOL (호버 표시용) */
+	snackNames?: { morning: string; afternoon: string; evening: string };
 }
 
 /**
@@ -377,6 +444,11 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 			morning: item.MGST || '1',
 			afternoon: item.AGST || '1',
 			evening: item.DGST || '1'
+		},
+		snackNames: {
+			morning: String(item.MGVOL ?? '').trim(),
+			afternoon: String(item.AGVOL ?? '').trim(),
+			evening: String(item.DGVOL ?? '').trim()
 		}
 	};
 }
@@ -2081,54 +2153,72 @@ export default function DailyBeneficiaryPerformance() {
 												</label>
 											</div>
 										</td>
-										{/* 간식상태 */}
+										{/* 간식상태 — 체크된 항목만 MGVOL/AGVOL/DGVOL 호버 표시 */}
 										<td className="text-center px-3 py-3 border-r border-blue-100">
 											<div className="flex justify-center gap-3" onClick={(e) => e.stopPropagation()}>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.snackStatus.morning === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, snackStatus: { ...r.snackStatus, morning: e.target.checked ? '1' : '2' } } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.morning === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">오전</span>
-												</label>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.snackStatus.afternoon === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, snackStatus: { ...r.snackStatus, afternoon: e.target.checked ? '1' : '2' } } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.afternoon === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">오후</span>
-												</label>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
-														checked={row.snackStatus.evening === '1'}
-														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, snackStatus: { ...r.snackStatus, evening: e.target.checked ? '1' : '2' } } : r
-															);
-															setCombinedData(newData);
-														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.snackStatus.evening === '1' ? "disabled-checked-blue" : ""}`}
-													/>
-													<span className="text-xs">저녁</span>
-												</label>
+												<SnackStatusCheck
+													label="오전"
+													checked={row.snackStatus.morning === '1'}
+													snackName={row.snackNames?.morning}
+													editing={editingRowId === row.id}
+													onCheckedChange={(checked) => {
+														setCombinedData((prev) =>
+															prev.map((r) =>
+																r.id === row.id
+																	? {
+																			...r,
+																			snackStatus: {
+																				...r.snackStatus,
+																				morning: checked ? '1' : '2',
+																			},
+																		}
+																	: r
+															)
+														);
+													}}
+												/>
+												<SnackStatusCheck
+													label="오후"
+													checked={row.snackStatus.afternoon === '1'}
+													snackName={row.snackNames?.afternoon}
+													editing={editingRowId === row.id}
+													onCheckedChange={(checked) => {
+														setCombinedData((prev) =>
+															prev.map((r) =>
+																r.id === row.id
+																	? {
+																			...r,
+																			snackStatus: {
+																				...r.snackStatus,
+																				afternoon: checked ? '1' : '2',
+																			},
+																		}
+																	: r
+															)
+														);
+													}}
+												/>
+												<SnackStatusCheck
+													label="저녁"
+													checked={row.snackStatus.evening === '1'}
+													snackName={row.snackNames?.evening}
+													editing={editingRowId === row.id}
+													onCheckedChange={(checked) => {
+														setCombinedData((prev) =>
+															prev.map((r) =>
+																r.id === row.id
+																	? {
+																			...r,
+																			snackStatus: {
+																				...r.snackStatus,
+																				evening: checked ? '1' : '2',
+																			},
+																		}
+																	: r
+															)
+														);
+													}}
+												/>
 											</div>
 										</td>
 										<td className="text-center px-3 py-3 border-r border-blue-100 w-80">
