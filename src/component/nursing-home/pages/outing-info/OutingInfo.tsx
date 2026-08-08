@@ -384,10 +384,10 @@ export default function OutingInfo() {
 	const isEditing = (rowId: number) => editingRowId === rowId;
 
 	return (
-		<div className="min-h-screen bg-white text-black">
-			<div className="mx-auto max-w-[1600px] p-4">
-				<div className="mb-4 flex items-center border-b border-blue-200 pb-3 relative">
-					<div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<div className="mx-auto w-full max-w-[1600px] min-w-0 p-3 sm:p-4">
+				<div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 pb-3 relative">
+					<div className="w-full sm:w-auto sm:absolute sm:left-1/2 sm:-translate-x-1/2 flex flex-wrap items-center justify-center gap-4">
 						<button
 							type="button"
 							onClick={() => handleDateChange(-1)}
@@ -414,7 +414,7 @@ export default function OutingInfo() {
 							<span>▶</span>
 						</button>
 					</div>
-					<div className="ml-auto flex items-center gap-2">
+					<div className="ml-auto flex flex-wrap items-center gap-2">
 						<button
 							type="button"
 							onClick={handlePrint}
@@ -446,7 +446,7 @@ export default function OutingInfo() {
 					<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
 						<h2 className="text-xl font-semibold text-blue-900">외출/외박 처리</h2>
 					</div>
-					<div className="overflow-hidden">
+					<div className="overflow-x-auto w-full min-w-0">
 						<style>{`
 							.outing-dt {
 								min-width: 0;
@@ -469,7 +469,7 @@ export default function OutingInfo() {
 								padding: 0;
 							}
 						`}</style>
-						<table className="w-full table-fixed text-[15px]">
+						<table className="w-max max-w-none min-w-[1100px] table-fixed text-[15px]">
 							<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 								<tr>
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[3%]">연번</th>

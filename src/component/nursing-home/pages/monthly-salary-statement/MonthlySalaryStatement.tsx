@@ -57,8 +57,8 @@ export default function MonthlySalaryStatement() {
 	} = useMonthlySalaryStatement();
 
 	return (
-		<div className="flex min-h-screen flex-col bg-white text-black">
-			<div className="flex h-[calc(100vh-56px)] min-h-0 flex-1 flex-col overflow-hidden bg-white">
+		<div className="flex min-h-screen w-full max-w-full min-w-0 overflow-x-hidden flex-col bg-white text-black">
+			<div className="flex h-[calc(100vh-56px)] w-full max-w-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white">
 				{/* 상단: 제목 + 조회조건 + 탭 + 버튼 */}
 				<MonthlySalaryStatementToolbar
 					activeTab={activeTab}

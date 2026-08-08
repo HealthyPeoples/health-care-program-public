@@ -433,9 +433,9 @@ export default function TabHost() {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-[600px]">
-      {/* 탭 바: 제목은 한 줄 유지, 공간 부족 시 탭 행이 다음 줄로 줄바꿈 */}
-      <div className="print:hidden flex flex-wrap items-stretch gap-0 bg-white border-b border-gray-200">
+    <div className="flex flex-col h-full min-h-[600px] min-w-0 w-full max-w-full overflow-x-hidden">
+      {/* 탭 바: 페이지 가로 스크롤과 분리 (탭 줄만 필요 시 줄바꿈) */}
+      <div className="print:hidden sticky top-0 z-30 flex flex-wrap items-stretch gap-0 bg-white border-b border-gray-200 min-w-0 w-full max-w-full shrink-0">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -466,15 +466,15 @@ export default function TabHost() {
           </button>
         ) : null}
       </div>
-      {/* 컨텐츠 */}
-      <div className="flex-1 bg-white">
+      {/* 컨텐츠: 표 가로 스크롤은 각 페이지 표 래퍼에서만 */}
+      <div className="flex-1 min-w-0 w-full max-w-full overflow-x-hidden bg-white">
         {tabs.map((tab) => {
           const isActive = tab.id === activeId;
           const content = renderInternal(tab.href);
           return (
             <div
               key={tab.id}
-              className={`h-full min-h-screen ${isActive ? 'block' : 'hidden'}`}
+              className={`h-full min-h-screen min-w-0 w-full max-w-full overflow-x-hidden ${isActive ? 'block' : 'hidden'}`}
             >
               <TabRefreshContext.Provider
                 value={{ href: tab.href, refreshToken: refreshTokens[tab.id] || 0 }}

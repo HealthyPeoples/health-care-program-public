@@ -455,9 +455,9 @@ export default function WorkSchedule() {
 	};
 
 	return (
-		<div className="flex min-h-screen bg-white text-black">
+		<div className="flex min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			{/* 왼쪽: 사원 목록 */}
-			{/* <aside className="w-[420px] shrink-0 border-r border-blue-200 flex flex-col bg-white">
+			{/* <aside className="w-full max-w-full lg:w-[420px] min-w-0 shrink-0 border-r border-blue-200 flex flex-col bg-white">
 				<div className="border-b border-blue-300 bg-blue-100 px-3 py-2 text-blue-900 font-semibold">
 					사원 목록
 				</div>

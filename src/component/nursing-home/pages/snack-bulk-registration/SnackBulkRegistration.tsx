@@ -88,10 +88,10 @@ export default function SnackBulkRegistration() {
 	};
 
 	return (
-		<div className="min-h-screen text-black bg-white">
-			<div className="mx-auto max-w-[720px] p-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="mx-auto w-full max-w-[720px] min-w-0 p-3 sm:p-4">
 				<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
-					<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
+					<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-blue-100 border-b border-blue-200">
 						<div>
 							<h2 className="text-xl font-semibold text-blue-900">간식내역 일괄 등록</h2>
 							<p className="mt-0.5 text-xs text-blue-900/70">

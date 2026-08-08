@@ -340,8 +340,8 @@ export default function MemberInfoDiseaseCard({
 	return (
 		<>
 			<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
-				<div className="flex items-center justify-between px-4 py-3 bg-blue-100 border-b border-blue-200">
-					<h3 className="text-lg font-semibold text-blue-900">질병내역</h3>
+				<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-blue-100 border-b border-blue-200">
+					<h3 className="text-lg font-semibold text-blue-900 shrink-0">질병내역</h3>
 					{/* <button
 						type="button"
 						onClick={() => void openModal()}
@@ -351,16 +351,16 @@ export default function MemberInfoDiseaseCard({
 					</button> */}
 				</div>
 				<div className="overflow-auto max-h-56">
-					<table className="w-full text-sm">
+					<table className="w-full min-w-[280px] text-sm">
 						<thead className="sticky top-0 bg-blue-50 border-b border-blue-200">
 							<tr>
-								<th className="px-3 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
+								<th className="px-2 sm:px-3 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
 									진단명
 								</th>
-								<th className="w-28 px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">
+								<th className="w-24 sm:w-28 px-2 sm:px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">
 									진단일자
 								</th>
-								<th className="px-3 py-2 font-semibold text-left text-blue-900">비고</th>
+								<th className="px-2 sm:px-3 py-2 font-semibold text-left text-blue-900">비고</th>
 							</tr>
 						</thead>
 						<tbody>
@@ -399,16 +399,16 @@ export default function MemberInfoDiseaseCard({
 			{showModal && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
 					<div className="flex flex-col w-full max-w-3xl max-h-[90vh] bg-white border border-blue-300 rounded-lg shadow-xl overflow-hidden">
-						<div className="flex items-center justify-between px-5 py-3 bg-blue-100 border-b border-blue-200">
-							<div>
+						<div className="flex flex-wrap items-start justify-between gap-2 px-4 sm:px-5 py-3 bg-blue-100 border-b border-blue-200">
+							<div className="min-w-0">
 								<h3 className="text-lg font-semibold text-blue-900">질병내역 관리</h3>
-								<p className="text-sm text-blue-900/70">수급자: {memberName}</p>
+								<p className="text-sm text-blue-900/70 break-words">수급자: {memberName}</p>
 							</div>
 							<button
 								type="button"
 								onClick={closeModal}
 								disabled={saving}
-								className="px-3 py-1 text-sm border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-50"
+								className="shrink-0 px-3 py-1 text-sm border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-50"
 							>
 								닫기
 							</button>
@@ -416,20 +416,20 @@ export default function MemberInfoDiseaseCard({
 
 						<div className="flex flex-col flex-1 min-h-0 md:flex-row">
 							{/* 목록 */}
-							<div className="flex flex-col border-b border-blue-200 md:w-1/2 md:border-b-0 md:border-r max-h-[40vh] md:max-h-none">
-								<div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-blue-200 bg-blue-50">
-									<h4 className="text-sm font-semibold text-blue-900">질병내역 목록</h4>
+							<div className="flex flex-col border-b border-blue-200 md:w-1/2 md:min-w-0 md:border-b-0 md:border-r max-h-[40vh] md:max-h-none">
+								<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b border-blue-200 bg-blue-50">
+									<h4 className="text-sm font-semibold text-blue-900 shrink-0">질병내역 목록</h4>
 									<button
 										type="button"
 										onClick={handleCreateClick}
 										disabled={saving}
-										className="px-3 py-1 text-xs font-medium border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 disabled:opacity-40"
+										className="shrink-0 px-3 py-1 text-xs font-medium border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 disabled:opacity-40"
 									>
 										추가
 									</button>
 								</div>
-								<div className="flex-1 overflow-auto">
-									<table className="w-full text-sm">
+								<div className="flex-1 min-h-0 overflow-auto">
+									<table className="w-full min-w-[260px] text-sm">
 										<thead className="sticky top-0 bg-blue-50 border-b border-blue-200">
 											<tr>
 												<th className="px-3 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
@@ -492,19 +492,19 @@ export default function MemberInfoDiseaseCard({
 							</div>
 
 							{/* 상세 폼 */}
-							<div className="flex flex-col flex-1 min-h-0">
-								<div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-blue-200 bg-blue-50">
-									<h4 className="text-sm font-semibold text-blue-900">
+							<div className="flex flex-col flex-1 min-w-0 min-h-0">
+								<div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2.5 border-b border-blue-200 bg-blue-50">
+									<h4 className="text-sm font-semibold text-blue-900 shrink-0">
 										{isCreateMode ? "질병내역 신규 등록" : "질병내역 상세"}
 									</h4>
-									<div className="flex items-center gap-2">
+									<div className="flex flex-wrap items-center gap-2">
 										{fieldsEditable ? (
 											<>
 												<button
 													type="button"
 													onClick={() => void handleSave()}
 													disabled={saving}
-													className="px-3 py-1 text-xs font-medium border border-green-400 rounded bg-green-100 hover:bg-green-200 text-green-900 disabled:opacity-40"
+													className="shrink-0 px-3 py-1 text-xs font-medium border border-green-400 rounded bg-green-100 hover:bg-green-200 text-green-900 disabled:opacity-40"
 												>
 													{saving ? "저장중" : "저장"}
 												</button>
@@ -512,7 +512,7 @@ export default function MemberInfoDiseaseCard({
 													type="button"
 													onClick={handleCancelForm}
 													disabled={saving}
-													className="px-3 py-1 text-xs font-medium border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-40"
+													className="shrink-0 px-3 py-1 text-xs font-medium border border-gray-400 rounded bg-gray-100 hover:bg-gray-200 text-gray-800 disabled:opacity-40"
 												>
 													취소
 												</button>
@@ -522,14 +522,14 @@ export default function MemberInfoDiseaseCard({
 												type="button"
 												onClick={handleEditClick}
 												disabled={saving || selectedSeq == null}
-												className="px-3 py-1 text-xs font-medium border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 disabled:opacity-40"
+												className="shrink-0 px-3 py-1 text-xs font-medium border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 disabled:opacity-40"
 											>
 												수정
 											</button>
 										)}
 									</div>
 								</div>
-								<div className="flex-1 p-4 overflow-y-auto">
+								<div className="flex-1 p-3 sm:p-4 overflow-y-auto min-h-0">
 									{!isCreateMode && selectedSeq == null && modalRows.length === 0 ? (
 										<p className="text-sm text-blue-900/60">
 											등록된 내역이 없습니다. 추가 버튼으로 신규 등록하세요.

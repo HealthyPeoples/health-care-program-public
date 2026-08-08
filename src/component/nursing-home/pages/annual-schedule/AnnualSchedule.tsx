@@ -568,7 +568,7 @@ export default function AnnualSchedule() {
 	}, []);
 
 	return (
-		<div className="flex flex-col min-h-screen bg-white text-black">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="border-b border-blue-200 bg-blue-50/50 p-4">
 				<div className="flex flex-wrap items-center justify-between gap-4">
 					<h1 className="rounded border border-blue-300 bg-blue-100 px-4 py-2 text-base font-semibold text-blue-900">
@@ -632,7 +632,7 @@ export default function AnnualSchedule() {
 				</div>
 			</div>
 
-			<div className="flex flex-1 gap-4 p-4 overflow-hidden">
+			<div className="flex flex-col xl:flex-row flex-1 gap-4 p-4 overflow-hidden min-w-0 min-h-0">
 				{/* 왼쪽: 월별 캘린더 */}
 				<div className="flex-1 flex flex-col rounded-lg border border-blue-300 bg-white overflow-hidden min-w-0">
 					<div className="border-b border-blue-200 bg-blue-100 px-4 py-2 font-semibold text-blue-900 shrink-0">
@@ -785,7 +785,7 @@ export default function AnnualSchedule() {
 				</div>
 
 				{/* 오른쪽: 일정 목록 */}
-				<div className="w-96 shrink-0 flex flex-col rounded-lg border border-blue-300 bg-white overflow-hidden">
+				<div className="w-full max-w-full lg:w-96 min-w-0 shrink-0 flex flex-col rounded-lg border border-blue-300 bg-white overflow-hidden">
 					<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 font-semibold text-blue-900 shrink-0">
 						일정 목록 ({filteredSchedules.length}개)
 					</div>

@@ -647,40 +647,40 @@ export default function LongtermCareRegistration() {
 	);
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측 패널: 수급자 목록 */}
-				<div className="flex flex-col w-1/4 p-4 bg-white border-r border-blue-200">
-					<div className="mb-3">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-3 sm:p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
+					<div className="mb-3 shrink-0">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
-						<div className="space-y-2">
-							<div className="space-y-1">
+						<div className="grid grid-cols-2 gap-2 xl:grid-cols-1">
+							<div className="space-y-1 col-span-2 xl:col-span-1">
 								<div className="text-xs text-blue-900/80">이름 검색</div>
 								<input
-									className="w-full px-2 py-1 text-xs bg-white border border-blue-300 rounded"
+									className="w-full min-w-0 px-2 py-1 text-xs bg-white border border-blue-300 rounded"
 									placeholder="예) 홍길동"
 									value={searchTerm}
 									onChange={(e) => setSearchTerm(e.target.value)}
 								/>
 							</div>
-							<div className="space-y-1">
+							<div className="space-y-1 min-w-0">
 								<div className="text-xs text-blue-900/80">현황</div>
 								<select
 									value={selectedStatus}
 									onChange={(e) => setSelectedStatus(e.target.value)}
-									className="w-full px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
+									className="w-full min-w-0 px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
 								>
 									<option value="">현황 전체</option>
 									<option value="입소">입소</option>
 									<option value="퇴소">퇴소</option>
 								</select>
 							</div>
-							<div className="space-y-1">
+							<div className="space-y-1 min-w-0">
 								<div className="text-xs text-blue-900/80">등급</div>
 								<select
 									value={selectedGrade}
 									onChange={(e) => setSelectedGrade(e.target.value)}
-									className="w-full px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
+									className="w-full min-w-0 px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
 								>
 									<option value="">등급 전체</option>
 									<option value="1">1등급</option>
@@ -691,20 +691,20 @@ export default function LongtermCareRegistration() {
 									<option value="9">인지지원</option>
 								</select>
 							</div>
-							<div className="space-y-1">
+							<div className="space-y-1 col-span-2 sm:col-span-1 xl:col-span-1 min-w-0">
 								<div className="text-xs text-blue-900/80">층수</div>
 								<RoomNoFloorSelect
 									members={memberList as any}
 									value={selectedFloor}
 									onChange={setSelectedFloor}
-									className="w-full px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
+									className="w-full min-w-0 px-2 py-1 text-xs text-blue-900 bg-white border border-blue-300 rounded"
 								/>
 							</div>
 						</div>
 					</div>
 
-					<div className="flex flex-col overflow-hidden bg-white border border-blue-300 rounded-lg">
-						<div className="overflow-y-auto">
+					<div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
+						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
@@ -811,15 +811,15 @@ export default function LongtermCareRegistration() {
 					</div>
 				</div>
 
-				{/* 우측 패널 */}
-				<div className="flex flex-1 bg-white">
+				{/* 우측 패널: 좁은 화면에서는 일자→상세 세로 스택 (일자 w-full이 상세를 가로로 밀어내지 않도록) */}
+				<div className="flex flex-col xl:flex-row flex-1 min-w-0 min-h-0 bg-white">
 					{/* 서비스제공일자 목록 */}
-					<div className="flex flex-col w-1/4 px-4 py-3 border-r border-blue-200 bg-blue-50">
-						<div className="mb-2">
+					<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 px-4 py-3 border-r border-blue-200 bg-blue-50 border-b xl:border-b-0 max-h-[30vh] xl:max-h-none min-h-0 overflow-hidden">
+						<div className="mb-2 shrink-0">
 							<label className="text-sm font-medium text-blue-900">서비스제공일자</label>
 						</div>
-						<div className="flex flex-col flex-1 overflow-hidden">
-							<div className="overflow-y-auto">
+						<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+							<div className="flex-1 min-h-0 overflow-y-auto">
 								{loadingServiceDates ? (
 									<div className="px-2 py-1 text-sm text-blue-900/60">로딩 중...</div>
 								) : serviceDates.length === 0 ? (
@@ -915,7 +915,7 @@ export default function LongtermCareRegistration() {
 					</div>
 
 					{/* 상세 정보 (이미지 레이아웃) */}
-					<div className="flex-1 p-3 overflow-y-auto">
+					<div className="flex-1 w-full min-w-0 min-h-[50vh] xl:min-h-0 p-3 overflow-y-auto">
 						<div className="flex flex-wrap items-center gap-2 mb-2">
 							<button
 								onClick={handleNew}

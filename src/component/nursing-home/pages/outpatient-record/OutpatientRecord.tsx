@@ -475,9 +475,9 @@ export default function OutpatientRecord() {
 					: "";
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
-				<div className="flex flex-col w-1/4 min-w-[240px] border-r border-blue-200 bg-white">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
+				<div className="flex flex-col w-full xl:w-1/4 xl:min-w-[240px] min-w-0 shrink-0 border-r border-blue-200 bg-white border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50 shrink-0">
 						<button
 							type="button"
@@ -628,7 +628,7 @@ export default function OutpatientRecord() {
 
 					{/* 진료 목록 */}
 					<div className="flex flex-col border-b border-blue-200 bg-white shrink-0">
-						<div className="flex items-center justify-between px-4 py-2 border-b border-blue-100 bg-blue-50">
+						<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b border-blue-100 bg-blue-50">
 							<h2 className="text-sm font-semibold text-blue-900">
 								진료내역 목록
 								<span className="ml-2 text-xs font-normal text-blue-900/50">

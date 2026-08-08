@@ -64,10 +64,10 @@ export default function MonthlySalaryStatementGrid({
 	onCheckClick,
 }: MonthlySalaryStatementGridProps) {
 	return (
-		<div className="flex-1 overflow-hidden border-b border-blue-200">
-			<div className="h-full overflow-auto">
+		<div className="flex-1 overflow-hidden border-b border-blue-200 min-w-0">
+			<div className="h-full overflow-x-auto overflow-y-auto w-full min-w-0">
 				<table
-					className={`w-full text-xs ${isOccurrenceView ? "min-w-[1280px]" : "min-w-[980px]"}`}
+					className={`w-max max-w-none text-xs ${isOccurrenceView ? "min-w-[1280px]" : "min-w-[980px]"}`}
 				>
 					{isOccurrenceView ? (
 						<>

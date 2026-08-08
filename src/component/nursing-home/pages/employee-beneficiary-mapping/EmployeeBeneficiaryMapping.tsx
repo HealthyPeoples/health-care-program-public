@@ -489,7 +489,7 @@ export default function EmployeeBeneficiaryMapping() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="p-4 space-y-4">
 				{/* 상단 헤더 */}
 				<div className="flex items-stretch gap-3">

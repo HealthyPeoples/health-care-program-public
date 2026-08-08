@@ -241,9 +241,9 @@ export default function MonthlyProgramPlan() {
 	};
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			{/* 상단 헤더 */}
-			<div className="flex items-center justify-between p-4 border-b border-blue-200 bg-blue-50">
+			<div className="flex flex-wrap items-center justify-between gap-2 p-4 border-b border-blue-200 bg-blue-50">
 				<h1 className="text-xl font-semibold text-blue-900">(월)치료프로그램 수행 계획</h1>
 				<div className="flex items-center gap-4">
 					<div className="flex items-center gap-2">
@@ -274,9 +274,9 @@ export default function MonthlyProgramPlan() {
 			</div>
 
 			{/* 메인 컨텐츠 영역 */}
-			<div className="flex flex-1 overflow-hidden">
+			<div className="flex flex-col lg:flex-row flex-1 min-w-0 min-h-0 overflow-hidden">
 				{/* 왼쪽: 사용 가능한 프로그램 목록 */}
-				<div className="flex flex-col w-1/3 bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full lg:w-1/3 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b lg:border-b-0 lg:h-full lg:min-h-0 lg:overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<h3 className="text-sm font-semibold text-blue-900">사용 가능한 프로그램</h3>
 					</div>
@@ -393,7 +393,7 @@ export default function MonthlyProgramPlan() {
 				</div>
 
 				{/* 오른쪽: 선택된 프로그램 목록 */}
-				<div className="flex flex-col w-1/3 bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full lg:w-1/3 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b lg:border-b-0 lg:h-full lg:min-h-0 lg:overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<h3 className="text-sm font-semibold text-blue-900">선택된 프로그램</h3>
 					</div>

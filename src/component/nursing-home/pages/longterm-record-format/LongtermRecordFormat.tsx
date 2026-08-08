@@ -763,9 +763,9 @@ return (
 			<style dangerouslySetInnerHTML={{ __html: ltFormCss }} />
 			<style dangerouslySetInnerHTML={{ __html: ltPrintLayoutCss }} />
 
-			<div className="lt-longterm-page mx-auto max-w-[1800px] p-4">
-				<div className="flex gap-4">
-					<aside className="lt-no-print w-1/3 shrink-0">
+			<div className="lt-longterm-page mx-auto w-full max-w-[1800px] min-w-0 p-3 sm:p-4">
+				<div className="flex flex-col lg:flex-row gap-4 min-w-0">
+					<aside className="lt-no-print w-full lg:w-1/3 lg:max-w-md shrink-0 min-w-0">
 						<MemberListPanel
 							onSelectMember={(m) => { setSelectedMember(m); }}
 						/>

@@ -583,7 +583,7 @@ export default function GroupVolunteerPerformance() {
 		"rounded border border-blue-300 bg-white px-3 py-2 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="p-4 space-y-4">
 				{/* 상단 */}
 				<div className="flex flex-wrap items-stretch gap-3">

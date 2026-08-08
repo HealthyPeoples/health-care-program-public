@@ -445,10 +445,10 @@ export default function BeneficiaryStatusInquiry() {
 	};
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			{/* 상단 헤더 */}
 			<div className="p-4 border-b border-blue-200 bg-blue-50">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-wrap items-center justify-between gap-2">
 					<h1 className="text-2xl font-bold text-blue-900">수급자 현황</h1>
 					<div className="flex items-center gap-2">
 						<button
@@ -468,9 +468,9 @@ export default function BeneficiaryStatusInquiry() {
 			</div>
 
 			{/* 메인 컨텐츠 영역 */}
-			<div className="flex h-[calc(100vh-120px)]">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-120px)] min-h-0">
 				{/* 좌측 패널: 수급자 목록 */}
-				{/* <div className="flex flex-col w-1/4 p-4 bg-white border-r border-blue-200">
+				{/* <div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<div className="mb-3">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
 						<div className="space-y-2">
@@ -530,8 +530,8 @@ export default function BeneficiaryStatusInquiry() {
 						</div>
 					</div>
 
-					<div className="flex flex-col overflow-hidden bg-white border border-blue-300 rounded-lg">
-						<div className="overflow-y-auto">
+					<div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
+						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>

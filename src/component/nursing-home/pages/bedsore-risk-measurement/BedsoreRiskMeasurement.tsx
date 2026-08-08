@@ -675,7 +675,7 @@ export default function BedsoreRiskMeasurement() {
 	);
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			{showAssessmentModal && selectedMember ? (
 				<BedsoreRiskAssessmentModal
 					mode={assessmentModalMode}
@@ -708,9 +708,9 @@ export default function BedsoreRiskMeasurement() {
 					onConfirm={handleAssessmentModalConfirm}
 				/>
 			) : null}
-			<div className="flex h-[calc(100vh-56px)]">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측 패널: 수급자 목록 */}
-				<div className="flex flex-col w-1/4 p-4 bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					{/* 일괄출력: 기간 + 버튼 */}
 					<div className="mb-3 p-2 space-y-2 border border-blue-200 rounded-lg bg-blue-50/60">
 						<div className="text-xs font-semibold text-blue-900">일괄출력 기간</div>
@@ -801,8 +801,8 @@ export default function BedsoreRiskMeasurement() {
 						</div>
 					</div>
 
-					<div className="flex flex-col overflow-hidden bg-white border border-blue-300 rounded-lg">
-						<div className="overflow-y-auto">
+					<div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
+						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
@@ -943,13 +943,13 @@ export default function BedsoreRiskMeasurement() {
 				</div>
 
 				{/* 우측 패널 */}
-				<div className="flex flex-1 overflow-hidden bg-white">
+				<div className="flex flex-col xl:flex-row flex-1 min-w-0 min-h-0 overflow-hidden bg-white">
 					{/* 검사일자 목록 */}
-					<div className="flex flex-col w-1/4 bg-white border-r border-blue-200">
+					<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
 						<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 							<label className="text-sm font-medium text-blue-900">검사일자</label>
 						</div>
-						<div className="flex flex-col flex-1 overflow-hidden">
+						<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 							<div className="flex-1 overflow-y-auto bg-white">
 								{loadingDates ? (
 									<div className="px-3 py-2 text-sm text-blue-900/60">로딩 중...</div>
@@ -991,7 +991,7 @@ export default function BedsoreRiskMeasurement() {
 					</div>
 
 					{/* 검사 폼 */}
-					<div className="flex flex-1 overflow-hidden bg-white">
+					<div className="flex flex-col xl:flex-row flex-1 min-w-0 min-h-0 overflow-hidden bg-white">
 						<div className="relative flex-1 min-w-0 overflow-hidden">
 							<div
 								className={`h-full p-4 overflow-y-auto ${

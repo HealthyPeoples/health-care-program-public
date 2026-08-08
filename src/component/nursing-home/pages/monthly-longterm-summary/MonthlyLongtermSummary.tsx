@@ -945,10 +945,10 @@ export default function MonthlyLongtermSummary() {
 	const currentItems = performanceList.slice(startIndex, endIndex);
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			{/* 상단 헤더 */}
 			<div className="p-4 border-b border-blue-200 bg-blue-50">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-wrap items-center justify-between gap-2">
 					<h1 className="text-2xl font-bold text-blue-900">월 서비스실적 관리</h1>
 					<div className="flex items-center gap-4">
 						<div className="flex items-center gap-2">
@@ -1135,7 +1135,7 @@ export default function MonthlyLongtermSummary() {
 			)}
 
 			{/* <div className="p-4 border-t border-blue-200 bg-blue-50">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-wrap items-center justify-between gap-2">
 					<div className="flex items-center gap-4">
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">수급자</label>
@@ -1184,7 +1184,7 @@ export default function MonthlyLongtermSummary() {
 						className="w-[1050px] max-w-[98vw] max-h-[92vh] overflow-auto bg-white border border-blue-400 rounded-lg shadow-xl"
 						onClick={(e) => e.stopPropagation()}
 					>
-						<div className="flex items-center justify-between px-4 py-3 border-b border-blue-200 bg-blue-100">
+						<div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-blue-200 bg-blue-100">
 							<div className="flex-1 text-center text-xl font-semibold tracking-wide text-blue-900">월 서비스실적 조회</div>
 							<div className="flex items-center gap-2">
 								{detailsEditing ? (

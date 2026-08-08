@@ -633,7 +633,7 @@ export default function FacilityBasicInfo() {
 	);
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="flex flex-wrap items-center gap-3 border-b border-blue-200 bg-blue-50/50 p-4">
 				<h1 className="rounded border border-blue-300 bg-blue-100 px-4 py-2 text-lg font-semibold text-blue-900">
 					센터 조회

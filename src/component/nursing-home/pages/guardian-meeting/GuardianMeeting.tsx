@@ -585,10 +585,10 @@ export default function GuardianMeeting() {
 	};
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			{/* 상단 헤더 */}
 			<div className="p-4 border-b border-blue-200 bg-blue-50">
-				<div className="flex items-center justify-between">
+				<div className="flex flex-wrap items-center justify-between gap-2">
 					<h1 className="text-2xl font-bold text-blue-900">보호자간담회</h1>
 					<div className="flex items-center gap-4">
 						<div className="flex items-center gap-2">
@@ -628,7 +628,7 @@ export default function GuardianMeeting() {
 			{/* 메인 컨텐츠 영역 */}
 			<div className="flex flex-1 h-[calc(100vh-180px)]">
 				{/* 좌측 패널: 간담회 목록 */}
-				<div className="flex flex-col w-1/3 bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full lg:w-1/3 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b lg:border-b-0 lg:h-full lg:min-h-0 lg:overflow-hidden">
 					<div className="p-2 border-b border-blue-200 bg-blue-50">
 						<div className="grid grid-cols-2 gap-2 text-xs font-semibold text-blue-900">
 							<div className="text-center">일자</div>

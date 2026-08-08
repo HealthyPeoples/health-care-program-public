@@ -460,8 +460,8 @@ export default function EmployeeAnnualLeave() {
 	}, [workDetailTotalPages, workDetailMaxPageWindowStart]);
 
 	return (
-		<div className="flex min-h-screen bg-white text-black">
-			<aside className="w-[560px] shrink-0 border-r border-blue-200 flex flex-col bg-white">
+		<div className="flex flex-col xl:flex-row min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<aside className="w-full max-w-full xl:w-[560px] min-w-0 shrink-0 border-r border-blue-200 flex flex-col bg-white border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 				<div className="border-b border-blue-300 bg-blue-100 px-3 py-2 text-blue-900 font-semibold">
 					사원 목록
 				</div>
@@ -727,7 +727,7 @@ export default function EmployeeAnnualLeave() {
 
 				<div className="flex-1 flex gap-4 p-4 min-h-0 overflow-hidden">
 					<div className="flex-1 flex flex-col rounded-lg border border-blue-300 bg-white min-w-0 overflow-hidden">
-						<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 font-semibold text-blue-900 shrink-0 flex items-center justify-between">
+						<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 font-semibold text-blue-900 shrink-0 flex flex-wrap items-center justify-between gap-2">
 							<span>년차 요약</span>
 							{loadingDetail && <span className="text-xs font-normal text-blue-700">조회 중...</span>}
 						</div>

@@ -518,7 +518,7 @@ export default function EmployeeMeetingMinutes() {
 	}, [currentPage, totalPages]);
 
 	const leftPager = (
-		<div className="flex items-center justify-between gap-3 px-3 py-3 border-t border-blue-200 bg-white">
+		<div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 border-t border-blue-200 bg-white">
 			<div className="flex gap-2">
 				<button
 					type="button"
@@ -579,7 +579,7 @@ export default function EmployeeMeetingMinutes() {
 	);
 
 	return (
-		<div className="min-h-screen bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="flex flex-wrap items-center gap-4 border-b border-blue-200 bg-blue-50/50 p-4">
 				<h1 className="rounded border border-blue-300 bg-blue-100 px-4 py-2 text-base font-semibold text-blue-900">
 					직원회의록관리
@@ -630,8 +630,8 @@ export default function EmployeeMeetingMinutes() {
 				</div>
 			</div>
 
-			<div className="flex gap-4 p-4 min-h-[calc(100vh-76px)]">
-				<aside className="w-[420px] shrink-0 flex flex-col overflow-hidden rounded-lg border border-blue-300 bg-white">
+			<div className="flex flex-col lg:flex-row gap-4 p-4 min-h-[calc(100vh-76px)] min-w-0">
+				<aside className="w-full max-w-full lg:w-[420px] min-w-0 shrink-0 flex flex-col overflow-hidden rounded-lg border border-blue-300 bg-white lg:h-full lg:min-h-0">
 					<div className="flex-1 overflow-auto min-h-0">
 						<table className="w-full text-sm">
 							<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-100">

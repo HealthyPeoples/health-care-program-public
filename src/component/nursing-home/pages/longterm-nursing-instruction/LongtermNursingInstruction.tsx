@@ -427,11 +427,11 @@ export default function LongtermNursingInstruction() {
 	);
 
 	return (
-		<div className="min-h-screen text-black bg-white">
-			<div className="mx-auto max-w-[1400px] p-4">
-				<div className="flex gap-4">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="mx-auto w-full max-w-[1400px] min-w-0 p-3 sm:p-4">
+				<div className="flex flex-col lg:flex-row gap-4 min-w-0">
 					{/* 좌측: 수급자 목록 */}
-					<aside className="w-1/3 shrink-0">
+					<aside className="w-full lg:w-1/3 lg:max-w-md shrink-0 min-w-0">
 						<MemberListPanel onSelectMember={handleSelectMember} />
 					</aside>
 

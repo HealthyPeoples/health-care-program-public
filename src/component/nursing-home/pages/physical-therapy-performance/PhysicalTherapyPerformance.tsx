@@ -374,16 +374,16 @@ export default function PhysicalTherapyPerformance() {
 	];
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex h-[calc(100vh-56px)]">
-				<BeneficiaryListPanel selectedMember={selectedMember} onSelect={handleSelectMember} className="w-1/4" />
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
+				<BeneficiaryListPanel selectedMember={selectedMember} onSelect={handleSelectMember} className="w-full xl:w-1/4 xl:min-w-[240px] xl:max-w-sm shrink-0 border-b xl:border-b-0 xl:h-full xl:min-h-0 min-h-0 xl:overflow-hidden" />
 
 				{/* 중간-왼쪽 패널: 치료일자 목록 */}
-				<div className="flex flex-col w-[220px] bg-white border-r border-blue-200">
+				<div className="flex flex-col w-full xl:w-[220px] min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 max-h-[36vh] xl:max-h-none overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<label className="text-sm font-medium text-blue-900">치료일자</label>
 					</div>
-					<div className="flex flex-col flex-1 overflow-hidden">
+					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto bg-white">
 							{loadingRecords ? (
 								<div className="px-3 py-2 text-sm text-blue-900/60">로딩 중...</div>

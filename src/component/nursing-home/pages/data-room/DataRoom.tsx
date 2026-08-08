@@ -738,7 +738,7 @@ export default function DataRoom() {
 			{isDetailOpen && selectedPost && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
 					<div className="w-full max-w-3xl rounded-lg border border-blue-300 bg-white shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
-						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
 							<div className="text-base font-semibold text-blue-900">자료 상세</div>
 							<button
 								type="button"
@@ -797,7 +797,7 @@ export default function DataRoom() {
 			{isUploadOpen && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
 					<div className="w-full max-w-2xl rounded-lg border border-blue-300 bg-white shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
-						<div className="flex items-center justify-between border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-blue-200 bg-blue-100 px-4 py-3 shrink-0">
 							<div className="text-base font-semibold text-blue-900">자료 등록</div>
 							<button
 								type="button"

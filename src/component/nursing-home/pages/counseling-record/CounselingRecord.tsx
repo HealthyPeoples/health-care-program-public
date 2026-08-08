@@ -950,10 +950,10 @@ export default function CounselingRecord() {
 	};
 
 	return (
-		<div className="min-h-screen bg-white text-black">
-			<div className="flex h-[calc(80vh-56px)]">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측 패널 (약 25%) */}
-				<div className="w-1/4 border-r border-blue-200 bg-white flex flex-col p-4">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<MemberListPanel
 						title="수급자 목록"
 						className="w-full"
@@ -962,10 +962,10 @@ export default function CounselingRecord() {
 				</div>
 
 				{/* 우측 패널 (약 75%) */}
-				<div className="flex-1 flex bg-white">
+				<div className="flex flex-col xl:flex-row flex-1 min-w-0 min-h-0 bg-white">
 					{/* 좌측: 상담 일자 (세로 박스) */}
-					<div className="w-[320px] border-r border-blue-200 px-4 py-3 bg-blue-50 flex flex-col">
-						<div className="flex items-center justify-between mb-2">
+					<div className="flex flex-col w-full xl:w-[320px] xl:max-w-[40%] shrink-0 min-w-0 border-r border-blue-200 px-4 py-3 bg-blue-50 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
+						<div className="flex flex-wrap items-center justify-between gap-2 mb-2">
 							<label className="text-sm font-medium text-blue-900">상담 일자</label>
 							<button
 								onClick={handleCreateDate}
@@ -974,7 +974,7 @@ export default function CounselingRecord() {
 								생성
 							</button>
 						</div>
-						<div className="flex flex-col flex-1 overflow-hidden">
+						<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 							<div className="overflow-y-auto">
 								{loadingConsultations ? (
 									<div className="px-2 py-1 text-sm text-blue-900/60">로딩 중...</div>
@@ -1077,7 +1077,7 @@ export default function CounselingRecord() {
 					</div>
 
 					{/* 우측: 상담 상세 폼 */}
-					<div className="flex-1 overflow-y-auto p-4">
+					<div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-4">
 						{/* 첫 번째 행 */}
 						<div className="mb-4 flex items-center gap-4 flex-wrap">
 							<div className="flex items-center gap-2">

@@ -460,8 +460,8 @@ export default function ProgramFeedback() {
 		formMode === 'create' ? '신규 작성' : formMode === 'edit' ? '수정' : '대기';
 
 	return (
-		<div className="flex flex-col min-h-screen text-black bg-white">
-			<div className="flex items-center justify-between p-4 border-b border-blue-200 bg-blue-50 print:hidden">
+		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+			<div className="flex flex-wrap items-center justify-between gap-2 p-4 border-b border-blue-200 bg-blue-50 print:hidden">
 				<h1 className="text-xl font-semibold text-blue-900">프로그램 의견수렴 및 반영</h1>
 					<h1 className="text-xl font-semibold text-blue-900">F14041_PROGRAM_FEEDBACK 신규테이블 생성 </h1>
 				<div className="flex flex-wrap items-center gap-3">
@@ -485,8 +485,8 @@ export default function ProgramFeedback() {
 				</div>
 			</div>
 
-			<div className="flex flex-1 min-h-0 overflow-hidden">
-				<div className="flex flex-col w-[34%] min-w-[280px] shrink-0 bg-white border-r border-blue-200">
+			<div className="flex flex-col xl:flex-row flex-1 min-h-0 overflow-hidden">
+				<div className="flex flex-col w-full xl:w-[34%] xl:min-w-[280px] min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<h3 className="text-sm font-semibold text-blue-900">프로그램 목록 (F14040)</h3>
 						<p className="text-xs text-blue-900/70 mt-0.5">저장됨 표시 · 18개 단위 페이지</p>
