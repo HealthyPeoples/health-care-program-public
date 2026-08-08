@@ -28,6 +28,7 @@ const {
 } = require('../../../lib/outingF14020Sync');
 
 const { ensureF30120FromF14020 } = require('../../../lib/ensureF30120FromF14020');
+const { applyMealSnackByPresence } = require('../../../lib/applyMealSnackByPresence');
 
 /** @type {string[]} 일일 케어(요양·간호·재활 등) 컬럼 — DailyLongtermCare와 공유 */
 const CARE_COLUMNS = [
@@ -548,6 +549,14 @@ export async function POST(req) {
 
 			const overnightPending = await fetchOvernightPending(pool, gate.sessionAncd, svdtIso);
 
+			// 외출·외박 시각 기준 식사/간식 체크 자동 반영 (원내 없으면 미체크)
+			let mealSnackApplied = { ok: false, updated: 0 };
+			try {
+				mealSnackApplied = await applyMealSnackByPresence(pool, gate.sessionAncd, svdtIso);
+			} catch (mealErr) {
+				console.warn('전체추가 후 식사/간식 자동 반영 경고:', mealErr);
+			}
+
 			// 당일 급여실적 명단 → 활력증상(F30120) 공란 명단 보장
 			let vitalSeed = { ok: false, inserted: 0 };
 			try {
@@ -564,6 +573,7 @@ export async function POST(req) {
 				overnightPending,
 				overnightPendingCount: overnightPending.length,
 				overnightRegisteredCount: registered.length,
+				mealSnackUpdated: mealSnackApplied.updated,
 				vitalSignsSeeded: vitalSeed.inserted
 			});
 		}

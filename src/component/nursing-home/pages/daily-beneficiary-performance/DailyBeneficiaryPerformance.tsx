@@ -450,6 +450,13 @@ export default function DailyBeneficiaryPerformance() {
 	const [searchResults, setSearchResults] = useState<{ [key: number | string]: any[] }>({});
 	const [showSearchResults, setShowSearchResults] = useState<{ [key: number | string]: boolean }>({});
 	const searchInputRefs = useRef<{ [key: number | string]: HTMLInputElement | null }>({});
+	/** 행 수급자명 검색 드롭다운 위치 (table sticky/overflow 클립 방지용 Portal) */
+	const [rowSearchDropdownLayout, setRowSearchDropdownLayout] = useState<{
+		rowId: number;
+		top: number;
+		left: number;
+		width: number;
+	} | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 10;
@@ -1378,6 +1385,42 @@ export default function DailyBeneficiaryPerformance() {
 		};
 	}, [showMemberSearchResults, memberSearchResults]);
 
+	// 행 수급자명 검색 드롭다운 위치 (sticky 셀·가로스크롤에 가려지지 않도록 body Portal)
+	useLayoutEffect(() => {
+		const openRowId = Object.keys(showSearchResults)
+			.map(Number)
+			.find((id) => showSearchResults[id] && (searchResults[id]?.length ?? 0) > 0);
+
+		if (openRowId == null || !Number.isFinite(openRowId)) {
+			setRowSearchDropdownLayout(null);
+			return;
+		}
+
+		const updateLayout = () => {
+			const el = searchInputRefs.current[openRowId];
+			if (!el) {
+				setRowSearchDropdownLayout(null);
+				return;
+			}
+			const r = el.getBoundingClientRect();
+			setRowSearchDropdownLayout({
+				rowId: openRowId,
+				top: r.bottom + 2,
+				left: r.left,
+				width: Math.max(r.width, 200)
+			});
+		};
+
+		updateLayout();
+		const onScrollOrResize = () => updateLayout();
+		window.addEventListener('scroll', onScrollOrResize, true);
+		window.addEventListener('resize', onScrollOrResize);
+		return () => {
+			window.removeEventListener('scroll', onScrollOrResize, true);
+			window.removeEventListener('resize', onScrollOrResize);
+		};
+	}, [showSearchResults, searchResults]);
+
 	// 수급자 선택 (모달용)
 	const handleSelectMemberForPrint = (member: any) => {
 		setSelectedMemberForPrint(member);
@@ -1819,40 +1862,6 @@ export default function DailyBeneficiaryPerformance() {
 													<span className="text-xs text-gray-500 mt-1">({row.birthDate})</span>
 												)}
 											</div>
-											{/* 검색 결과 드롭다운 - fixed 포지셔닝으로 표 밖에 표시 */}
-											{showSearchResults[row.id] && searchResults[row.id] && searchResults[row.id].length > 0 && searchInputRefs.current[row.id] && (() => {
-												const input = searchInputRefs.current[row.id];
-												const rect = input?.getBoundingClientRect();
-												return (
-													<div 
-														className="fixed z-[9999] bg-white border border-blue-300 rounded shadow-lg max-h-60 overflow-y-auto text-black"
-														style={{
-															top: rect ? `${rect.bottom + window.scrollY}px` : '0',
-															left: rect ? `${rect.left + window.scrollX}px` : '0',
-															width: rect ? `${rect.width}px` : 'auto',
-															minWidth: '200px'
-														}}
-													>
-														{searchResults[row.id].map((member: any, memberIdx: number) => (
-															<div
-																key={memberIdx}
-																onMouseDown={(e) => {
-																	e.preventDefault();
-																	e.stopPropagation();
-																	handleSelectMember(row.id, member);
-																}}
-																className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-b-0 text-black"
-															>
-																<div className="font-medium text-black">{member.P_NM}</div>
-																<div className="text-xs text-black">
-																	{member.P_BRDT && `(${formatDate(member.P_BRDT)})`}
-																	{/* {member.PNUM && ` | 수급자번호: ${member.PNUM}`} */}
-																</div>
-															</div>
-														))}
-													</div>
-												);
-											})()}
 										</td>
 										{/* 식사장소 */}
 										<td className="text-center px-3 py-3 border-r border-blue-100 w-32">
@@ -2509,6 +2518,39 @@ export default function DailyBeneficiaryPerformance() {
 					</div>
 				</div>
 			)}
+			{/* 행 수급자명 검색 드롭다운 — body Portal로 표/sticky 셀에 가려지지 않음 */}
+			{typeof document !== 'undefined' &&
+				rowSearchDropdownLayout &&
+				showSearchResults[rowSearchDropdownLayout.rowId] &&
+				(searchResults[rowSearchDropdownLayout.rowId]?.length ?? 0) > 0 &&
+				createPortal(
+					<div
+						className="fixed z-[10000] bg-white border border-blue-300 rounded shadow-lg max-h-60 overflow-y-auto text-black"
+						style={{
+							top: rowSearchDropdownLayout.top,
+							left: rowSearchDropdownLayout.left,
+							width: rowSearchDropdownLayout.width
+						}}
+					>
+						{searchResults[rowSearchDropdownLayout.rowId].map((member: any, memberIdx: number) => (
+							<div
+								key={memberIdx}
+								onMouseDown={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+									handleSelectMember(rowSearchDropdownLayout.rowId, member);
+								}}
+								className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-b-0 text-black"
+							>
+								<div className="font-medium text-black">{member.P_NM}</div>
+								<div className="text-xs text-black">
+									{member.P_BRDT && `(${formatDate(member.P_BRDT)})`}
+								</div>
+							</div>
+						))}
+					</div>,
+					document.body
+				)}
 		</div>
 	);
 }
