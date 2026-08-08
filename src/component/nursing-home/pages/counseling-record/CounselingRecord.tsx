@@ -45,6 +45,99 @@ interface CounselingData {
 	[key: string]: any;
 }
 
+interface GuardianData {
+	ANCD: string;
+	PNUM: string;
+	BHNUM: string;
+	BHNM: string;
+	BHREL: string;
+	BHETC?: string;
+	[key: string]: any;
+}
+
+/** F11020 상담대상자 기타 코드 */
+const BHREL_OTHER = '99';
+
+const RELATIONSHIP_MAP: { [key: string]: string } = {
+	'10': '남편',
+	'11': '부인',
+	'20': '아들',
+	'21': '딸',
+	'22': '며느리',
+	'23': '사위',
+	'31': '손주',
+	[BHREL_OTHER]: '기타',
+};
+
+/** 기존 관계코드 고정 옵션 */
+const FIXED_BHREL_OPTIONS = [
+	{ code: '10', label: '남편' },
+	{ code: '11', label: '부인' },
+	{ code: '20', label: '아들' },
+	{ code: '21', label: '딸' },
+	{ code: '22', label: '며느리' },
+	{ code: '23', label: '사위' },
+	{ code: '31', label: '손주' },
+] as const;
+
+function isFixedBhrelCode(code: string): boolean {
+	return FIXED_BHREL_OPTIONS.some((o) => o.code === code);
+}
+
+function formatRelationshipLabel(code: string): string {
+	const c = String(code ?? '').trim();
+	if (!c) return '';
+	return RELATIONSHIP_MAP[c] || c;
+}
+
+/** 드롭다운/조회용 BHREL 표시 (예: 10.남편) */
+function formatBhrelCodeDisplay(code: string): string {
+	const raw = String(code ?? '').trim();
+	if (!raw) return '';
+	// 과거 기타 코드(9) → 99.기타로 표시
+	const c = raw === '9' ? BHREL_OTHER : raw;
+	const label = RELATIONSHIP_MAP[c];
+	return label ? `${c}.${label}` : c;
+}
+
+function formatGuardianOption(g: GuardianData): string {
+	const name = String(g.BHNM || '').trim() || '(이름없음)';
+	const rel = formatBhrelCodeDisplay(g.BHREL) || formatRelationshipLabel(g.BHREL);
+	// 보호자 기타(99)는 BHETC 관계명 사용
+	const relLabel =
+		String(g.BHREL || '').trim() === '99' && String(g.BHETC || '').trim()
+			? `99.${String(g.BHETC).trim()}`
+			: rel;
+	return relLabel ? `${relLabel} / ${name}` : name;
+}
+
+function resolveConsultationTargetKey(
+	code: string,
+	name: string,
+	guardians: GuardianData[]
+): string {
+	const c = String(code ?? '').trim();
+	if (!c) return '';
+	// 기타(99). 과거 코드 9도 기타로 매칭
+	if (c === BHREL_OTHER || c === '9') return BHREL_OTHER;
+	const nm = String(name ?? '').trim();
+
+	// 보호자명+관계로 매칭
+	const byName = guardians.find(
+		(g) => String(g.BHREL || '').trim() === c && String(g.BHNM || '').trim() === nm
+	);
+	if (byName) return `g:${byName.BHNUM}`;
+
+	// 고정 관계코드는 BHRELNM(이름)과 무관하게 코드 옵션으로 표시
+	if (isFixedBhrelCode(c)) return c;
+
+	// 보호자 관계코드만 일치
+	const byRel = guardians.find((g) => String(g.BHREL || '').trim() === c);
+	if (byRel) return `g:${byRel.BHNUM}`;
+
+	return `legacy:${c}`;
+}
+
 export default function CounselingRecord() {
 	const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
 	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
@@ -54,10 +147,13 @@ export default function CounselingRecord() {
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [consultationDatePage, setConsultationDatePage] = useState(1);
 	const consultationDateItemsPerPage = 10;
+	const [guardians, setGuardians] = useState<GuardianData[]>([]);
+	/** 상담대상자 선택키: g:{BHNUM} | 9(기타) | legacy:{code} | '' */
+	const [selectedTargetKey, setSelectedTargetKey] = useState('');
 	const [formData, setFormData] = useState({
 		beneficiary: '',
-		consultationSubstitute: '',
-		consultationSubstituteCode: '', // BHREL 코드 저장
+		consultationSubstitute: '', // BHRELNM (이름)
+		consultationSubstituteCode: '', // BHREL 코드
 		consultationDate: '',
 		startTime: '',
 		endTime: '',
@@ -85,6 +181,16 @@ export default function CounselingRecord() {
 		return () => clearTimeout(timer);
 	}, [consultantSearchTerm]);
 
+	// 보호자 목록이 늦게 도착한 경우 상담대상자 선택키 재매칭
+	useEffect(() => {
+		const code = String(formData.consultationSubstituteCode || '').trim();
+		if (!code) return;
+		setSelectedTargetKey(
+			resolveConsultationTargetKey(code, formData.consultationSubstitute, guardians)
+		);
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- 보호자 목록 도착 시에만 재매칭
+	}, [guardians]);
+
 	// 외부 클릭 시 드롭다운 닫기
 	useEffect(() => {
 		const handleClickOutside = (event: MouseEvent) => {
@@ -99,6 +205,26 @@ export default function CounselingRecord() {
 			return () => document.removeEventListener('mousedown', handleClickOutside);
 		}
 	}, [showConsultantDropdown]);
+
+	// 보호자 목록 조회 (상담대상자 콤보용)
+	const fetchGuardians = async (ancd: string, pnum: string) => {
+		if (!ancd || !pnum) {
+			setGuardians([]);
+			return [];
+		}
+		try {
+			const url = `/api/f10020?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}`;
+			const response = await fetch(url);
+			const result = await response.json();
+			const list: GuardianData[] = result.success && Array.isArray(result.data) ? result.data : [];
+			setGuardians(list);
+			return list;
+		} catch (err) {
+			console.error('보호자 목록 조회 오류:', err);
+			setGuardians([]);
+			return [];
+		}
+	};
 
 	// 상담 기록 조회 (수급자 선택 시)
 	const fetchConsultations = async (ancd: string, pnum: string, member: MemberData | null, preserveDate?: string | null) => {
@@ -215,6 +341,7 @@ export default function CounselingRecord() {
 			consultationContent: '',
 			actionTaken: ''
 		});
+		setSelectedTargetKey('');
 		
 		// 편집 모드로 전환
 		setIsEditMode(true);
@@ -255,17 +382,6 @@ export default function CounselingRecord() {
 		const currentMember = member || selectedMember;
 		
 		if (selectedConsultation) {
-			// 관계 코드를 한글로 변환
-			const relationshipMap: { [key: string]: string } = {
-				'10': '남편',
-				'11': '부인',
-				'20': '아들',
-				'21': '딸',
-				'22': '며느리',
-				'23': '사위',
-				'31': '손주'
-			};
-
 			// 상담방법 코드를 한글로 변환
 			const methodMap: { [key: string]: string } = {
 				'1': '센타방문',
@@ -304,10 +420,13 @@ export default function CounselingRecord() {
 			const startTime = formatTime(selectedConsultation.STM || '');
 			const endTime = formatTime(selectedConsultation.ETM || '');
 
+			const rawBhrel = String(selectedConsultation.BHREL || '').trim();
+			const bhrel = rawBhrel === '9' ? BHREL_OTHER : rawBhrel;
+			const bhrelnm = String(selectedConsultation.BHRELNM || '').trim();
 			setFormData({
 				beneficiary: currentMember?.P_NM || '',
-				consultationSubstitute: selectedConsultation.BHRELNM || '',
-				consultationSubstituteCode: selectedConsultation.BHREL || '',
+				consultationSubstitute: bhrelnm,
+				consultationSubstituteCode: bhrel,
 				consultationDate: consultationDate,
 				startTime: startTime,
 				endTime: endTime,
@@ -318,6 +437,7 @@ export default function CounselingRecord() {
 				consultationContent: selectedConsultation.CSINFO || '',
 				actionTaken: selectedConsultation.CSM || ''
 			});
+			setSelectedTargetKey(resolveConsultationTargetKey(bhrel, bhrelnm, guardians));
 		}
 	};
 
@@ -325,6 +445,8 @@ export default function CounselingRecord() {
 	const handleSelectMember = (member: MemberData) => {
 		setSelectedMember(member);
 		setFormData(prev => ({ ...prev, beneficiary: member.P_NM || '' }));
+		setSelectedTargetKey('');
+		void fetchGuardians(member.ANCD, member.PNUM);
 		// 해당 수급자의 상담 기록 조회 (member를 직접 전달)
 		fetchConsultations(member.ANCD, member.PNUM, member);
 	};
@@ -352,9 +474,57 @@ export default function CounselingRecord() {
 			consultationContent: '',
 			actionTaken: ''
 		});
+		setSelectedTargetKey('');
 		setConsultantSearchTerm('');
 		setConsultantSuggestions([]);
 		setShowConsultantDropdown(false);
+	};
+
+	const handleConsultationTargetChange = (key: string) => {
+		setSelectedTargetKey(key);
+		if (!key) {
+			setFormData((prev) => ({
+				...prev,
+				consultationSubstitute: '',
+				consultationSubstituteCode: '',
+			}));
+			return;
+		}
+		if (key === BHREL_OTHER) {
+			setFormData((prev) => ({
+				...prev,
+				consultationSubstituteCode: BHREL_OTHER,
+				// 기타: BHRELNM에 이름을 직접 입력 (기존값이 관계명/'기타'면 비움)
+				consultationSubstitute:
+					prev.consultationSubstitute === '기타' ||
+					Object.values(RELATIONSHIP_MAP).includes(prev.consultationSubstitute)
+						? ''
+						: prev.consultationSubstitute,
+			}));
+			return;
+		}
+		if (key.startsWith('g:')) {
+			const bhnum = key.slice(2);
+			const guardian = guardians.find((g) => String(g.BHNUM) === bhnum);
+			if (!guardian) return;
+			setFormData((prev) => ({
+				...prev,
+				consultationSubstitute: String(guardian.BHNM || '').trim(),
+				consultationSubstituteCode: String(guardian.BHREL || '').trim(),
+			}));
+			return;
+		}
+		if (isFixedBhrelCode(key)) {
+			setFormData((prev) => ({
+				...prev,
+				consultationSubstituteCode: key,
+				// 관계코드만 바꾸고 이름은 유지 (관계명과 같으면 비워 이름 입력 유도)
+				consultationSubstitute:
+					prev.consultationSubstitute === RELATIONSHIP_MAP[key]
+						? ''
+						: prev.consultationSubstitute,
+			}));
+		}
 	};
 
 	// 상담사 검색 함수
@@ -448,6 +618,14 @@ export default function CounselingRecord() {
 			return;
 		}
 
+		if (
+			String(formData.consultationSubstituteCode || '').trim() === BHREL_OTHER &&
+			!String(formData.consultationSubstitute || '').trim()
+		) {
+			alert('기타 상담대상자 이름을 입력해주세요.');
+			return;
+		}
+
 		setLoadingConsultations(true);
 		try {
 			// 현재 날짜/시간
@@ -510,6 +688,9 @@ export default function CounselingRecord() {
 			let action: string;
 			let params: any;
 
+			const bhrelCode = safeTrim(formData.consultationSubstituteCode);
+			const bhrelNm = safeTrim(formData.consultationSubstitute);
+
 			if (existingConsultation && existingConsultation.CSNUM) {
 				// 수정 모드
 				action = 'counseling.update';
@@ -521,8 +702,8 @@ export default function CounselingRecord() {
 					CSDT: formatDateForDB(formData.consultationDate),
 					EMPNO: safeTrim(formData.consultantCode),
 					EMPNM: safeTrim(formData.consultant),
-					BHREL: safeTrim(formData.consultationSubstituteCode),
-					BHRELNM: safeTrim(formData.consultationSubstitute),
+					BHREL: bhrelCode,
+					BHRELNM: bhrelNm,
 					STM: formatTimeForDB(formData.startTime),
 					ETM: formatTimeForDB(formData.endTime),
 					CSGU: safeTrim(formData.consultationMethodCode),
@@ -542,8 +723,8 @@ export default function CounselingRecord() {
 					CSDT: formatDateForDB(formData.consultationDate),
 					EMPNO: safeTrim(formData.consultantCode),
 					EMPNM: safeTrim(formData.consultant),
-					BHREL: safeTrim(formData.consultationSubstituteCode),
-					BHRELNM: safeTrim(formData.consultationSubstitute),
+					BHREL: bhrelCode,
+					BHRELNM: bhrelNm,
 					STM: formatTimeForDB(formData.startTime),
 					ETM: formatTimeForDB(formData.endTime),
 					CSGU: safeTrim(formData.consultationMethodCode),
@@ -653,17 +834,6 @@ export default function CounselingRecord() {
 			alert('팝업이 차단되었습니다. 팝업 차단을 해제해주세요.');
 			return;
 		}
-
-		// 관계 코드를 한글로 변환
-		const relationshipMap: { [key: string]: string } = {
-			'10': '남편',
-			'11': '부인',
-			'20': '아들',
-			'21': '딸',
-			'22': '며느리',
-			'23': '사위',
-			'31': '손주'
-		};
 
 		// 상담방법 코드를 한글로 변환
 		const methodMap: { [key: string]: string } = {
@@ -865,7 +1035,11 @@ export default function CounselingRecord() {
 				<td class="label">상담시간</td>
 				<td class="value">${consultationTime}</td>
 				<td class="label">수급자와관계</td>
-				<td class="value">${formData.consultationSubstituteCode ? relationshipMap[formData.consultationSubstituteCode] || formData.consultationSubstitute : '-'}</td>
+				<td class="value">${
+					formData.consultationSubstituteCode
+						? formatBhrelCodeDisplay(formData.consultationSubstituteCode) || '-'
+						: '-'
+				}</td>
 			</tr>
 		</table>
 
@@ -1089,37 +1263,50 @@ export default function CounselingRecord() {
 							<div className="flex items-center gap-2">
 								<label className="text-sm text-blue-900 font-medium whitespace-nowrap">상담대상자</label>
 								{isEditMode ? (
-									<select
-										value={formData.consultationSubstituteCode}
-										onChange={(e) => {
-											const code = e.target.value;
-											const relationshipMap: { [key: string]: string } = {
-												'10': '남편',
-												'11': '부인',
-												'20': '아들',
-												'21': '딸',
-												'22': '며느리',
-												'23': '사위',
-												'31': '손주'
-											};
-											handleFormChange('consultationSubstituteCode', code);
-											handleFormChange('consultationSubstitute', relationshipMap[code] || '');
-										}}
-										className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[150px]"
-									>
-										<option value="">선택하세요</option>
-										<option value="10">10.남편</option>
-										<option value="11">11.부인</option>
-										<option value="20">20.아들</option>
-										<option value="21">21.딸</option>
-										<option value="22">22.며느리</option>
-										<option value="23">23.사위</option>
-										<option value="31">31.손주</option>
-									</select>
+									<>
+										<select
+											value={selectedTargetKey}
+											onChange={(e) => handleConsultationTargetChange(e.target.value)}
+											className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[140px]"
+										>
+											<option value="">선택하세요</option>
+											{FIXED_BHREL_OPTIONS.map((o) => (
+												<option key={o.code} value={o.code}>
+													{o.code}.{o.label}
+												</option>
+											))}
+											{guardians.map((g) => (
+												<option key={`g:${g.BHNUM}`} value={`g:${g.BHNUM}`}>
+													{formatGuardianOption(g)}
+												</option>
+											))}
+											{selectedTargetKey.startsWith('legacy:') && (
+												<option value={selectedTargetKey}>
+													{formatBhrelCodeDisplay(formData.consultationSubstituteCode) ||
+														formData.consultationSubstituteCode}
+												</option>
+											)}
+											<option value={BHREL_OTHER}>99.기타</option>
+										</select>
+										<input
+											type="text"
+											value={formData.consultationSubstitute}
+											onChange={(e) =>
+												handleFormChange('consultationSubstitute', e.target.value)
+											}
+											placeholder="이름"
+											className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[120px]"
+										/>
+									</>
 								) : (
-									<span className="px-3 py-1.5 text-sm border-b-2 border-blue-200 min-w-[150px]">
-										{formData.consultationSubstitute || '-'}
-									</span>
+									<>
+										<span className="px-3 py-1.5 text-sm border-b-2 border-blue-200 min-w-[100px]">
+											{formatBhrelCodeDisplay(formData.consultationSubstituteCode) || '-'}
+										</span>
+										<span className="px-3 py-1.5 text-sm border-b-2 border-blue-200 min-w-[120px]">
+											{formData.consultationSubstitute || '-'}
+										</span>
+									</>
 								)}
 							</div>
 							{!isEditMode && (

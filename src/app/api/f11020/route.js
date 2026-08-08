@@ -11,6 +11,7 @@ import { NextRequest } from 'next/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
+
 export async function GET(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
