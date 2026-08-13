@@ -149,6 +149,12 @@ export function mapF14070ToFormState(row: any): {
 	if (f14070Checked(row?.ST_SP_ST1)) status = '와상';
 	else if (f14070Checked(row?.ST_SP_ST3)) status = '자립';
 	else if (f14070Checked(row?.ST_SP_ST2)) status = '준와상';
+	else {
+		const code = String(row?.ST_SP_ST ?? '').trim();
+		if (code === '1' || code === '와상') status = '와상';
+		else if (code === '3' || code === '자립') status = '자립';
+		else if (code === '2' || code === '준와상') status = '준와상';
+	}
 
 	const dentures =
 		f14070Checked(row?.ST_MNG_DNT) ||

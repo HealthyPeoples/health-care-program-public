@@ -10,7 +10,17 @@
  */
 import { useState, useEffect, type ReactNode } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { ServiceDateListPanel } from '../../components/ServiceDateListPanel';
+import {
+	SelectionRequiredOverlay,
+	selectionBlockedClass
+} from '../../components/SelectionRequiredOverlay';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
+import {
+	fetchF14020Detail,
+	fetchF14020ServiceDates,
+	saveF14020Fields
+} from '../../utils/f14020Daily';
 
 interface MemberData {
 	[key: string]: any;
@@ -21,6 +31,10 @@ export default function LongtermFunctionalCognitive() {
 	const [loadingDefaults, setLoadingDefaults] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
 	const [originalDraft, setOriginalDraft] = useState<Record<string, any> | null>(null);
+	const [serviceDates, setServiceDates] = useState<string[]>([]);
+	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
+	const [serviceDatePage, setServiceDatePage] = useState(1);
+	const [loadingServiceDates, setLoadingServiceDates] = useState(false);
 
 	// 왼쪽 컬럼 관련 state
 	const [physicalCognitiveProgram, setPhysicalCognitiveProgram] = useState<'1' | '0'>('1'); // FN_COGN_HELP
@@ -83,13 +97,30 @@ export default function LongtermFunctionalCognitive() {
 		return false;
 	};
 
-	const fetchDefaults = async (pnum: string) => {
-		if (!pnum) return;
+	const fetchServiceDates = async (member: MemberData) => {
+		setLoadingServiceDates(true);
+		setSelectedDateIndex(null);
+		setServiceDatePage(1);
+		setIsEditing(false);
+		setOriginalDraft(null);
+		try {
+			const dates = await fetchF14020ServiceDates(String(member?.ANCD ?? '').trim(), String(member?.PNUM ?? '').trim());
+			setServiceDates(dates);
+		} catch (e) {
+			console.error('서비스제공일자 조회 오류:', e);
+			alert('서비스제공일자를 조회하는 중 오류가 발생했습니다.');
+			setServiceDates([]);
+		} finally {
+			setLoadingServiceDates(false);
+		}
+	};
+
+	const fetchDetail = async (member: MemberData, svdt: string) => {
+		const pnum = String(member?.PNUM ?? '').trim();
+		if (!pnum || !svdt) return;
 		setLoadingDefaults(true);
 		try {
-			const res = await fetch(`/api/f30112?pnum=${encodeURIComponent(pnum)}`);
-			const json = await res.json();
-			const row = json?.success && Array.isArray(json.data) ? json.data[0] : null;
+			const row = await fetchF14020Detail(String(member?.ANCD ?? '').trim(), pnum, svdt);
 			const draft = row
 				? {
 						FN_COGN_HELP: row.FN_COGN_HELP,
@@ -106,7 +137,7 @@ export default function LongtermFunctionalCognitive() {
 			setOriginalDraft({ ...draft });
 			setIsEditing(false);
 		} catch (e) {
-			console.error('F30112 조회 오류:', e);
+			console.error('F14020 조회 오류:', e);
 			alert('기준정보를 조회하는 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingDefaults(false);
@@ -119,16 +150,28 @@ export default function LongtermFunctionalCognitive() {
 			if (!ok) return;
 		}
 		setSelectedMember(member);
-		await fetchDefaults(String(member?.PNUM ?? '').trim());
+		await fetchServiceDates(member);
+	};
+
+	const handleSelectDate = async (index: number) => {
+		if (!selectedMember) return;
+		if (isEditing && isDirty()) {
+			const ok = confirm('수정한 내용을 저장하지 않으면 적용되지 않습니다. 일자를 변경하시겠습니까?');
+			if (!ok) return;
+		}
+		setSelectedDateIndex(index);
+		const svdt = serviceDates[index];
+		if (svdt) await fetchDetail(selectedMember, svdt);
 	};
 
 	useTabRefresh(() => {
-		if (!selectedPnum) return;
-		void fetchDefaults(selectedPnum);
+		if (!selectedMember) return;
+		void fetchServiceDates(selectedMember);
 	});
 
 	const handleEnterEdit = () => {
 		if (!selectedPnum) return alert('수급자를 선택해주세요.');
+		if (selectedDateIndex == null) return alert('서비스제공일자를 선택해주세요.');
 		setOriginalDraft({ ...buildDraft() });
 		setIsEditing(true);
 	};
@@ -143,25 +186,21 @@ export default function LongtermFunctionalCognitive() {
 	};
 
 	const handleSaveEdit = async () => {
-		if (!selectedPnum) return alert('수급자를 선택해주세요.');
+		if (!selectedMember || !selectedPnum) return alert('수급자를 선택해주세요.');
+		const svdt = selectedDateIndex != null ? serviceDates[selectedDateIndex] : '';
+		if (!svdt) return alert('서비스제공일자를 선택해주세요.');
 		try {
-			const payload = { pnum: selectedPnum, ...buildDraft() };
-			const res = await fetch('/api/f30112', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-			const json = await res.json().catch(() => ({}));
-			if (!json?.success) {
-				alert(json?.error || '저장 중 오류가 발생했습니다.');
-				return;
-			}
+			const payload = {
+				...buildDraft(),
+				FN_MIND_HELP: cognitiveTraining
+			};
+			await saveF14020Fields(String(selectedMember.ANCD ?? ''), selectedPnum, svdt, payload);
 			const cur = buildDraft();
 			setOriginalDraft({ ...cur });
 			setIsEditing(false);
 			alert('성공적으로 수정되었습니다.');
 		} catch (e) {
-			console.error('F30112 저장 오류:', e);
+			console.error('F14020 저장 오류:', e);
 			alert('저장 중 오류가 발생했습니다.');
 		}
 	};
@@ -238,14 +277,14 @@ export default function LongtermFunctionalCognitive() {
 	}, [showPreparerDropdown, showCognitivePreparerDropdown]);
 
 	const fieldLabelClass =
-		'shrink-0 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap';
+		'min-w-0 flex-1 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded leading-snug';
 
 	const renderYnRadios = (
 		name: string,
 		value: '1' | '0',
 		onChange: (next: '1' | '0') => void
 	) => (
-		<div className="flex items-center gap-3">
+		<div className="flex items-center gap-3 shrink-0">
 			{(['1', '0'] as const).map((flag) => {
 				const isChecked = value === flag;
 				return (
@@ -276,7 +315,7 @@ export default function LongtermFunctionalCognitive() {
 	);
 
 	const renderFieldRow = (label: string, children: ReactNode) => (
-		<div className="flex items-center gap-2">
+		<div className="flex items-center gap-2 min-w-0 w-full">
 			<label className={fieldLabelClass}>{label}</label>
 			{children}
 		</div>
@@ -350,7 +389,18 @@ export default function LongtermFunctionalCognitive() {
 						<MemberListPanel onSelectMember={handleSelectMember} />
 					</aside>
 
-					<section className="flex-1">
+					<ServiceDateListPanel
+						selectedMember={Boolean(selectedMember)}
+						serviceDates={serviceDates}
+						selectedDateIndex={selectedDateIndex}
+						loading={loadingServiceDates}
+						page={serviceDatePage}
+						onSelectDate={(i) => { void handleSelectDate(i); }}
+						onPageChange={setServiceDatePage}
+					/>
+
+					<section className="flex-1 min-w-0 relative">
+						<div className={selectionBlockedClass(!selectedMember || selectedDateIndex == null)}>
 						<div className="mb-3 flex items-center justify-between rounded border border-blue-200 bg-blue-50 px-3 py-2">
 							<div className="text-sm text-blue-900">
 								{selectedMember ? (
@@ -394,13 +444,13 @@ export default function LongtermFunctionalCognitive() {
 								)}
 							</div>
 						</div>
-						<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
+						<div className="bg-white border border-blue-300 rounded-lg shadow-sm min-w-0">
 							<div className="px-4 py-3 bg-blue-100 border-b border-blue-200">
 								<h2 className="text-xl font-semibold text-blue-900">기능인지</h2>
 							</div>
 
-							<div className="p-4">
-								<div className="grid grid-cols-2 gap-4">
+							<div className="p-4 min-w-0">
+								<div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-3 min-w-0">
 									<div className="space-y-3">
 										{renderFieldRow(
 											'신체·인지기능 향상 프로그램',
@@ -461,6 +511,11 @@ export default function LongtermFunctionalCognitive() {
 								</div>
 							</div>
 						</div>
+						</div>
+						<SelectionRequiredOverlay
+							selectedMember={Boolean(selectedMember)}
+							selectedDate={selectedDateIndex != null}
+						/>
 					</section>
 				</div>
 			</div>

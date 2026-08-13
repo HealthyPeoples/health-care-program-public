@@ -10,7 +10,17 @@
  */
 import { useState, useEffect, type ReactNode } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { ServiceDateListPanel } from '../../components/ServiceDateListPanel';
+import {
+	SelectionRequiredOverlay,
+	selectionBlockedClass
+} from '../../components/SelectionRequiredOverlay';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
+import {
+	fetchF14020Detail,
+	fetchF14020ServiceDates,
+	saveF14020Fields
+} from '../../utils/f14020Daily';
 
 interface MemberData {
 	[key: string]: any;
@@ -19,6 +29,10 @@ interface MemberData {
 export default function LongtermNursingInstruction() {
 	const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
 	const [loadingDefaults, setLoadingDefaults] = useState(false);
+	const [serviceDates, setServiceDates] = useState<string[]>([]);
+	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
+	const [serviceDatePage, setServiceDatePage] = useState(1);
+	const [loadingServiceDates, setLoadingServiceDates] = useState(false);
 
 	// 생체징후 관련 state
 	const [systolicBP, setSystolicBP] = useState('');
@@ -86,15 +100,17 @@ export default function LongtermNursingInstruction() {
 		NS_NRSE_HELP: nursingHelp,
 		NS_HEALTH_HELP_NM: healthManagementNote,
 		NS_NURSE_HELP_NM: nursingManagementNote,
-		NS_ETC: medicationManagement,
+		NS_ETC: emergencyService,
 		NS_SORE_CHK: pressureSoreManagement,
 		NS_SORE_MNG: soreActive ? pressureSoreObservation : '',
 		NS_MEDI_CHK: problemBehavior,
 		NS_SORE_MNG_NM: soreActive ? abnormalArea : '',
+		NS_SORE_DESC: soreActive ? abnormalArea : '',
 		NS_WRITE_NAME: preparerName,
 		NS_SORE_CONF: soreActive ? soreConfirmer : '',
 		ROOM_NO: roomNumber,
 		NS_ETC_DESC: JSON.stringify({
+			medicationManagement,
 			emergencyService,
 			fall,
 			dehydration,
@@ -113,17 +129,18 @@ export default function LongtermNursingInstruction() {
 		setNursingHelp(ynToFlag(d?.NS_NRSE_HELP));
 		setHealthManagementNote(String(d?.NS_HEALTH_HELP_NM ?? ''));
 		setNursingManagementNote(String(d?.NS_NURSE_HELP_NM ?? ''));
-		setMedicationManagement(ynToFlag(d?.NS_ETC));
 		setPressureSoreManagement(ynToFlag(d?.NS_SORE_CHK));
 		const soreActive = ynToFlag(d?.NS_SORE_CHK) === '1';
 		setPressureSoreObservation(soreActive ? ynToFlag(d?.NS_SORE_MNG) : '0');
 		setProblemBehavior(ynToFlag(d?.NS_MEDI_CHK));
-		setAbnormalArea(soreActive ? String(d?.NS_SORE_MNG_NM ?? '') : '');
+		setAbnormalArea(soreActive ? String(d?.NS_SORE_MNG_NM ?? d?.NS_SORE_DESC ?? '') : '');
 		setPreparerName(String(d?.NS_WRITE_NAME ?? d?.INEMPNM ?? ''));
 		setPreparerSearchTerm(String(d?.NS_WRITE_NAME ?? d?.INEMPNM ?? ''));
 		setSoreConfirmer(soreActive ? String(d?.NS_SORE_CONF ?? '') : '');
 		setSoreConfirmerSearchTerm(soreActive ? String(d?.NS_SORE_CONF ?? '') : '');
 		setRoomNumber(String(d?.ROOM_NO ?? ''));
+		setMedicationManagement('0');
+		setEmergencyService(ynToFlag(d?.NS_ETC));
 		try {
 			const extra = d?.NS_ETC_DESC ? JSON.parse(String(d.NS_ETC_DESC)) : null;
 			if (extra && typeof extra === 'object') {
@@ -133,7 +150,8 @@ export default function LongtermNursingInstruction() {
 				if (d?.NS_NRSE_HELP == null && extra.nursingManagement != null) {
 					setNursingHelp(extraToFlag(extra.nursingManagement));
 				}
-				if (extra.emergencyService != null) setEmergencyService(extraToFlag(extra.emergencyService));
+				if (extra.medicationManagement != null) setMedicationManagement(extraToFlag(extra.medicationManagement));
+				if (d?.NS_ETC == null && extra.emergencyService != null) setEmergencyService(extraToFlag(extra.emergencyService));
 				if (extra.fall != null) setFall(extraToFlag(extra.fall));
 				if (extra.dehydration != null) setDehydration(extraToFlag(extra.dehydration));
 				if (d?.NS_SORE_CHK == null && extra.pressureSoreManagement != null) {
@@ -155,13 +173,30 @@ export default function LongtermNursingInstruction() {
 		return false;
 	};
 
-	const fetchDefaults = async (pnum: string) => {
-		if (!pnum) return;
+	const fetchServiceDates = async (member: MemberData) => {
+		setLoadingServiceDates(true);
+		setSelectedDateIndex(null);
+		setServiceDatePage(1);
+		setIsEditMode(false);
+		setOriginalData(null);
+		try {
+			const dates = await fetchF14020ServiceDates(String(member?.ANCD ?? '').trim(), String(member?.PNUM ?? '').trim());
+			setServiceDates(dates);
+		} catch (e) {
+			console.error('서비스제공일자 조회 오류:', e);
+			alert('서비스제공일자를 조회하는 중 오류가 발생했습니다.');
+			setServiceDates([]);
+		} finally {
+			setLoadingServiceDates(false);
+		}
+	};
+
+	const fetchDetail = async (member: MemberData, svdt: string) => {
+		const pnum = String(member?.PNUM ?? '').trim();
+		if (!pnum || !svdt) return;
 		setLoadingDefaults(true);
 		try {
-			const res = await fetch(`/api/f30112?pnum=${encodeURIComponent(pnum)}`);
-			const json = await res.json();
-			const row = json?.success && Array.isArray(json.data) ? json.data[0] : null;
+			const row = await fetchF14020Detail(String(member?.ANCD ?? '').trim(), pnum, svdt);
 			const soreActiveFromRow = row ? ynToFlag(row.NS_SORE_CHK) === '1' : true;
 			const draft = row
 				? {
@@ -176,7 +211,7 @@ export default function LongtermNursingInstruction() {
 						NS_SORE_CHK: row.NS_SORE_CHK,
 						NS_SORE_MNG: soreActiveFromRow ? row.NS_SORE_MNG : '',
 						NS_MEDI_CHK: row.NS_MEDI_CHK,
-						NS_SORE_MNG_NM: soreActiveFromRow ? (row.NS_SORE_MNG_NM ?? '') : '',
+						NS_SORE_MNG_NM: soreActiveFromRow ? (row.NS_SORE_MNG_NM ?? row.NS_SORE_DESC ?? '') : '',
 						NS_WRITE_NAME: row.NS_WRITE_NAME ?? row.INEMPNM ?? '',
 						NS_SORE_CONF: soreActiveFromRow ? (row.NS_SORE_CONF ?? '') : '',
 						ROOM_NO: row.ROOM_NO,
@@ -187,7 +222,7 @@ export default function LongtermNursingInstruction() {
 			setOriginalData({ ...draft });
 			setIsEditMode(false);
 		} catch (e) {
-			console.error('F30112 조회 오류:', e);
+			console.error('F14020 조회 오류:', e);
 			alert('기준정보를 조회하는 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingDefaults(false);
@@ -200,12 +235,23 @@ export default function LongtermNursingInstruction() {
 			if (!ok) return;
 		}
 		setSelectedMember(member);
-		await fetchDefaults(String(member?.PNUM ?? '').trim());
+		await fetchServiceDates(member);
+	};
+
+	const handleSelectDate = async (index: number) => {
+		if (!selectedMember) return;
+		if (isEditMode && isDirty()) {
+			const ok = confirm('수정한 내용을 저장하지 않으면 적용되지 않습니다. 일자를 변경하시겠습니까?');
+			if (!ok) return;
+		}
+		setSelectedDateIndex(index);
+		const svdt = serviceDates[index];
+		if (svdt) await fetchDetail(selectedMember, svdt);
 	};
 
 	useTabRefresh(() => {
-		if (!selectedPnum) return;
-		void fetchDefaults(selectedPnum);
+		if (!selectedMember) return;
+		void fetchServiceDates(selectedMember);
 	});
 
 	// 직원 검색 함수
@@ -240,6 +286,10 @@ export default function LongtermNursingInstruction() {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
+		if (selectedDateIndex == null) {
+			alert('서비스제공일자를 선택해주세요.');
+			return;
+		}
 		// 원본 데이터 백업
 		setOriginalData({ ...buildDraft() });
 		setIsEditMode(true);
@@ -258,28 +308,23 @@ export default function LongtermNursingInstruction() {
 	};
 
 	const handleSave = async () => {
-		if (!selectedPnum) {
+		if (!selectedMember || !selectedPnum) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
+		const svdt = selectedDateIndex != null ? serviceDates[selectedDateIndex] : '';
+		if (!svdt) {
+			alert('서비스제공일자를 선택해주세요.');
+			return;
+		}
 		try {
-			const payload = { pnum: selectedPnum, ...buildDraft() };
-			const res = await fetch('/api/f30112', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-			const json = await res.json().catch(() => ({}));
-			if (!json?.success) {
-				alert(json?.error || '저장 중 오류가 발생했습니다.');
-				return;
-			}
+			await saveF14020Fields(String(selectedMember.ANCD ?? ''), selectedPnum, svdt, buildDraft());
 			const cur = buildDraft();
 			setOriginalData({ ...cur });
 			setIsEditMode(false);
 			alert('성공적으로 수정되었습니다.');
 		} catch (e) {
-			console.error('F30112 저장 오류:', e);
+			console.error('F14020 저장 오류:', e);
 			alert('저장 중 오류가 발생했습니다.');
 		}
 	};
@@ -360,7 +405,7 @@ export default function LongtermNursingInstruction() {
 	}, [showPreparerDropdown, showSoreConfirmerDropdown]);
 
 	const fieldLabelClass =
-		'shrink-0 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap';
+		'shrink-0 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded leading-snug';
 
 	const renderYnRadios = (
 		name: string,
@@ -368,7 +413,7 @@ export default function LongtermNursingInstruction() {
 		onChange: (next: '1' | '0') => void,
 		labels: { yes: string; no: string } = { yes: '실시', no: '미실시' }
 	) => (
-		<div className="flex items-center gap-3">
+		<div className="flex items-center gap-3 shrink-0">
 			{(['1', '0'] as const).map((flag) => {
 				const isChecked = value === flag;
 				return (
@@ -420,7 +465,7 @@ export default function LongtermNursingInstruction() {
 	const readModeTextClass = 'text-sm font-semibold text-blue-800';
 
 	const renderFieldRow = (label: string, labelClassName: string, children: ReactNode) => (
-		<div className="flex items-center gap-2">
+		<div className="flex items-center gap-2 min-w-0 shrink-0">
 			<label className={`${labelClassName} ${fieldLabelClass}`}>{label}</label>
 			{children}
 		</div>
@@ -435,64 +480,81 @@ export default function LongtermNursingInstruction() {
 						<MemberListPanel onSelectMember={handleSelectMember} />
 					</aside>
 
+					<ServiceDateListPanel
+						selectedMember={Boolean(selectedMember)}
+						serviceDates={serviceDates}
+						selectedDateIndex={selectedDateIndex}
+						loading={loadingServiceDates}
+						page={serviceDatePage}
+						onSelectDate={(i) => { void handleSelectDate(i); }}
+						onPageChange={setServiceDatePage}
+					/>
+
 					{/* 우측: 간호지시 입력 */}
-					<section className="flex-1">
-						{!selectedMember ? (
-							<div className="p-6 text-sm text-blue-900/70 bg-white border border-blue-300 rounded-lg">
-								수급자를 선택해주세요.
-							</div>
-						) : (
-							<>
+					<section className="flex-1 min-w-0 relative">
+						<div className={selectionBlockedClass(!selectedMember || selectedDateIndex == null)}>
 						<div className="mb-3 flex items-center justify-between rounded border border-blue-200 bg-blue-50 px-3 py-2">
 							<div className="text-sm text-blue-900">
-								<span className="font-semibold">{String(selectedMember.P_NM ?? '').trim() || '선택됨'}</span>
-								<span className="ml-2 text-blue-900/70">PNUM: {selectedPnum || '-'}</span>
-								{loadingDefaults && <span className="ml-2 text-blue-900/70">불러오는 중...</span>}
+								{selectedMember ? (
+									<>
+										<span className="font-semibold">{String(selectedMember.P_NM ?? '').trim() || '선택됨'}</span>
+										<span className="ml-2 text-blue-900/70">PNUM: {selectedPnum || '-'}</span>
+										{loadingDefaults && <span className="ml-2 text-blue-900/70">불러오는 중...</span>}
+									</>
+								) : (
+									<span className="text-blue-900/70">수급자를 선택해주세요</span>
+								)}
 							</div>
 						</div>
-						<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
+						<div className="bg-white border border-blue-300 rounded-lg shadow-sm min-w-0">
 							<div className="px-4 py-3 bg-blue-100 border-b border-blue-200">
 								<h2 className="text-xl font-semibold text-blue-900">간호지시</h2>
 							</div>
 
-							<div className="p-4 space-y-4">
+							<div className="p-4 space-y-4 min-w-0">
 								{/* 생체징후 */}
-								<div className="flex items-center gap-2">
-									<label className="w-24 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">
-										혈압(수축)
-									</label>
-									<input
-										type="number"
-										value={systolicBP}
-										onChange={(e) => setSystolicBP(e.target.value)}
-										disabled={!isEditMode}
-										className="flex-1 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-									/>
-									<label className="w-24 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">
-										혈압(이완)
-									</label>
-									<input
-										type="number"
-										value={diastolicBP}
-										onChange={(e) => setDiastolicBP(e.target.value)}
-										disabled={!isEditMode}
-										className="flex-1 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-									/>
-									<label className="w-24 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">
-										체온
-									</label>
-									<input
-										type="number"
-										step="0.1"
-										value={bodyTemperature}
-										onChange={(e) => setBodyTemperature(e.target.value)}
-										disabled={!isEditMode}
-										className="flex-1 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-									/>
+								<div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 min-w-0">
+									<div className="flex items-center gap-2 min-w-0">
+										<label className="w-24 shrink-0 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">
+											혈압(수축)
+										</label>
+										<input
+											type="number"
+											value={systolicBP}
+											onChange={(e) => setSystolicBP(e.target.value)}
+											disabled={!isEditMode}
+											className="min-w-0 flex-1 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+										/>
+									</div>
+									<div className="flex items-center gap-2 min-w-0">
+										<label className="w-24 shrink-0 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">
+											혈압(이완)
+										</label>
+										<input
+											type="number"
+											value={diastolicBP}
+											onChange={(e) => setDiastolicBP(e.target.value)}
+											disabled={!isEditMode}
+											className="min-w-0 flex-1 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+										/>
+									</div>
+									<div className="flex items-center gap-2 min-w-0">
+										<label className="w-24 shrink-0 px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">
+											체온
+										</label>
+										<input
+											type="number"
+											step="0.1"
+											value={bodyTemperature}
+											onChange={(e) => setBodyTemperature(e.target.value)}
+											disabled={!isEditMode}
+											className="min-w-0 flex-1 px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+										/>
+									</div>
 								</div>
 
 								{/* 건강관리 */}
-								<div className="flex items-center gap-6">
+								<div className="flex flex-wrap items-center gap-x-4 gap-y-3 min-w-0">
 									{renderFieldRow('건강관리', 'w-28', renderYnRadios('healthHelp', healthHelp, setHealthHelp))}
 									{renderFieldRow('간호관리', 'w-28', renderYnRadios('nursingHelp', nursingHelp, setNursingHelp))}
 								{renderFieldRow(
@@ -554,7 +616,7 @@ export default function LongtermNursingInstruction() {
 									)
 								)}
 
-								<div className="flex items-center gap-6">
+								<div className="flex flex-wrap items-center gap-x-4 gap-y-3 min-w-0">
 								{renderFieldRow(
 									'욕창관리',
 									'w-28',
@@ -648,13 +710,13 @@ export default function LongtermNursingInstruction() {
 								)}
 
 								{/* 증상 및 관리 */}
-								<div className="pt-2 space-y-3 border-t border-blue-200 ">
-									<div className="flex items-center gap-6">
+								<div className="pt-2 space-y-3 border-t border-blue-200 min-w-0">
+									<div className="flex flex-wrap items-center gap-x-4 gap-y-3 min-w-0">
 										{renderFieldRow('문제행동', 'w-28', renderYnRadios('problemBehavior', problemBehavior, setProblemBehavior, yesNoLabels))}
 										{renderFieldRow('낙상', 'w-28', renderYnRadios('fall', fall, setFall, yesNoLabels))}
 										{renderFieldRow('탈수', 'w-28', renderYnRadios('dehydration', dehydration, setDehydration, yesNoLabels))}
 									</div>
-									<div className="flex items-center gap-6">
+									<div className="flex flex-wrap items-center gap-x-4 gap-y-3 min-w-0">
 										{renderFieldRow('소변/대변실금', 'w-32', renderYnRadios('incontinence', incontinence, setIncontinence, yesNoLabels))}
 										{renderFieldRow('섬망', 'w-28', renderYnRadios('delirium', delirium, setDelirium, deliriumLabels))}
 										{renderFieldRow(
@@ -690,7 +752,7 @@ export default function LongtermNursingInstruction() {
 												</div>
 											)}
 									</div>
-									<div className="flex items-center gap-6">
+									<div className="flex flex-wrap items-center gap-x-4 gap-y-3 min-w-0">
 
 									
 										{renderFieldRow(
@@ -746,8 +808,11 @@ export default function LongtermNursingInstruction() {
 								</div>
 							</div>
 						</div>
-							</>
-						)}
+						</div>
+						<SelectionRequiredOverlay
+							selectedMember={Boolean(selectedMember)}
+							selectedDate={selectedDateIndex != null}
+						/>
 					</section>
 				</div>
 			</div>
