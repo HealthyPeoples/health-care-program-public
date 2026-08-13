@@ -28,6 +28,7 @@ interface MemberData {
 	P_BRDT: string;
 	P_ST: string;
 	P_SDT: string; // 입소일자
+	P_EDT?: string; // 퇴소일자
 	P_FLOOR: string; // 층수
 	ROOM_NO?: string; // 방번호
 	P_YYNO: string; // 장기요양인정번호
@@ -35,6 +36,53 @@ interface MemberData {
 	P_YYEDT: string; // 유효기간 종료일
 	USRGU?: string; // 부담금 유형
 	[key: string]: any;
+}
+
+function todayYmdLocal(base = new Date()) {
+	const y = base.getFullYear();
+	const m = String(base.getMonth() + 1).padStart(2, '0');
+	const d = String(base.getDate()).padStart(2, '0');
+	return `${y}-${m}-${d}`;
+}
+
+function toYmd(dateStr: string | Date | null | undefined) {
+	if (!dateStr) return '';
+	if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
+		return todayYmdLocal(dateStr);
+	}
+	const s = String(dateStr).trim();
+	if (!s) return '';
+	if (s.includes('T') && s.length >= 10) return s.split('T')[0].slice(0, 10);
+	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+	return '';
+}
+
+function formatAsOfLabel(ymd: string) {
+	const s = toYmd(ymd);
+	if (!s) return '';
+	const [y, m, d] = s.split('-');
+	return `${y}년 ${Number(m)}월 ${Number(d)}일`;
+}
+
+/** 기준일에 재원: 입소일 ≤ 기준일, 퇴소일이 없거나 퇴소일 > 기준일 */
+function isResidentOn(member: MemberData, asOf: string) {
+	const asOfYmd = toYmd(asOf);
+	if (!asOfYmd) return String(member.P_ST || '').trim() === '1';
+	const sdt = toYmd(member.P_SDT);
+	const edt = toYmd(member.P_EDT);
+	if (sdt && sdt > asOfYmd) return false;
+	if (edt && edt <= asOfYmd) return false;
+	if (!sdt && String(member.P_ST || '').trim() !== '1') return false;
+	return true;
+}
+
+function escapeHtml(s: string) {
+	return String(s ?? '')
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
 }
 
 export default function BeneficiaryStatusInquiry() {
@@ -46,6 +94,7 @@ export default function BeneficiaryStatusInquiry() {
 	const [searchTerm, setSearchTerm] = useState('');
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 10;
+	const [asOfDate, setAsOfDate] = useState<string>(() => todayYmdLocal());
 
 	// 수급자 목록 조회
 	const fetchMembers = async (nameSearch?: string) => {
@@ -89,13 +138,22 @@ export default function BeneficiaryStatusInquiry() {
 		setCurrentPage(1);
 	}, [selectedStatus, selectedGrade, selectedFloor, searchTerm]);
 
-	// 나이 계산 함수
-	const calculateAge = (birthDate: string) => {
+	// 나이 계산 함수 (조회 기준일 기준)
+	const calculateAge = (birthDate: string, asOf = asOfDate) => {
 		if (!birthDate) return '-';
 		try {
-			const year = parseInt(birthDate.substring(0, 4));
-			const currentYear = new Date().getFullYear();
-			return (currentYear - year).toString();
+			const ymd = toYmd(birthDate) || String(birthDate);
+			const year = parseInt(ymd.substring(0, 4), 10);
+			const month = parseInt(ymd.substring(5, 7), 10) || 1;
+			const day = parseInt(ymd.substring(8, 10), 10) || 1;
+			if (!Number.isFinite(year)) return '-';
+			const asOfYmd = toYmd(asOf) || todayYmdLocal();
+			const asOfYear = parseInt(asOfYmd.slice(0, 4), 10);
+			const asOfMonth = parseInt(asOfYmd.slice(5, 7), 10);
+			const asOfDay = parseInt(asOfYmd.slice(8, 10), 10);
+			let age = asOfYear - year;
+			if (asOfMonth * 100 + asOfDay < month * 100 + day) age -= 1;
+			return age >= 0 ? String(age) : '-';
 		} catch {
 			return '-';
 		}
@@ -197,8 +255,10 @@ export default function BeneficiaryStatusInquiry() {
 		setCurrentPage(page);
 	};
 
-	// 입소 상태인 수급자만 필터링 (요약 통계용)
-	const activeMembers = memberList.filter(member => member.P_ST === '1');
+	// 조회 기준일에 재원 중이던 수급자 (요약·목록·출력 공통)
+	const activeMembers = memberList
+		.filter((member) => isResidentOn(member, asOfDate))
+		.sort((a, b) => (a.P_NM || '').trim().localeCompare((b.P_NM || '').trim(), 'ko'));
 
 	// 등급별계 계산 (P_GRD: 1~5, 9=인지지원, 구 6은 인지지원으로 통계)
 	const gradeSummary = {
@@ -244,17 +304,18 @@ export default function BeneficiaryStatusInquiry() {
 			return;
 		}
 
+		const asOfLabel = formatAsOfLabel(asOfDate) || asOfDate;
 		const summaryRows = activeMembers.map(member => `
 			<tr>
-				<td>${formatCareGradeLabel(member.P_GRD)}</td>
-				<td>${member.P_NM || '-'}</td>
-				<td>${calculateAge(member.P_BRDT || '')}</td>
-				<td>${formatGender(member.P_SEX || '')}</td>
-				<td>${formatAdmissionDate(member.P_SDT || '')}</td>
-				<td>${member.ROOM_NO || member.P_FLOOR || '-'}</td>
-				<td>${formatPaymentType(member.USRGU || '')}</td>
-				<td>${member.P_YYNO || '-'}</td>
-				<td>${formatValidityPeriod(member.P_YYSDT || '', member.P_YYEDT || '')}</td>
+				<td>${escapeHtml(formatCareGradeLabel(member.P_GRD))}</td>
+				<td>${escapeHtml(member.P_NM || '-')}</td>
+				<td>${escapeHtml(calculateAge(member.P_BRDT || ''))}</td>
+				<td>${escapeHtml(formatGender(member.P_SEX || ''))}</td>
+				<td>${escapeHtml(formatAdmissionDate(member.P_SDT || ''))}</td>
+				<td>${escapeHtml(String(member.ROOM_NO || member.P_FLOOR || '-'))}</td>
+				<td>${escapeHtml(formatPaymentType(member.USRGU || ''))}</td>
+				<td>${escapeHtml(member.P_YYNO || '-')}</td>
+				<td>${escapeHtml(formatValidityPeriod(member.P_YYSDT || '', member.P_YYEDT || ''))}</td>
 			</tr>
 		`).join('');
 
@@ -289,10 +350,15 @@ export default function BeneficiaryStatusInquiry() {
 		}
 		.header {
 			text-align: center;
-			margin-bottom: 20px;
+			margin-bottom: 12px;
 		}
 		.header h1 {
 			font-size: 18pt;
+			font-weight: bold;
+		}
+		.header .as-of {
+			margin-top: 6px;
+			font-size: 11pt;
 			font-weight: bold;
 		}
 		.summary-table {
@@ -340,6 +406,7 @@ export default function BeneficiaryStatusInquiry() {
 	<div class="print-container">
 		<div class="header">
 			<h1>수급자 현황</h1>
+			<div class="as-of">조회 기준일: ${escapeHtml(asOfLabel)}</div>
 		</div>
 		
 		<table class="summary-table">
@@ -450,7 +517,16 @@ export default function BeneficiaryStatusInquiry() {
 			<div className="p-4 border-b border-blue-200 bg-blue-50">
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<h1 className="text-2xl font-bold text-blue-900">수급자 현황</h1>
-					<div className="flex items-center gap-2">
+					<div className="flex flex-wrap items-center gap-3">
+						<div className="flex items-center gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">조회 기준일</label>
+							<input
+								type="date"
+								value={asOfDate}
+								onChange={(e) => setAsOfDate(e.target.value)}
+								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+							/>
+						</div>
 						<button
 							onClick={handlePrint}
 							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
@@ -637,6 +713,9 @@ export default function BeneficiaryStatusInquiry() {
 
 				{/* 우측 패널: 요약 테이블 및 메인 데이터 테이블 */}
 				<div className="flex-1 p-4 overflow-auto">
+					<div className="mb-3 text-sm font-medium text-blue-900">
+						조회 기준일: {formatAsOfLabel(asOfDate) || asOfDate || '-'}
+					</div>
 					{/* 요약 테이블들 */}
 					<div className="mb-6 space-y-4">
 					{/* 등급별계 */}
