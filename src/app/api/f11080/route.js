@@ -6,12 +6,31 @@
  *
  * @module app/api/f11080/route
  */
-import { connPool } from '../../../config/server';
+import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
-import { normalizeYmdShort as normalizeYmd } from '../../../utils/normalizeYmd';
+import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F11080]';
+
+const VARCHAR_LIMITS = {
+	EMPL: 200,
+	EMTM: 5,
+	EMDES1: 500,
+	EMDES2: 500,
+	EMDES3: 500,
+	EMHOS: 200,
+	EMETC: 500,
+	EMRES: 500,
+	EMEMP: 60,
+	ETC: 1000,
+	INEMPNM: 100,
+};
+
+function toVarchar(value, max) {
+	if (value == null || value === '') return null;
+	return String(value).slice(0, max);
+}
 
 
 export async function GET(req) {
@@ -97,9 +116,9 @@ export async function POST(req) {
     }
 
     const request = pool.request();
-    request.input('ANCD', ancd);
-    request.input('PNUM', String(pnum));
-    request.input('EMDT', String(emdt).slice(0, 10)); // 'YYYY-MM-DD'
+    request.input('ANCD', sql.Int, Number(ancd));
+    request.input('PNUM', sql.Int, Number(pnum));
+    request.input('EMDT', sql.VarChar(10), String(emdt).slice(0, 10)); // 'YYYY-MM-DD'
 
     const pick = (k) => (Object.prototype.hasOwnProperty.call(body || {}, k) ? body[k] : null);
 
@@ -118,7 +137,15 @@ export async function POST(req) {
       'INEMPNM',
     ];
 
-    editableKeys.forEach((k) => request.input(k, pick(k) == null ? null : String(pick(k))));
+    editableKeys.forEach((k) => {
+      if (k === 'INEMPNO') {
+        const n = pick(k);
+        request.input(k, sql.Int, n == null || n === '' ? null : Number(n));
+        return;
+      }
+      const max = VARCHAR_LIMITS[k];
+      request.input(k, sql.NVarChar(max), toVarchar(pick(k), max));
+    });
 
     const setSql = editableKeys
       .map((k) => `T.[${k}] = @${k}`)

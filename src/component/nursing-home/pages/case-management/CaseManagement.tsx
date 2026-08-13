@@ -9,6 +9,7 @@
  * @module component/nursing-home/pages/case-management/CaseManagement
  */
 import React, { useState, useEffect } from 'react';
+import { formatCareGradeLabel } from '../../utils/careGrade';
 
 interface CaseData {
 	ANCD: string | number;
@@ -25,10 +26,21 @@ interface CaseData {
 	MNM?: string; // 참석자
 	MODT?: string; // 반영일자
 	MODES?: string; // 반영내용
+	MONY?: string | number; // 반영여부 (1 반영, 0 미반영)
 	INEMPNO?: string;
 	INEMPNM?: string;
 	[key: string]: any;
 }
+
+type MemberSuggestion = {
+	ANCD?: string | number;
+	PNUM?: string | number;
+	P_NM?: string;
+	P_GRD?: string;
+	P_BRDT?: string;
+	P_ST?: string;
+	[key: string]: any;
+};
 
 type UserInfo = {
 	ancd?: string | number;
@@ -61,6 +73,21 @@ export default function CaseManagement() {
 		}
 
 		return s.length >= 10 ? s.slice(0, 10) : s;
+	};
+
+	const calcAgeFromBirth = (birth: unknown) => {
+		const ymd = formatDateYmd(String(birth ?? ''));
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
+		const [y, m, d] = ymd.split('-').map((x) => parseInt(x, 10));
+		const today = new Date();
+		let age = today.getFullYear() - y;
+		if ((today.getMonth() + 1) * 100 + today.getDate() < m * 100 + d) age -= 1;
+		return age >= 0 ? String(age) : '';
+	};
+
+	const isReflected = (mony: unknown) => {
+		const v = String(mony ?? '').trim();
+		return v === '1';
 	};
 
 	const [caseList, setCaseList] = useState<CaseData[]>([]);
@@ -103,6 +130,7 @@ export default function CaseManagement() {
 		const result = escapeHtml(caseItem.MRES || '');
 		const attendees = escapeHtml(caseItem.MNM || '-');
 		const reflectionDate = escapeHtml(formatDateYmd(caseItem.MODT || '') || '-');
+		const reflectionYn = isReflected(caseItem.MONY) ? '반영' : '미반영';
 		const reflectionContent = escapeHtml(caseItem.MODES || '-');
 
 		return `
@@ -150,8 +178,12 @@ export default function CaseManagement() {
 			<tr>
 				<td class="label">반영일자</td>
 				<td class="value">${reflectionDate}</td>
+				<td class="label">반영여부</td>
+				<td class="value">${reflectionYn}</td>
+			</tr>
+			<tr>
 				<td class="label">반영내용</td>
-				<td class="value">${reflectionContent}</td>
+				<td class="value" colspan="3">${reflectionContent}</td>
 			</tr>
 		</table>
 	</div>`;
@@ -171,8 +203,13 @@ export default function CaseManagement() {
 		meetingResult: '', // 회의결과
 		meetingAttendees: '', // 회의참석자
 		reflectionDate: '', // 반영일자
+		reflected: false, // 반영여부 (MONY)
 		reflectionContent: '' // 반영내용
 	});
+	const [beneficiarySearchTerm, setBeneficiarySearchTerm] = useState('');
+	const [beneficiarySuggestions, setBeneficiarySuggestions] = useState<MemberSuggestion[]>([]);
+	const [showBeneficiaryDropdown, setShowBeneficiaryDropdown] = useState(false);
+	const [selectedBeneficiaryKey, setSelectedBeneficiaryKey] = useState('');
 
 	const fetchUserAndPermission = async () => {
 		try {
@@ -219,7 +256,7 @@ export default function CaseManagement() {
 			if (!ancd) {
 				setCaseList([]);
 				setCheckedKeys([]);
-				return;
+				return [];
 			}
 
 			const url = `/api/f60020?ancd=${encodeURIComponent(String(ancd))}&startDate=${encodeURIComponent(
@@ -232,19 +269,20 @@ export default function CaseManagement() {
 			}
 			const list = Array.isArray(result.data) ? result.data : [];
 			// 날짜 표시 통일(YYYY-MM-DD)
-			setCaseList(
-				list.map((r: any) => ({
-					...r,
-					MDT: formatDateYmd(r?.MDT),
-					MODT: formatDateYmd(r?.MODT),
-					URDT: formatDateYmd(r?.URDT),
-				}))
-			);
+			const mapped = list.map((r: any) => ({
+				...r,
+				MDT: formatDateYmd(r?.MDT),
+				MODT: formatDateYmd(r?.MODT),
+				URDT: formatDateYmd(r?.URDT),
+			}));
+			setCaseList(mapped);
 			setCheckedKeys([]);
+			return mapped;
 		} catch (err) {
 			console.error('사례 목록 조회 오류:', err);
 			setCaseList([]);
 			setCheckedKeys([]);
+			return [];
 		} finally {
 			setLoading(false);
 		}
@@ -270,6 +308,67 @@ export default function CaseManagement() {
 		fetchCases();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [startDate, endDate, userInfo?.ancd]);
+
+	const searchBeneficiaries = async (searchTerm: string) => {
+		if (!searchTerm || searchTerm.trim() === '') {
+			setBeneficiarySuggestions([]);
+			setShowBeneficiaryDropdown(false);
+			return;
+		}
+
+		try {
+			const url = `/api/f10010?name=${encodeURIComponent(searchTerm.trim())}`;
+			const response = await fetch(url);
+			const result = await response.json();
+			if (result.success && Array.isArray(result.data)) {
+				setBeneficiarySuggestions(result.data);
+				setShowBeneficiaryDropdown(result.data.length > 0);
+			} else {
+				setBeneficiarySuggestions([]);
+				setShowBeneficiaryDropdown(false);
+			}
+		} catch (err) {
+			console.error('수급자 검색 오류:', err);
+			setBeneficiarySuggestions([]);
+			setShowBeneficiaryDropdown(false);
+		}
+	};
+
+	const handleSelectBeneficiary = (member: MemberSuggestion) => {
+		const name = String(member.P_NM || '').trim();
+		setFormData((prev) => ({
+			...prev,
+			beneficiary: name,
+			beneficiaryGrade: formatCareGradeLabel(member.P_GRD, ''),
+			beneficiaryAge: calcAgeFromBirth(member.P_BRDT)
+		}));
+		setBeneficiarySearchTerm(name);
+		setSelectedBeneficiaryKey(`${member.ANCD ?? ''}-${member.PNUM ?? ''}`);
+		setShowBeneficiaryDropdown(false);
+	};
+
+	useEffect(() => {
+		if (!isEditMode) return;
+		const timer = setTimeout(() => {
+			if (!beneficiarySearchTerm || beneficiarySearchTerm.trim() === '') return;
+			if (beneficiarySearchTerm === formData.beneficiary && selectedBeneficiaryKey) return;
+			searchBeneficiaries(beneficiarySearchTerm);
+		}, 300);
+		return () => clearTimeout(timer);
+	}, [beneficiarySearchTerm, isEditMode]);
+
+	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			const target = event.target as HTMLElement;
+			if (!target.closest('.beneficiary-dropdown-container')) {
+				setShowBeneficiaryDropdown(false);
+			}
+		};
+		if (showBeneficiaryDropdown) {
+			document.addEventListener('mousedown', handleClickOutside);
+			return () => document.removeEventListener('mousedown', handleClickOutside);
+		}
+	}, [showBeneficiaryDropdown]);
 
 	// 페이지네이션 계산
 	const totalPages = Math.ceil(caseList.length / itemsPerPage);
@@ -310,8 +409,13 @@ export default function CaseManagement() {
 			meetingResult: caseItem.MRES || '',
 			meetingAttendees: caseItem.MNM || '',
 			reflectionDate: formatDateYmd(caseItem.MODT || ''),
+			reflected: isReflected(caseItem.MONY),
 			reflectionContent: caseItem.MODES || ''
 		});
+		setBeneficiarySearchTerm(caseItem.MPNM || '');
+		setBeneficiarySuggestions([]);
+		setShowBeneficiaryDropdown(false);
+		setSelectedBeneficiaryKey(caseItem.MPNM ? 'saved' : '');
 	};
 
 	// 폼 데이터 변경
@@ -346,8 +450,13 @@ export default function CaseManagement() {
 			meetingResult: '',
 			meetingAttendees: '',
 			reflectionDate: '',
+			reflected: false,
 			reflectionContent: ''
 		});
+		setBeneficiarySearchTerm('');
+		setBeneficiarySuggestions([]);
+		setShowBeneficiaryDropdown(false);
+		setSelectedBeneficiaryKey('');
 	};
 
 	// 수정
@@ -361,6 +470,14 @@ export default function CaseManagement() {
 			return;
 		}
 		setIsEditMode(true);
+	};
+
+	const toHm = (v: string) => {
+		const s = String(v || '').trim();
+		if (!s) return null;
+		const m = s.match(/^(\d{1,2}):(\d{2})/);
+		if (!m) return s.slice(0, 5);
+		return `${m[1].padStart(2, '0')}:${m[2]}`;
 	};
 
 	// 저장
@@ -379,20 +496,24 @@ export default function CaseManagement() {
 			const ancd = userInfo?.ancd;
 			if (!ancd) throw new Error('기관정보(ANCD)를 확인할 수 없습니다.');
 
+			const mdt = formatDateYmd(formData.meetingDate);
+			const origMdt = selectedCase?.MDT ? formatDateYmd(selectedCase.MDT) : mdt;
 			const payload: any = {
 				ANCD: ancd,
-				MDT: formatDateYmd(formData.meetingDate),
-				STM: formData.meetingStartTime || null,
-				ETM: formData.meetingEndTime || null,
+				MDT: mdt,
+				origMDT: origMdt,
+				STM: toHm(formData.meetingStartTime),
+				ETM: toHm(formData.meetingEndTime),
 				MPL: formData.meetingLocation || null,
 				MPNM: formData.beneficiary || null,
 				MPGRD: formData.beneficiaryGrade || null,
-				MPAGE: formData.beneficiaryAge || null,
+				MPAGE: String(formData.beneficiaryAge || '').replace(/[^\d]/g, '').slice(0, 3) || null,
 				MDOC: formData.selectionReason || null,
 				MDES: formData.meetingContent || null,
 				MRES: formData.meetingResult || null,
 				MNM: formData.meetingAttendees || null,
 				MODT: formData.reflectionDate ? formatDateYmd(formData.reflectionDate) : null,
+				MONY: formData.reflected ? '1' : '0',
 				MODES: formData.reflectionContent || null,
 				INEMPNO: userInfo?.empno != null ? String(userInfo.empno) : null,
 				INEMPNM: userInfo?.empnm != null ? String(userInfo.empnm) : null,
@@ -411,10 +532,15 @@ export default function CaseManagement() {
 
 			alert(selectedCase ? '사례가 수정되었습니다.' : '사례가 생성되었습니다.');
 			setIsEditMode(false);
-			await fetchCases();
+
+			const list = await fetchCases();
+			const saved = (list || []).find((c: CaseData) => formatDateYmd(c.MDT) === mdt);
+			if (saved) {
+				handleSelectCase(saved);
+			}
 		} catch (err) {
 			console.error('사례 저장 오류:', err);
-			alert('사례 저장 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '사례 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoading(false);
 		}
@@ -466,12 +592,17 @@ export default function CaseManagement() {
 				meetingResult: '',
 				meetingAttendees: '',
 				reflectionDate: '',
+				reflected: false,
 				reflectionContent: ''
 			});
+			setBeneficiarySearchTerm('');
+			setBeneficiarySuggestions([]);
+			setShowBeneficiaryDropdown(false);
+			setSelectedBeneficiaryKey('');
 			await fetchCases();
 		} catch (err) {
 			console.error('사례 삭제 오류:', err);
-			alert('사례 삭제 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '사례 삭제 중 오류가 발생했습니다.');
 		} finally {
 			setLoading(false);
 		}
@@ -505,7 +636,9 @@ export default function CaseManagement() {
 			const payload: any = {
 				ANCD: ancd,
 				MDT: formatDateYmd(selectedCase.MDT),
+				origMDT: formatDateYmd(selectedCase.MDT),
 				MODT: formatDateYmd(formData.reflectionDate),
+				MONY: '1',
 				MODES: formData.reflectionContent,
 				INEMPNO: userInfo?.empno != null ? String(userInfo.empno) : null,
 				INEMPNM: userInfo?.empnm != null ? String(userInfo.empnm) : null,
@@ -522,10 +655,14 @@ export default function CaseManagement() {
 			}
 
 			alert('반영내용이 등록되었습니다.');
-			await fetchCases();
+			const list = await fetchCases();
+			const saved = (list || []).find((c: CaseData) => formatDateYmd(c.MDT) === formatDateYmd(selectedCase.MDT));
+			if (saved) {
+				handleSelectCase(saved);
+			}
 		} catch (err) {
 			console.error('반영내용 등록 오류:', err);
-			alert('반영내용 등록 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '반영내용 등록 중 오류가 발생했습니다.');
 		} finally {
 			setLoading(false);
 		}
@@ -908,13 +1045,55 @@ export default function CaseManagement() {
 							<div className="flex items-center gap-2">
 								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">수급자</label>
 								{isEditMode ? (
-									<input
-										type="text"
-										value={formData.beneficiary}
-										onChange={(e) => handleFormChange('beneficiary', e.target.value)}
-										className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-										placeholder="수급자명"
-									/>
+									<div className="relative beneficiary-dropdown-container">
+										<input
+											type="text"
+											value={beneficiarySearchTerm || formData.beneficiary}
+											onChange={(e) => {
+												const value = e.target.value;
+												setBeneficiarySearchTerm(value);
+												setSelectedBeneficiaryKey('');
+												setFormData((prev) => ({
+													...prev,
+													beneficiary: value,
+													beneficiaryGrade: '',
+													beneficiaryAge: ''
+												}));
+												if (!value) {
+													setBeneficiarySuggestions([]);
+													setShowBeneficiaryDropdown(false);
+												}
+											}}
+											onFocus={() => {
+												if (beneficiarySuggestions.length > 0) {
+													setShowBeneficiaryDropdown(true);
+												}
+											}}
+											className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
+											placeholder="수급자명 검색"
+										/>
+										{showBeneficiaryDropdown && beneficiarySuggestions.length > 0 && (
+											<div className="absolute z-20 w-64 mt-1 bg-white border border-blue-300 rounded shadow-lg max-h-48 overflow-y-auto">
+												{beneficiarySuggestions.map((member, index) => {
+													const grade = formatCareGradeLabel(member.P_GRD, '');
+													const age = calcAgeFromBirth(member.P_BRDT);
+													const extra = [grade, age ? `${age}세` : ''].filter(Boolean).join(', ');
+													return (
+														<div
+															key={`${member.ANCD}-${member.PNUM}-${index}`}
+															onClick={() => handleSelectBeneficiary(member)}
+															className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-blue-100 last:border-b-0"
+														>
+															<div className="font-medium text-blue-900">{member.P_NM || '-'}</div>
+															{extra ? (
+																<div className="text-xs text-blue-700">{extra}</div>
+															) : null}
+														</div>
+													);
+												})}
+											</div>
+										)}
+									</div>
 								) : (
 									<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
 										{formData.beneficiary || '-'}
@@ -1027,21 +1206,36 @@ export default function CaseManagement() {
 							)}
 						</div>
 
-						{/* 반영일자 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">반영일자</label>
-							{isEditMode ? (
+						{/* 반영일자, 반영여부 */}
+						<div className="flex flex-wrap items-center gap-4">
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">반영일자</label>
+								{isEditMode ? (
+									<input
+										type="date"
+										value={formData.reflectionDate}
+										onChange={(e) => handleFormChange('reflectionDate', e.target.value)}
+										className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									/>
+								) : (
+									<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
+										{formData.reflectionDate || '-'}
+									</span>
+								)}
+							</div>
+							<label className="flex items-center gap-2 text-sm font-medium text-blue-900 whitespace-nowrap">
 								<input
-									type="date"
-									value={formData.reflectionDate}
-									onChange={(e) => handleFormChange('reflectionDate', e.target.value)}
-									className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									type="checkbox"
+									checked={formData.reflected}
+									readOnly={!isEditMode}
+									onChange={(e) => {
+										if (!isEditMode) return;
+										setFormData((prev) => ({ ...prev, reflected: e.target.checked }));
+									}}
+									className={`h-4 w-4 accent-blue-600 ${!isEditMode ? 'pointer-events-none' : ''}`}
 								/>
-							) : (
-								<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
-									{formData.reflectionDate || '-'}
-								</span>
-							)}
+								반영여부
+							</label>
 						</div>
 
 						{/* 반영내용 */}
