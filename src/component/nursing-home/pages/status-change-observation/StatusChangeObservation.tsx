@@ -8,7 +8,7 @@
  *
  * @module component/nursing-home/pages/status-change-observation/StatusChangeObservation
  */
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 
@@ -27,10 +27,11 @@ export default function StatusChangeObservation() {
 	interface StatusChangeData {
 		ANCD: string;
 		PNUM: string;
-		OBSDT: string; // 관찰일자
-		OBSNM: string; // 관찰자명
-		STCHG: string; // 상태변화
-		OBSNUM: string;
+		VDT: string;
+		EMPNO: string;
+		EMPNM: string;
+		VINFO: string;
+		ORINFO: string;
 		INDT: string;
 		ETC: string;
 		INEMPNO: string;
@@ -48,88 +49,25 @@ export default function StatusChangeObservation() {
 	const observationDateItemsPerPage = 10;
 	const [formData, setFormData] = useState({
 		beneficiary: '',
-		observationDate: '', // OBSDT (관찰일자)
-		observerName: '', // OBSNM (관찰자명)
-		statusChange: '' // STCHG (상태변화)
+		observationDate: '',
+		observerName: '',
+		observerNo: '',
+		statusChange: '',
+		instructions: ''
 	});
+	const [originalVdt, setOriginalVdt] = useState('');
+	const [observerSearchTerm, setObserverSearchTerm] = useState('');
+	const [observerSuggestions, setObserverSuggestions] = useState<Array<{EMPNO: string; EMPNM: string}>>([]);
+	const [showObserverDropdown, setShowObserverDropdown] = useState(false);
 
-	// 날짜 생성 함수
-	const handleCreateDate = () => {
+	const todayYmd = () => {
 		const today = new Date();
 		const year = today.getFullYear();
 		const month = String(today.getMonth() + 1).padStart(2, '0');
 		const day = String(today.getDate()).padStart(2, '0');
-		const formattedDate = `${year}-${month}-${day}`;
-		
-		if (!observationDates.includes(formattedDate)) {
-			setObservationDates(prev => [formattedDate, ...prev]);
-			setObservationDatePage(1);
-		}
-		
-		setFormData({
-			beneficiary: selectedMember?.P_NM || '',
-			observationDate: formattedDate,
-			observerName: '',
-			statusChange: ''
-		});
-		
-		setIsEditMode(true);
-		const newIndex = observationDates.includes(formattedDate) 
-			? observationDates.indexOf(formattedDate)
-			: 0;
-		setSelectedDateIndex(newIndex);
+		return `${year}-${month}-${day}`;
 	};
 
-	// 상태변화 관찰 기록 조회 (수급자 선택 시)
-	const fetchObservations = async (ancd: string, pnum: string, member: MemberData | null, preserveDate?: string | null) => {
-		if (!ancd || !pnum) {
-			setObservationList([]);
-			setObservationDates([]);
-			return;
-		}
-
-		setLoadingObservations(true);
-		try {
-			// TODO: 실제 API 엔드포인트로 변경 필요
-			// const url = `/api/f11060?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}`;
-			// const response = await fetch(url);
-			// const result = await response.json();
-			
-			// 임시로 빈 데이터 반환
-			setObservationList([]);
-			setObservationDates([]);
-			if (preserveDate !== undefined) {
-				if (preserveDate) {
-					setObservationDates([preserveDate]);
-					setSelectedDateIndex(0);
-					resetForm(member);
-					setFormData((prev) => ({
-						...prev,
-						beneficiary: member?.P_NM || prev.beneficiary,
-						observationDate: formatDateDisplay(preserveDate)
-					}));
-				} else {
-					setSelectedDateIndex(null);
-					resetForm(member);
-				}
-			} else {
-				setSelectedDateIndex(null);
-				resetForm(member);
-			}
-			setIsEditMode(false);
-		} catch (err) {
-			console.error('[상태변화 관찰 조회] 오류 발생:', err);
-			setObservationList([]);
-			setObservationDates([]);
-			setSelectedDateIndex(null);
-			resetForm(member);
-			setIsEditMode(false);
-		} finally {
-			setLoadingObservations(false);
-		}
-	};
-
-	// 날짜 형식 변환 함수
 	const formatDateDisplay = (dateStr: string) => {
 		if (!dateStr) return '';
 		if (dateStr.includes('T')) {
@@ -155,49 +93,108 @@ export default function StatusChangeObservation() {
 		return dateStr;
 	};
 
-	// 날짜 선택 함수
+	const findRecordByDate = (dateStr: string, list: StatusChangeData[] = observationList) => {
+		const ymd = formatDateDisplay(dateStr);
+		return list.find((row) => formatDateDisplay(String(row.VDT || '')) === ymd) || null;
+	};
+
+	const applyRecordToForm = (row: StatusChangeData | null, member: MemberData | null, dateYmd: string) => {
+		const observerName = row?.EMPNM || '';
+		setFormData({
+			beneficiary: member?.P_NM || '',
+			observationDate: dateYmd,
+			observerName,
+			observerNo: row?.EMPNO != null ? String(row.EMPNO) : '',
+			statusChange: row?.VINFO || '',
+			instructions: row?.ORINFO || ''
+		});
+		setObserverSearchTerm(observerName);
+		setObserverSuggestions([]);
+		setShowObserverDropdown(false);
+		setOriginalVdt(row ? dateYmd : '');
+	};
+
+	const handleCreateDate = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		const formattedDate = todayYmd();
+		const existing = findRecordByDate(formattedDate);
+		if (!observationDates.includes(formattedDate)) {
+			setObservationDates((prev) => [formattedDate, ...prev]);
+			setObservationDatePage(1);
+		}
+		applyRecordToForm(existing, selectedMember, formattedDate);
+		setIsEditMode(true);
+		const newIndex = observationDates.includes(formattedDate)
+			? observationDates.indexOf(formattedDate)
+			: 0;
+		setSelectedDateIndex(newIndex);
+	};
+
+	const fetchObservations = async (
+		ancd: string,
+		pnum: string,
+		member: MemberData | null,
+		preserveDate?: string | null
+	) => {
+		if (!ancd || !pnum) {
+			setObservationList([]);
+			setObservationDates([]);
+			return;
+		}
+
+		setLoadingObservations(true);
+		try {
+			const url = `/api/f11050?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}`;
+			const response = await fetch(url);
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || '상태변화 관찰 조회 실패');
+			}
+
+			const list: StatusChangeData[] = Array.isArray(result.data) ? result.data : [];
+			const dates = list
+				.map((row) => formatDateDisplay(String(row.VDT || '')))
+				.filter(Boolean);
+			setObservationList(list);
+			setObservationDates(dates);
+
+			const want = preserveDate ? formatDateDisplay(preserveDate) : '';
+			const idx = want ? dates.indexOf(want) : -1;
+			if (idx >= 0) {
+				setSelectedDateIndex(idx);
+				setIsEditMode(false);
+				applyRecordToForm(list[idx], member, dates[idx]);
+			} else {
+				setSelectedDateIndex(null);
+				resetForm(member);
+				setIsEditMode(false);
+			}
+		} catch (err) {
+			console.error('[상태변화 관찰 조회] 오류 발생:', err);
+			setObservationList([]);
+			setObservationDates([]);
+			setSelectedDateIndex(null);
+			resetForm(member);
+			setIsEditMode(false);
+			alert('상태변화 관찰을 조회하는 중 오류가 발생했습니다.');
+		} finally {
+			setLoadingObservations(false);
+		}
+	};
+
 	const handleSelectDate = (index: number, observation?: StatusChangeData, member: MemberData | null = null) => {
 		setSelectedDateIndex(index);
 		setIsEditMode(false);
-		
-		const selectedObservation = observation || observationList[index];
+
+		const dateStr = observationDates[index] || '';
+		const selectedObservation =
+			observation || findRecordByDate(dateStr) || observationList[index];
 		const currentMember = member || selectedMember;
-		
-		if (selectedObservation) {
-			const formatDate = (dateStr: string) => {
-				if (!dateStr) return '';
-				if (dateStr.includes('T')) {
-					dateStr = dateStr.split('T')[0];
-				}
-				if (dateStr.includes('-') && dateStr.length >= 10) {
-					return dateStr.substring(0, 10);
-				}
-				if (dateStr.length === 8 && !dateStr.includes('-') && !dateStr.includes('년')) {
-					return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-				}
-				if (dateStr.includes('년') && dateStr.includes('월') && dateStr.includes('일')) {
-					const yearMatch = dateStr.match(/(\d{4})년/);
-					const monthMatch = dateStr.match(/(\d{1,2})월/);
-					const dayMatch = dateStr.match(/(\d{1,2})일/);
-					if (yearMatch && monthMatch && dayMatch) {
-						const year = yearMatch[1];
-						const month = monthMatch[1].padStart(2, '0');
-						const day = dayMatch[1].padStart(2, '0');
-						return `${year}-${month}-${day}`;
-					}
-				}
-				return dateStr;
-			};
-
-			const observationDate = formatDate(selectedObservation.OBSDT || '');
-
-			setFormData({
-				beneficiary: currentMember?.P_NM || '',
-				observationDate: observationDate,
-				observerName: selectedObservation.OBSNM || '',
-				statusChange: selectedObservation.STCHG || ''
-			});
-		}
+		const observationDate = formatDateDisplay(selectedObservation?.VDT || dateStr || '');
+		applyRecordToForm(selectedObservation || null, currentMember, observationDate);
 	};
 
 	// 수급자 선택 함수
@@ -213,6 +210,67 @@ export default function StatusChangeObservation() {
 		void fetchObservations(selectedMember.ANCD, selectedMember.PNUM, selectedMember, savedDate);
 	});
 
+	useEffect(() => {
+		if (!isEditMode) return;
+		const timer = setTimeout(() => {
+			if (!observerSearchTerm || observerSearchTerm.trim() === '') return;
+			if (observerSearchTerm === formData.observerName && formData.observerNo) return;
+			searchObservers(observerSearchTerm);
+		}, 300);
+
+		return () => clearTimeout(timer);
+	}, [observerSearchTerm, isEditMode]);
+
+	useEffect(() => {
+		const handleClickOutside = (event: MouseEvent) => {
+			const target = event.target as HTMLElement;
+			if (!target.closest('.observer-dropdown-container')) {
+				setShowObserverDropdown(false);
+			}
+		};
+
+		if (showObserverDropdown) {
+			document.addEventListener('mousedown', handleClickOutside);
+			return () => document.removeEventListener('mousedown', handleClickOutside);
+		}
+	}, [showObserverDropdown]);
+
+	const searchObservers = async (searchTerm: string) => {
+		if (!searchTerm || searchTerm.trim() === '') {
+			setObserverSuggestions([]);
+			setShowObserverDropdown(false);
+			return;
+		}
+
+		try {
+			const url = `/api/f01010?name=${encodeURIComponent(searchTerm.trim())}`;
+			const response = await fetch(url);
+			const result = await response.json();
+
+			if (result.success && Array.isArray(result.data)) {
+				setObserverSuggestions(result.data);
+				setShowObserverDropdown(result.data.length > 0);
+			} else {
+				setObserverSuggestions([]);
+				setShowObserverDropdown(false);
+			}
+		} catch (err) {
+			console.error('관찰자 검색 오류:', err);
+			setObserverSuggestions([]);
+			setShowObserverDropdown(false);
+		}
+	};
+
+	const handleSelectObserver = (employee: {EMPNO: string; EMPNM: string}) => {
+		setFormData((prev) => ({
+			...prev,
+			observerName: employee.EMPNM,
+			observerNo: String(employee.EMPNO ?? '')
+		}));
+		setObserverSearchTerm(employee.EMPNM);
+		setShowObserverDropdown(false);
+	};
+
 	// 폼 초기화
 	const resetForm = (member: MemberData | null = null) => {
 		const currentMember = member || selectedMember;
@@ -220,8 +278,14 @@ export default function StatusChangeObservation() {
 			beneficiary: currentMember?.P_NM || '',
 			observationDate: '',
 			observerName: '',
-			statusChange: ''
+			observerNo: '',
+			statusChange: '',
+			instructions: ''
 		});
+		setObserverSearchTerm('');
+		setObserverSuggestions([]);
+		setShowObserverDropdown(false);
+		setOriginalVdt('');
 	};
 
 	// 폼 데이터 변경 함수
@@ -240,14 +304,15 @@ export default function StatusChangeObservation() {
 
 	// 수정 함수
 	const handleModify = () => {
-		if (!formData.observationDate) {
-			const today = new Date();
-			const year = today.getFullYear();
-			const month = String(today.getMonth() + 1).padStart(2, '0');
-			const day = String(today.getDate()).padStart(2, '0');
-			const formattedDate = `${year}-${month}-${day}`;
-			setFormData(prev => ({ ...prev, observationDate: formattedDate }));
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
 		}
+		if (!formData.observationDate) {
+			alert('확인할 관찰일자를 선택해주세요.');
+			return;
+		}
+		setOriginalVdt(formData.observationDate);
 		setIsEditMode(true);
 	};
 
@@ -265,38 +330,35 @@ export default function StatusChangeObservation() {
 
 		setLoadingObservations(true);
 		try {
-			const now = new Date();
-			const nowStr = now.toISOString().slice(0, 19).replace('T', ' ');
-
-			const formatDateForDB = (dateStr: string): string | null => {
-				if (!dateStr || dateStr.trim() === '') return null;
-				try {
-					if (dateStr.includes('-')) {
-						return dateStr.replace(/-/g, '');
-					}
-					return dateStr;
-				} catch (err) {
-					return null;
-				}
-			};
-
-			const existingObservation = selectedDateIndex !== null && observationList[selectedDateIndex] 
-				? observationList[selectedDateIndex] 
-				: null;
-
-			// TODO: 실제 API 엔드포인트로 변경 필요
-			// const query = existingObservation && existingObservation.OBSNUM
-			// 	? `UPDATE [돌봄시설DB].[dbo].[F11060] SET ...`
-			// 	: `INSERT INTO [돌봄시설DB].[dbo].[F11060] ...`;
-
-			alert(existingObservation ? '상태변화 관찰이 수정되었습니다.' : '상태변화 관찰이 생성되었습니다.');
-			setIsEditMode(false);
-			if (selectedMember && selectedMember.ANCD && selectedMember.PNUM) {
-				await fetchObservations(selectedMember.ANCD, selectedMember.PNUM, selectedMember);
+			const ancd = String(selectedMember.ANCD ?? '').trim();
+			const pnum = String(selectedMember.PNUM ?? '').trim();
+			const vdt = formatDateDisplay(formData.observationDate);
+			const origVdt = formatDateDisplay(originalVdt || vdt);
+			const response = await fetch(`/api/f11050?ancd=${encodeURIComponent(ancd)}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					PNUM: pnum,
+					VDT: vdt,
+					origVDT: origVdt,
+					EMPNO: formData.observerNo || undefined,
+					EMPNM: formData.observerName,
+					VINFO: formData.statusChange,
+					ORINFO: formData.instructions
+				})
+			});
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || '저장 실패');
 			}
+
+			alert(origVdt && findRecordByDate(origVdt) ? '상태변화 관찰이 수정되었습니다.' : '상태변화 관찰이 생성되었습니다.');
+			setIsEditMode(false);
+			setOriginalVdt(vdt);
+			await fetchObservations(ancd, pnum, selectedMember, vdt);
 		} catch (err) {
 			console.error('상태변화 관찰 저장 오류:', err);
-			alert('상태변화 관찰 저장 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '상태변화 관찰 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingObservations(false);
 		}
@@ -305,24 +367,20 @@ export default function StatusChangeObservation() {
 	// 취소 함수
 	const handleCancel = () => {
 		setIsEditMode(false);
-		
-		const today = new Date();
-		const year = today.getFullYear();
-		const month = String(today.getMonth() + 1).padStart(2, '0');
-		const day = String(today.getDate()).padStart(2, '0');
-		const formattedToday = `${year}-${month}-${day}`;
-		
+
+		const formattedToday = todayYmd();
 		const currentDate = selectedDateIndex !== null ? observationDates[selectedDateIndex] : null;
-		
-		if (currentDate === formattedToday && selectedDateIndex !== null) {
-			setObservationDates(prev => prev.filter((_, index) => index !== selectedDateIndex));
+		const saved = currentDate ? findRecordByDate(currentDate) : null;
+
+		if (currentDate === formattedToday && !saved && selectedDateIndex !== null) {
+			setObservationDates((prev) => prev.filter((_, index) => index !== selectedDateIndex));
 			setSelectedDateIndex(null);
 			resetForm(selectedMember);
 			return;
 		}
-		
-		if (selectedDateIndex !== null && observationList[selectedDateIndex]) {
-			handleSelectDate(selectedDateIndex, observationList[selectedDateIndex], selectedMember);
+
+		if (selectedDateIndex !== null && saved) {
+			handleSelectDate(selectedDateIndex, saved, selectedMember);
 		} else if (selectedDateIndex !== null && observationDates[selectedDateIndex]) {
 			resetForm(selectedMember);
 		}
@@ -454,19 +512,23 @@ export default function StatusChangeObservation() {
 			<tr>
 				<td class="label">수급자</td>
 				<td class="value">${formData.beneficiary || '-'}</td>
-				<td class="label">관찰자명</td>
-				<td class="value">${formData.observerName || '-'}</td>
-			</tr>
-			<tr>
-				<td class="label">관찰일자</td>
-				<td class="value" colspan="3">${formData.observationDate || '-'}</td>
-			</tr>
-		</table>
+							<td class="label">관찰자명</td>
+							<td class="value">${formData.observerName || '-'}</td>
+						</tr>
+						<tr>
+							<td class="label">관찰일자</td>
+							<td class="value" colspan="3">${formData.observationDate || '-'}</td>
+						</tr>
+					</table>
 
-		<div class="content-section">
-			<div class="section-title">상태변화</div>
-			<div class="section-content">${formData.statusChange || ''}</div>
-		</div>
+					<div class="content-section">
+						<div class="section-title">상태변화</div>
+						<div class="section-content">${formData.statusChange || ''}</div>
+					</div>
+					<div class="content-section">
+						<div class="section-title">지시사항</div>
+						<div class="section-content">${formData.instructions || ''}</div>
+					</div>
 	</div>
 	<script>
 		window.onload = function() {
@@ -551,17 +613,21 @@ export default function StatusChangeObservation() {
 							<td class="label">수급자</td>
 							<td class="value">${selectedMember?.P_NM || '-'}</td>
 							<td class="label">관찰자명</td>
-							<td class="value">${obs.OBSNM || '-'}</td>
+							<td class="value">${obs.EMPNM || '-'}</td>
 						</tr>
 						<tr>
 							<td class="label">관찰일자</td>
-							<td class="value" colspan="3">${formatDate(obs.OBSDT) || '-'}</td>
+							<td class="value" colspan="3">${formatDate(obs.VDT) || '-'}</td>
 						</tr>
 					</table>
 
 					<div class="content-section">
 						<div class="section-title">상태변화</div>
-						<div class="section-content">${obs.STCHG || ''}</div>
+						<div class="section-content">${obs.VINFO || ''}</div>
+					</div>
+					<div class="content-section">
+						<div class="section-title">지시사항</div>
+						<div class="section-content">${obs.ORINFO || ''}</div>
 					</div>
 				</div>
 			`;
@@ -669,11 +735,13 @@ export default function StatusChangeObservation() {
 			return;
 		}
 
-		const currentObservation = selectedDateIndex !== null && observationList[selectedDateIndex] 
-			? observationList[selectedDateIndex] 
-			: null;
+		const vdt = formatDateDisplay(
+			formData.observationDate ||
+				(selectedDateIndex !== null ? observationDates[selectedDateIndex] : '')
+		);
+		const currentObservation = vdt ? findRecordByDate(vdt) : null;
 
-		if (!currentObservation || !currentObservation.OBSNUM) {
+		if (!currentObservation || !vdt) {
 			alert('삭제할 상태변화 관찰을 선택해주세요.');
 			return;
 		}
@@ -684,17 +752,21 @@ export default function StatusChangeObservation() {
 
 		setLoadingObservations(true);
 		try {
-			// TODO: 실제 API 엔드포인트로 변경 필요
-			// const deleteQuery = `DELETE FROM [돌봄시설DB].[dbo].[F11060] WHERE ...`;
+			const ancd = String(selectedMember.ANCD ?? '').trim();
+			const pnum = String(selectedMember.PNUM ?? '').trim();
+			const url = `/api/f11050?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}&vdt=${encodeURIComponent(vdt)}`;
+			const response = await fetch(url, { method: 'DELETE' });
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || '삭제 실패');
+			}
 
 			alert('상태변화 관찰이 삭제되었습니다.');
 			setIsEditMode(false);
-			if (selectedMember && selectedMember.ANCD && selectedMember.PNUM) {
-				await fetchObservations(selectedMember.ANCD, selectedMember.PNUM, selectedMember);
-			}
+			await fetchObservations(ancd, pnum, selectedMember);
 		} catch (err) {
 			console.error('상태변화 관찰 삭제 오류:', err);
-			alert('상태변화 관찰 삭제 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '상태변화 관찰 삭제 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingObservations(false);
 		}
@@ -834,18 +906,9 @@ export default function StatusChangeObservation() {
 							<div className="flex flex-wrap items-center gap-4">
 								<div className="flex items-center gap-2">
 									<label className="text-sm text-blue-900 font-medium whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">수급자</label>
-									{isEditMode ? (
-										<input
-											type="text"
-											value={formData.beneficiary}
-											onChange={(e) => handleFormChange('beneficiary', e.target.value)}
-											className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-										/>
-									) : (
-										<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
-											{formData.beneficiary || '-'}
-										</span>
-									)}
+									<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
+										{formData.beneficiary || '-'}
+									</span>
 								</div>
 								<div className="flex items-center gap-2">
 									<label className="text-sm text-blue-900 font-medium whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">관찰일자</label>
@@ -867,12 +930,45 @@ export default function StatusChangeObservation() {
 							<div className="flex items-center gap-2">
 								<label className="text-sm text-blue-900 font-medium whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">관찰자명</label>
 								{isEditMode ? (
-									<input
-										type="text"
-										value={formData.observerName}
-										onChange={(e) => handleFormChange('observerName', e.target.value)}
-										className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-									/>
+									<div className="relative observer-dropdown-container">
+										<input
+											type="text"
+											value={observerSearchTerm || formData.observerName}
+											onChange={(e) => {
+												const value = e.target.value;
+												setObserverSearchTerm(value);
+												setFormData((prev) => ({
+													...prev,
+													observerName: value,
+													observerNo: ''
+												}));
+												if (!value) {
+													setObserverSuggestions([]);
+													setShowObserverDropdown(false);
+												}
+											}}
+											onFocus={() => {
+												if (observerSuggestions.length > 0) {
+													setShowObserverDropdown(true);
+												}
+											}}
+											className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
+											placeholder="직원명 검색"
+										/>
+										{showObserverDropdown && observerSuggestions.length > 0 && (
+											<div className="absolute z-10 w-full mt-1 bg-white border border-blue-300 rounded shadow-lg max-h-40 overflow-y-auto">
+												{observerSuggestions.map((employee, index) => (
+													<div
+														key={`${employee.EMPNO}-${index}`}
+														onClick={() => handleSelectObserver(employee)}
+														className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-blue-100 last:border-b-0"
+													>
+														{employee.EMPNM}
+													</div>
+												))}
+											</div>
+										)}
+									</div>
 								) : (
 									<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
 										{formData.observerName || '-'}
@@ -881,7 +977,7 @@ export default function StatusChangeObservation() {
 							</div>
 						</div>
 
-						{/* 상태변화 */}
+						{/* 상태변화(관찰내용) */}
 						<div className="mb-4">
 							<label className="block text-sm text-blue-900 font-medium mb-2 bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">상태변화</label>
 							{isEditMode ? (
@@ -889,12 +985,32 @@ export default function StatusChangeObservation() {
 									value={formData.statusChange}
 									onChange={(e) => handleFormChange('statusChange', e.target.value)}
 									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
-									rows={15}
-									placeholder="상태변화를 입력하세요"
+									rows={10}
+									maxLength={1000}
+									placeholder="상태변화(관찰내용)를 입력하세요"
 								/>
 							) : (
-								<div className="w-full px-3 py-2 text-sm border border-blue-200 rounded bg-gray-50 min-h-[300px] whitespace-pre-wrap">
+								<div className="w-full px-3 py-2 text-sm border border-blue-200 rounded bg-gray-50 min-h-[180px] whitespace-pre-wrap">
 									{formData.statusChange || '-'}
+								</div>
+							)}
+						</div>
+
+						{/* 지시사항 */}
+						<div className="mb-4">
+							<label className="block text-sm text-blue-900 font-medium mb-2 bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">지시사항</label>
+							{isEditMode ? (
+								<textarea
+									value={formData.instructions}
+									onChange={(e) => handleFormChange('instructions', e.target.value)}
+									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+									rows={8}
+									maxLength={1000}
+									placeholder="지시사항을 입력하세요"
+								/>
+							) : (
+								<div className="w-full px-3 py-2 text-sm border border-blue-200 rounded bg-gray-50 min-h-[140px] whitespace-pre-wrap">
+									{formData.instructions || '-'}
 								</div>
 							)}
 						</div>

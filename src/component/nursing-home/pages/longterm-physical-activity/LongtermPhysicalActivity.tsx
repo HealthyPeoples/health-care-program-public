@@ -10,8 +10,18 @@
  */
 import { useState, useEffect } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
+import { ServiceDateListPanel } from '../../components/ServiceDateListPanel';
+import {
+	SelectionRequiredOverlay,
+	selectionBlockedClass
+} from '../../components/SelectionRequiredOverlay';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 import { BATH_METH_TO_LABEL, resolveBathMethodFromRow } from '../../utils/physicalActivityFields';
+import {
+	fetchF14020Detail,
+	fetchF14020ServiceDates,
+	saveF14020Fields
+} from '../../utils/f14020Daily';
 
 interface MemberData {
 	[key: string]: any;
@@ -22,6 +32,10 @@ export default function LongtermPhysicalActivity() {
 	const [loadingDefaults, setLoadingDefaults] = useState(false);
 	const [isEditing, setIsEditing] = useState(false);
 	const [originalDraft, setOriginalDraft] = useState<Record<string, any> | null>(null);
+	const [serviceDates, setServiceDates] = useState<string[]>([]);
+	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
+	const [serviceDatePage, setServiceDatePage] = useState(1);
+	const [loadingServiceDates, setLoadingServiceDates] = useState(false);
 
 	const WEEKDAY_CODE_TO_LABEL: Record<string, string> = {
 		'1': '일요일',
@@ -127,11 +141,11 @@ export default function LongtermPhysicalActivity() {
 		PH_BATH_WK2: String(bathDay2 || '').trim().split(/\s+/)[0] || '',
 		BATH_EMPNM02: bathProvider2,
 		// 신체활동
-		PH_HEAD_HELP: faceWashing || grooming,
-		PH_MOVE_HELP: movementAssistance,
-		PH_CHANG_HELP: positionChange,
-		PH_WORK_HELP: walkAccompany,
-		PH_OUT_HELP: outingAccompany,
+		PH_HEAD_HELP: faceWashing || grooming ? '1' : '0',
+		PH_MOVE_HELP: movementAssistance ? '1' : '0',
+		PH_CHANG_HELP: positionChange ? '1' : '0',
+		PH_WORK_HELP: walkAccompany ? '1' : '0',
+		PH_OUT_HELP: outingAccompany ? '1' : '0',
 		PH_TOL_CNT: toiletUsage,
 		// 작성자
 		PH_WRITE_NAME: preparerName
@@ -204,44 +218,65 @@ export default function LongtermPhysicalActivity() {
 		setPreparerName(String(d?.PH_WRITE_NAME ?? d?.INEMPNM ?? ''));
 	};
 
-	const fetchDefaults = async (pnum: string) => {
-		if (!pnum) return;
+	const fetchServiceDates = async (member: MemberData) => {
+		const ancd = String(member?.ANCD ?? '').trim();
+		const pnum = String(member?.PNUM ?? '').trim();
+		setLoadingServiceDates(true);
+		setSelectedDateIndex(null);
+		setServiceDatePage(1);
+		setIsEditing(false);
+		setOriginalDraft(null);
+		try {
+			const dates = await fetchF14020ServiceDates(ancd, pnum);
+			setServiceDates(dates);
+		} catch (e) {
+			console.error('서비스제공일자 조회 오류:', e);
+			alert('서비스제공일자를 조회하는 중 오류가 발생했습니다.');
+			setServiceDates([]);
+		} finally {
+			setLoadingServiceDates(false);
+		}
+	};
+
+	const fetchDetail = async (member: MemberData, svdt: string) => {
+		const ancd = String(member?.ANCD ?? '').trim();
+		const pnum = String(member?.PNUM ?? '').trim();
+		if (!pnum || !svdt) return;
 		setLoadingDefaults(true);
 		try {
-			const res = await fetch(`/api/f30112?pnum=${encodeURIComponent(pnum)}`);
-			const json = await res.json();
-			const row = json?.success && Array.isArray(json.data) ? json.data[0] : null;
-			const draft = row ? {
-				ST_KIND: row.ST_KIND ?? '',
-				PH_MEAL_KIND: row.PH_MEAL_KIND ?? '',
-				PH_MEAL_KIND_NM: row.PH_MEAL_KIND_NM ?? '',
-				PH_MEAL_VAL: row.PH_MEAL_VAL ?? '',
-				PH_MEAL_VAL_NM: row.PH_MEAL_VAL_NM ?? '',
-				PH_MEAL_WT_NM: row.PH_MEAL_WT_NM ?? '',
-				ST_PLAC: row.ST_PLAC ?? '',
-				ST_CONF: row.ST_CONF ?? '',
-				PH_BATH_METH: row.PH_BATH_METH ?? '',
-				PH_BATH_METH_NM: row.PH_BATH_METH_NM ?? row.PH_BATH_METH ?? '',
-				PH_BATH_TM: row.PH_BATH_TM ?? '',
-				BATH_SPV_TM: row.BATH_SPV_TM ?? '',
-				PH_BATH_WK1: row.PH_BATH_WK1 ?? '',
-				BATH_EMPNM01: row.BATH_EMPNM01 ?? '',
-				PH_BATH_WK2: row.PH_BATH_WK2 ?? '',
-				BATH_EMPNM02: row.BATH_EMPNM02 ?? '',
-				PH_HEAD_HELP: row.PH_HEAD_HELP ?? '',
-				PH_MOVE_HELP: row.PH_MOVE_HELP ?? '',
-				PH_CHANG_HELP: row.PH_CHANG_HELP ?? '',
-				PH_WORK_HELP: row.PH_WORK_HELP ?? '',
-				PH_OUT_HELP: row.PH_OUT_HELP ?? '',
-				PH_TOL_CNT: row.PH_TOL_CNT ?? '',
-				PH_WRITE_NAME: row.PH_WRITE_NAME ?? row.INEMPNM ?? '',
-			} : buildDraft();
-
+			const row = await fetchF14020Detail(ancd, pnum, svdt);
+			const draft = row
+				? {
+						ST_KIND: row.ST_KIND ?? '',
+						PH_MEAL_KIND: row.PH_MEAL_KIND ?? '',
+						PH_MEAL_KIND_NM: row.PH_MEAL_KIND_NM ?? '',
+						PH_MEAL_VAL: row.PH_MEAL_VAL ?? '',
+						PH_MEAL_VAL_NM: row.PH_MEAL_VAL_NM ?? '',
+						PH_MEAL_WT_NM: row.PH_MEAL_WT_NM ?? '',
+						ST_PLAC: row.ST_PLAC ?? '',
+						ST_CONF: row.ST_CONF ?? '',
+						PH_BATH_METH: row.PH_BATH_METH ?? '',
+						PH_BATH_METH_NM: row.PH_BATH_METH_NM ?? row.PH_BATH_METH ?? '',
+						PH_BATH_TM: row.PH_BATH_TM ?? '',
+						BATH_SPV_TM: row.BATH_SPV_TM ?? '',
+						PH_BATH_WK1: row.PH_BATH_WK1 ?? '',
+						BATH_EMPNM01: row.BATH_EMPNM01 ?? '',
+						PH_BATH_WK2: row.PH_BATH_WK2 ?? '',
+						BATH_EMPNM02: row.BATH_EMPNM02 ?? '',
+						PH_HEAD_HELP: row.PH_HEAD_HELP ?? '',
+						PH_MOVE_HELP: row.PH_MOVE_HELP ?? '',
+						PH_CHANG_HELP: row.PH_CHANG_HELP ?? '',
+						PH_WORK_HELP: row.PH_WORK_HELP ?? '',
+						PH_OUT_HELP: row.PH_OUT_HELP ?? '',
+						PH_TOL_CNT: row.PH_TOL_CNT ?? '',
+						PH_WRITE_NAME: row.PH_WRITE_NAME ?? row.INEMPNM ?? ''
+					}
+				: buildDraft();
 			applyDraft(draft);
 			setOriginalDraft({ ...draft });
 			setIsEditing(false);
 		} catch (e) {
-			console.error('F30112 조회 오류:', e);
+			console.error('F14020 조회 오류:', e);
 			alert('기준정보를 조회하는 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingDefaults(false);
@@ -254,18 +289,34 @@ export default function LongtermPhysicalActivity() {
 			if (!ok) return;
 		}
 		setSelectedMember(member);
-		const pnum = String(member?.PNUM ?? '').trim();
-		await fetchDefaults(pnum);
+		await fetchServiceDates(member);
+	};
+
+	const handleSelectDate = async (index: number) => {
+		if (!selectedMember) return;
+		if (isEditing && isDirty()) {
+			const ok = confirm('수정한 내용을 저장하지 않으면 적용되지 않습니다. 일자를 변경하시겠습니까?');
+			if (!ok) return;
+		}
+		setSelectedDateIndex(index);
+		const svdt = serviceDates[index];
+		if (svdt) await fetchDetail(selectedMember, svdt);
 	};
 
 	useTabRefresh(() => {
-		if (!selectedPnum) return;
-		void fetchDefaults(selectedPnum);
+		if (!selectedMember) return;
+		void (async () => {
+			await fetchServiceDates(selectedMember);
+		})();
 	});
 
 	const handleEnterEdit = () => {
 		if (!selectedPnum) {
 			alert('수급자를 선택해주세요.');
+			return;
+		}
+		if (selectedDateIndex == null) {
+			alert('서비스제공일자를 선택해주세요.');
 			return;
 		}
 		setIsEditing(true);
@@ -282,28 +333,23 @@ export default function LongtermPhysicalActivity() {
 	};
 
 	const handleSaveEdit = async () => {
-		if (!selectedPnum) {
+		if (!selectedMember || !selectedPnum) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
+		const svdt = selectedDateIndex != null ? serviceDates[selectedDateIndex] : '';
+		if (!svdt) {
+			alert('서비스제공일자를 선택해주세요.');
+			return;
+		}
 		try {
-			const payload = { pnum: selectedPnum, ...buildDraft() };
-			const res = await fetch('/api/f30112', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
-			});
-			const json = await res.json().catch(() => ({}));
-			if (!json?.success) {
-				alert(json?.error || '저장 중 오류가 발생했습니다.');
-				return;
-			}
+			await saveF14020Fields(String(selectedMember.ANCD ?? ''), selectedPnum, svdt, buildDraft());
 			const cur = buildDraft();
 			setOriginalDraft({ ...cur });
 			setIsEditing(false);
 			alert('성공적으로 수정되었습니다.');
 		} catch (e) {
-			console.error('F30112 저장 오류:', e);
+			console.error('F14020 저장 오류:', e);
 			alert('저장 중 오류가 발생했습니다.');
 		}
 	};
@@ -422,8 +468,19 @@ export default function LongtermPhysicalActivity() {
 						<MemberListPanel onSelectMember={handleSelectMember} />
 					</aside>
 
+					<ServiceDateListPanel
+						selectedMember={Boolean(selectedMember)}
+						serviceDates={serviceDates}
+						selectedDateIndex={selectedDateIndex}
+						loading={loadingServiceDates}
+						page={serviceDatePage}
+						onSelectDate={(i) => { void handleSelectDate(i); }}
+						onPageChange={setServiceDatePage}
+					/>
+
 					{/* 우측: 신체활동 입력 */}
-					<section className="flex-1">
+					<section className="flex-1 min-w-0 relative">
+						<div className={selectionBlockedClass(!selectedMember || selectedDateIndex == null)}>
 						<div className="mb-3 flex items-center justify-between rounded border border-blue-200 bg-blue-50 px-3 py-2">
 							<div className="text-sm text-blue-900">
 								{selectedMember ? (
@@ -443,7 +500,7 @@ export default function LongtermPhysicalActivity() {
 											type="button"
 											onClick={handleSaveEdit}
 											className="px-4 py-1.5 text-sm font-medium text-green-900 bg-green-200 border border-green-400 rounded hover:bg-green-300 disabled:opacity-50 disabled:cursor-not-allowed"
-											disabled={!selectedPnum || loadingDefaults}
+											disabled={!selectedPnum || selectedDateIndex == null || loadingDefaults}
 										>
 											저장
 										</button>
@@ -460,14 +517,13 @@ export default function LongtermPhysicalActivity() {
 										type="button"
 										onClick={handleEnterEdit}
 										className="px-4 py-1.5 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
-										disabled={!selectedPnum || loadingDefaults}
+										disabled={!selectedPnum || selectedDateIndex == null || loadingDefaults}
 									>
 										수정
 									</button>
 								)}
 							</div>
 						</div>
-						{selectedMember ? (
 						<div className="grid grid-cols-2 gap-4">
 							{/* 좌측: 식사 정보, 목욕 정보 */}
 							<div className="space-y-4">
@@ -933,11 +989,11 @@ export default function LongtermPhysicalActivity() {
 								</div>
 							</div>
 						</div>
-						) : (
-							<div className="rounded border border-blue-200 bg-white p-8 text-center text-blue-900/70">
-								왼쪽에서 수급자를 선택하면 내용을 확인/수정할 수 있습니다.
-							</div>
-						)}
+						</div>
+						<SelectionRequiredOverlay
+							selectedMember={Boolean(selectedMember)}
+							selectedDate={selectedDateIndex != null}
+						/>
 					</section>
 				</div>
 			</div>

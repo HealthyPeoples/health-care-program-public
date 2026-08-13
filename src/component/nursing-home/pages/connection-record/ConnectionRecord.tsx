@@ -639,10 +639,10 @@ export default function ConnectionRecord() {
 			vertical-align: middle;
 			display: table-cell !important;
 		}
-		.signature-table td.header {
+		.signature-table td.sig-label {
 			background-color: transparent;
 			font-weight: normal;
-			color: #8B4513;
+			color: #000;
 			padding: 5px 20px;
 			font-size: 10pt;
 			white-space: nowrap;
@@ -760,9 +760,9 @@ export default function ConnectionRecord() {
 			<table class="signature-table" style="border-collapse: collapse; border: 1px solid #000;">
 				<tbody>
 					<tr>
-						<td class="header">담당</td>
-						<td class="header">검토</td>
-						<td class="header">결재</td>
+						<td class="sig-label">담당</td>
+						<td class="sig-label">검토</td>
+						<td class="sig-label">결재</td>
 					</tr>
 					<tr>
 						<td class="empty"></td>

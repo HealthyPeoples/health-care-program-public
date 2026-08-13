@@ -37,7 +37,9 @@ const CARE_COLUMNS = [
 	'PH_BATH_TM',
 	'PH_BATH_METH',
 	'PH_MEAL_KIND',
+	'PH_MEAL_KIND_NM',
 	'PH_MEAL_VAL',
+	'PH_MEAL_VAL_NM',
 	'PH_TOL_CNT',
 	'PH_MOVE_HELP',
 	'PH_CHANG_HELP',
@@ -45,6 +47,12 @@ const CARE_COLUMNS = [
 	'PH_OUT_HELP',
 	'PH_PS',
 	'PH_WRITE_NAME',
+	'PH_BATH_METH_NM',
+	'PH_BATH_WK1',
+	'PH_BATH_WK2',
+	'BATH_SPV_TM',
+	'BATH_EMPNM01',
+	'BATH_EMPNM02',
 	'RG_AID_HELP',
 	'RG_TALK_HELP',
 	'RG_PS',
@@ -57,12 +65,38 @@ const CARE_COLUMNS = [
 	'NS_NRSE_TIME',
 	'NS_NRSE_HELP',
 	'NS_ETC',
+	'NS_ETC_DESC',
 	'NS_PS',
 	'NS_WRITE_NAME',
+	'NS_HEALTH_HELP_NM',
+	'NS_NURSE_HELP_NM',
 	'NS_SORE_CHK',
 	'NS_SORE_MNG',
+	'NS_SORE_MNG_NM',
+	'NS_SORE_CONF',
 	'NS_SORE_DESC',
 	'NS_MEDI_CHK',
+	'ST_SP_ST',
+	'ST_SCK_ALZ',
+	'ST_SCK_APO',
+	'ST_SCK_HBL',
+	'ST_SCK_GLY',
+	'ST_SCK_ARTH',
+	'ST_SCK_GITA',
+	'ST_SCK_GITA_DSC',
+	'ST_MNG_BRN',
+	'ST_MNG_DNT',
+	'ST_MNG_DNT_DSC',
+	'ST_MNG_LTUB',
+	'ST_MNG_FIX_TUB',
+	'ST_MNG_CYS',
+	'ST_MNG_URB',
+	'ST_MNG_TOP',
+	'ST_MNG_DAP',
+	'ST_MNG_BAD',
+	'ST_MNG_BAD_DSC',
+	'ST_MNG_BCHK',
+	'ST_MNG_BCHK_DSC',
 	'FN_COGN_HELP',
 	'FN_MOVE_HELP',
 	'FN_MIND_HELP',
@@ -73,6 +107,30 @@ const CARE_COLUMNS = [
 	'ROOM_NO',
 	'GINFO'
 ];
+
+const DB_NAME = '돌봄시설DB';
+let f14020ColumnCache = null;
+
+async function getF14020ColumnSet(pool) {
+	if (f14020ColumnCache) return f14020ColumnCache;
+	try {
+		const result = await pool.request().query(`
+			SELECT COLUMN_NAME
+			FROM [${DB_NAME}].INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = N'F14020'
+		`);
+		const cols = new Set();
+		(result.recordset || []).forEach((r) => {
+			const c = String(r.COLUMN_NAME || '').trim().toUpperCase();
+			if (c) cols.add(c);
+		});
+		if (cols.size > 0) f14020ColumnCache = cols;
+		return cols;
+	} catch (e) {
+		console.warn('F14020 컬럼 스키마 조회 실패:', e?.message || e);
+		return new Set();
+	}
+}
 
 /** @type {string[]} 식사·외출·급여50% 관련 컬럼 — 일 수급자급여실적 화면 */
 const MEAL_COLUMNS = [
@@ -843,8 +901,13 @@ export async function POST(req) {
 				IO_TM_INFO: r.ioTmInfo ?? r.IO_TM_INFO
 			};
 
-			const providedMealKeys = MEAL_COLUMNS.filter((k) => mealValues[k] !== undefined);
-			const providedCareKeys = CARE_COLUMNS.filter((k) => pickRowValue(r, k) !== undefined);
+			const columnSet = await getF14020ColumnSet(pool);
+			const providedMealKeys = MEAL_COLUMNS.filter(
+				(k) => mealValues[k] !== undefined && (columnSet.size === 0 || columnSet.has(k))
+			);
+			const providedCareKeys = CARE_COLUMNS.filter(
+				(k) => pickRowValue(r, k) !== undefined && (columnSet.size === 0 || columnSet.has(k))
+			);
 
 			providedMealKeys.forEach((k) => {
 				const v = mealValues[k];

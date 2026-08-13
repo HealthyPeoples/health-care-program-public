@@ -120,18 +120,41 @@ function cleanInt(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+const DB_NAME = '돌봄시설DB';
+const TABLE_NAME = 'F30112';
+
+/** 스키마 조회 실패 시에도 저장이 가능하도록, 화면에서 쓰는 주요 컬럼 화이트리스트 */
+const F30112_KNOWN_COLUMNS = [
+  'ST_KIND', 'ST_PLAC', 'ST_CONF',
+  'PH_MEAL_KIND', 'PH_MEAL_KIND_NM', 'PH_MEAL_VAL', 'PH_MEAL_VAL_NM', 'PH_MEAL_WT', 'PH_MEAL_WT_NM',
+  'PH_BATH_METH', 'PH_BATH_METH_NM', 'PH_BATH_TM', 'PH_BATH_WK1', 'PH_BATH_WK2',
+  'BATH_SPV_TM', 'BATH_EMPNM01', 'BATH_EMPNM02',
+  'PH_HEAD_HELP', 'PH_MOVE_HELP', 'PH_CHANG_HELP', 'PH_WORK_HELP', 'PH_OUT_HELP', 'PH_TOL_CNT',
+  'PH_WRITE_NAME', 'INEMPNM',
+  'NS_SBDP', 'NS_EBDP', 'NS_TMPBD',
+  'NS_HLTH_HELP', 'NS_NRSE_HELP', 'NS_HEALTH_HELP_NM', 'NS_NURSE_HELP_NM',
+  'NS_ETC', 'NS_ETC_DESC', 'NS_SORE_CHK', 'NS_SORE_MNG', 'NS_SORE_MNG_NM', 'NS_SORE_CONF',
+  'NS_MEDI_CHK', 'NS_WRITE_NAME', 'ROOM_NO',
+  'FN_VIEW', 'RG_VIEW', 'PH_VIEW', 'NS_VIEW',
+];
+
 async function getF30112Columns(pool) {
-  const result = await pool.request().query(`
-    SELECT COLUMN_NAME
-    FROM INFORMATION_SCHEMA.COLUMNS
-    WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'F30112'
-  `);
-  const cols = new Set();
-  (result.recordset || []).forEach((r) => {
-    const c = String(r.COLUMN_NAME || '').trim();
-    if (c) cols.add(c.toUpperCase());
-  });
-  return cols;
+  try {
+    const result = await pool.request().query(`
+      SELECT COLUMN_NAME
+      FROM [${DB_NAME}].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = N'${TABLE_NAME}'
+    `);
+    const cols = new Set();
+    (result.recordset || []).forEach((r) => {
+      const c = String(r.COLUMN_NAME || '').trim();
+      if (c) cols.add(c.toUpperCase());
+    });
+    if (cols.size > 0) return cols;
+  } catch (e) {
+    console.warn('F30112 컬럼 스키마 조회 실패, 알려진 컬럼으로 폴백:', e?.message || e);
+  }
+  return new Set(F30112_KNOWN_COLUMNS);
 }
 
 // F30112 업서트(수급자별 기준정보 저장)

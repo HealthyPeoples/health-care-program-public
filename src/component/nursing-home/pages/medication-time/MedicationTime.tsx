@@ -8,7 +8,7 @@
  *
  * @module component/nursing-home/pages/medication-time/MedicationTime
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 
@@ -173,6 +173,8 @@ export default function MedicationTime() {
 	const [originalConfirmDate, setOriginalConfirmDate] = useState(todayYmd());
 	const [originalNotes, setOriginalNotes] = useState('');
 	const [originalEtc, setOriginalEtc] = useState('');
+	const detailReqIdRef = useRef(0);
+	const selectReqIdRef = useRef(0);
 
 	// 복용도우미 검색 관련 state (각 타입별로 관리)
 	const [helperSearchTerms, setHelperSearchTerms] = useState<Record<string, string>>({});
@@ -747,41 +749,71 @@ export default function MedicationTime() {
 		setIsEditMode(false);
 	};
 
-	const refreshEadtList = async (member: MemberData, keepSelected = true) => {
+	const refreshEadtList = async (
+		member: MemberData,
+		keepSelected = true,
+		currentEadt?: string,
+		selectReqId?: number
+	) => {
 		setEadtLoading(true);
+		const isStale = () =>
+			selectReqId != null && selectReqId !== selectReqIdRef.current;
 		try {
 			const pnum = String(member?.PNUM ?? '').trim();
 			if (!pnum) {
-				setEadtList([]);
-				return;
+				const fallback = todayYmd();
+				if (!isStale()) {
+					setEadtList([]);
+					if (!keepSelected) setSelectedEadt(fallback);
+				}
+				return { list: [] as string[], nextEadt: keepSelected ? (currentEadt || fallback) : fallback };
 			}
 			const res = await fetch(`/api/f30111?mode=dates&pnum=${encodeURIComponent(pnum)}`);
 			const json = await res.json();
+			if (isStale()) {
+				return { list: [] as string[], nextEadt: currentEadt || todayYmd() };
+			}
 			const list = Array.isArray(json?.data) ? json.data.map((r: any) => String(r.EADT || '').trim()).filter(Boolean) : [];
 			setEadtList(list);
-			if (!keepSelected) {
-				setSelectedEadt(list[0] || todayYmd());
+			const nextEadt = keepSelected
+				? (currentEadt || list[0] || todayYmd())
+				: (list[0] || todayYmd());
+			if (!keepSelected || !currentEadt) {
+				setSelectedEadt(nextEadt);
 			}
+			return { list, nextEadt };
 		} catch (e) {
 			console.error('복용일자 목록 조회 오류:', e);
-			setEadtList([]);
+			const fallback = todayYmd();
+			if (!isStale()) {
+				setEadtList([]);
+				if (!keepSelected) setSelectedEadt(fallback);
+			}
+			return { list: [] as string[], nextEadt: keepSelected ? (currentEadt || fallback) : fallback };
 		} finally {
-			setEadtLoading(false);
+			if (!isStale()) setEadtLoading(false);
 		}
 	};
 
 	const loadDetail = async (member: MemberData, eadt: string) => {
+		const reqId = ++detailReqIdRef.current;
 		setDetailLoading(true);
 		try {
 			const pnum = String(member?.PNUM ?? '').trim();
-			if (!pnum || !eadt) return;
+			if (!pnum || !eadt) {
+				if (reqId === detailReqIdRef.current) setDetailExists(false);
+				return;
+			}
 			const res = await fetch(`/api/f30111?mode=detail&pnum=${encodeURIComponent(pnum)}&eadt=${encodeURIComponent(eadt)}`);
 			const json = await res.json();
+			if (reqId !== detailReqIdRef.current) return;
+
 			const data = json?.data;
 			if (!data) {
 				setDetailExists(false);
 				setMedicationData(JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA)));
 				setConfirmer('');
+				setConfirmerSearchTerm('');
 				setConfirmDate(todayYmd());
 				setNotes('');
 				setEtc('');
@@ -822,7 +854,27 @@ export default function MedicationTime() {
 		} catch (e) {
 			console.error('복용 상세 조회 오류:', e);
 		} finally {
-			setDetailLoading(false);
+			if (reqId === detailReqIdRef.current) setDetailLoading(false);
+		}
+	};
+
+	const handleSelectMember = async (m: MemberData) => {
+		const selectReqId = ++selectReqIdRef.current;
+		setSelectedMember(m);
+		setIsEditMode(false);
+		setDetailExists(false);
+		setEadtList([]);
+		setMedicationData(JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA)));
+		setConfirmer('');
+		setConfirmerSearchTerm('');
+		setConfirmDate(todayYmd());
+		setNotes('');
+		setEtc('');
+
+		const { nextEadt } = await refreshEadtList(m, false, undefined, selectReqId);
+		// 같은 수급자 재클릭 시 PNUM/EADT가 같아 effect가 안 돌 수 있으므로 직접 로드
+		if (selectReqId === selectReqIdRef.current) {
+			await loadDetail(m, nextEadt);
 		}
 	};
 
@@ -859,7 +911,7 @@ export default function MedicationTime() {
 			setOriginalConfirmDate(confirmDate);
 			setOriginalNotes(notes);
 			setOriginalEtc(etc);
-			await refreshEadtList(selectedMember, true);
+			await refreshEadtList(selectedMember, true, selectedEadt);
 			await loadDetail(selectedMember, selectedEadt);
 		} catch (e) {
 			console.error('저장 오류:', e);
@@ -927,22 +979,19 @@ export default function MedicationTime() {
 		return () => clearTimeout(timer);
 	}, [confirmerSearchTerm]);
 
-	useEffect(() => {
-		if (!selectedMember) return;
-		refreshEadtList(selectedMember, false);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [selectedMember?.PNUM]);
-
+	// 복용일자(date input) 변경 시에만 상세 재조회. 수급자 선택은 handleSelectMember에서 처리.
 	useEffect(() => {
 		if (!selectedMember || !selectedEadt) return;
 		loadDetail(selectedMember, selectedEadt);
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [selectedMember?.PNUM, selectedEadt]);
+	}, [selectedEadt]);
 
 	useTabRefresh(() => {
 		if (!selectedMember) return;
-		void refreshEadtList(selectedMember, false);
-		if (selectedEadt) void loadDetail(selectedMember, selectedEadt);
+		void (async () => {
+			const { nextEadt } = await refreshEadtList(selectedMember, true, selectedEadt);
+			void loadDetail(selectedMember, nextEadt);
+		})();
 	});
 
 	const showEmptyMedicationData =
@@ -954,21 +1003,7 @@ export default function MedicationTime() {
 				<div className="flex flex-col lg:flex-row gap-4">
 					{/* 좌측: 수급자 목록 */}
 					<aside className="w-full max-w-full lg:w-[380px] min-w-0 shrink-0">
-						<MemberListPanel
-							onSelectMember={(m) => {
-								setSelectedMember(m);
-								setIsEditMode(false);
-								setDetailExists(false);
-								setSelectedEadt(todayYmd());
-								setEadtList([]);
-								setMedicationData(JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA)));
-								setConfirmer('');
-								setConfirmerSearchTerm('');
-								setConfirmDate(todayYmd());
-								setNotes('');
-								setEtc('');
-							}}
-						/>
+						<MemberListPanel onSelectMember={(m) => { void handleSelectMember(m); }} />
 					</aside>
 
 					{/* 우측: 약물 복용 시간 입력 */}

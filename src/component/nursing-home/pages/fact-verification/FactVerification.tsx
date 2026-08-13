@@ -8,7 +8,7 @@
  *
  * @module component/nursing-home/pages/fact-verification/FactVerification
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { MemberListPanel } from '../../components/MemberListPanel';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 
@@ -27,9 +27,9 @@ export default function FactVerification() {
 	interface FactVerificationData {
 		ANCD: string;
 		PNUM: string;
-		VERDT: string; // 확인일자
-		VERREQ: string; // 시설입소요건및사유
-		VERNUM: string;
+		FDT: string;
+		FNUM: string;
+		FINFO: string;
 		INDT: string;
 		ETC: string;
 		INEMPNO: string;
@@ -47,86 +47,19 @@ export default function FactVerification() {
 	const verificationDateItemsPerPage = 10;
 	const [formData, setFormData] = useState({
 		beneficiary: '',
-		verificationDate: '', // VERDT (확인일자)
-		facilityAdmissionReasons: '' // VERREQ (시설입소요건및사유)
+		verificationDate: '',
+		facilityAdmissionReasons: ''
 	});
+	const [originalFdt, setOriginalFdt] = useState('');
 
-	// 날짜 생성 함수
-	const handleCreateDate = () => {
+	const todayYmd = () => {
 		const today = new Date();
 		const year = today.getFullYear();
 		const month = String(today.getMonth() + 1).padStart(2, '0');
 		const day = String(today.getDate()).padStart(2, '0');
-		const formattedDate = `${year}-${month}-${day}`;
-		
-		if (!verificationDates.includes(formattedDate)) {
-			setVerificationDates(prev => [formattedDate, ...prev]);
-			setVerificationDatePage(1);
-		}
-		
-		setFormData({
-			beneficiary: selectedMember?.P_NM || '',
-			verificationDate: formattedDate,
-			facilityAdmissionReasons: ''
-		});
-		
-		setIsEditMode(true);
-		const newIndex = verificationDates.includes(formattedDate) 
-			? verificationDates.indexOf(formattedDate)
-			: 0;
-		setSelectedDateIndex(newIndex);
+		return `${year}-${month}-${day}`;
 	};
 
-	// 사실 확인 기록 조회 (수급자 선택 시)
-	const fetchVerifications = async (ancd: string, pnum: string, member: MemberData | null, preserveDate?: string | null) => {
-		if (!ancd || !pnum) {
-			setVerificationList([]);
-			setVerificationDates([]);
-			return;
-		}
-
-		setLoadingVerifications(true);
-		try {
-			// TODO: 실제 API 엔드포인트로 변경 필요
-			// const url = `/api/f11050?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}`;
-			// const response = await fetch(url);
-			// const result = await response.json();
-			
-			// 임시로 빈 데이터 반환
-			setVerificationList([]);
-			setVerificationDates([]);
-			if (preserveDate !== undefined) {
-				if (preserveDate) {
-					setVerificationDates([preserveDate]);
-					setSelectedDateIndex(0);
-					resetForm(member);
-					setFormData((prev) => ({
-						...prev,
-						beneficiary: member?.P_NM || prev.beneficiary,
-						verificationDate: formatDateDisplay(preserveDate)
-					}));
-				} else {
-					setSelectedDateIndex(null);
-					resetForm(member);
-				}
-			} else {
-				setSelectedDateIndex(null);
-				resetForm(member);
-			}
-			setIsEditMode(false);
-		} catch (err) {
-			console.error('[사실 확인 조회] 오류 발생:', err);
-			setVerificationList([]);
-			setVerificationDates([]);
-			setSelectedDateIndex(null);
-			resetForm(member);
-			setIsEditMode(false);
-		} finally {
-			setLoadingVerifications(false);
-		}
-	};
-
-	// 날짜 형식 변환 함수
 	const formatDateDisplay = (dateStr: string) => {
 		if (!dateStr) return '';
 		if (dateStr.includes('T')) {
@@ -152,48 +85,116 @@ export default function FactVerification() {
 		return dateStr;
 	};
 
+	const findRecordByDate = (dateStr: string, list: FactVerificationData[] = verificationList) => {
+		const ymd = formatDateDisplay(dateStr);
+		return list.find((row) => formatDateDisplay(String(row.FDT || '')) === ymd) || null;
+	};
+
+	// 날짜 생성 함수
+	const handleCreateDate = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		const formattedDate = todayYmd();
+		const existing = findRecordByDate(formattedDate);
+		if (!verificationDates.includes(formattedDate)) {
+			setVerificationDates((prev) => [formattedDate, ...prev]);
+			setVerificationDatePage(1);
+		}
+
+		setFormData({
+			beneficiary: selectedMember.P_NM || '',
+			verificationDate: formattedDate,
+			facilityAdmissionReasons: existing?.FINFO || ''
+		});
+		setOriginalFdt(existing ? formattedDate : '');
+		setIsEditMode(true);
+		const newIndex = verificationDates.includes(formattedDate)
+			? verificationDates.indexOf(formattedDate)
+			: 0;
+		setSelectedDateIndex(newIndex);
+	};
+
+	// 사실 확인 기록 조회 (수급자 선택 시)
+	const fetchVerifications = async (
+		ancd: string,
+		pnum: string,
+		member: MemberData | null,
+		preserveDate?: string | null
+	) => {
+		if (!ancd || !pnum) {
+			setVerificationList([]);
+			setVerificationDates([]);
+			return;
+		}
+
+		setLoadingVerifications(true);
+		try {
+			const url = `/api/f11030?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}`;
+			const response = await fetch(url);
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || '사실확인서 조회 실패');
+			}
+
+			const list: FactVerificationData[] = Array.isArray(result.data) ? result.data : [];
+			const dates = list
+				.map((row) => formatDateDisplay(String(row.FDT || '')))
+				.filter(Boolean);
+			setVerificationList(list);
+			setVerificationDates(dates);
+
+			const want = preserveDate ? formatDateDisplay(preserveDate) : '';
+			const idx = want ? dates.indexOf(want) : -1;
+			if (idx >= 0) {
+				setSelectedDateIndex(idx);
+				setIsEditMode(false);
+				setOriginalFdt(dates[idx]);
+				setFormData({
+					beneficiary: member?.P_NM || '',
+					verificationDate: dates[idx],
+					facilityAdmissionReasons: list[idx]?.FINFO || ''
+				});
+			} else {
+				setSelectedDateIndex(null);
+				setOriginalFdt('');
+				resetForm(member);
+				setIsEditMode(false);
+			}
+		} catch (err) {
+			console.error('[사실 확인 조회] 오류 발생:', err);
+			setVerificationList([]);
+			setVerificationDates([]);
+			setSelectedDateIndex(null);
+			setOriginalFdt('');
+			resetForm(member);
+			setIsEditMode(false);
+			alert('사실확인서를 조회하는 중 오류가 발생했습니다.');
+		} finally {
+			setLoadingVerifications(false);
+		}
+	};
+
 	// 날짜 선택 함수
 	const handleSelectDate = (index: number, verification?: FactVerificationData, member: MemberData | null = null) => {
 		setSelectedDateIndex(index);
 		setIsEditMode(false);
-		
-		const selectedVerification = verification || verificationList[index];
+
+		const dateStr = verificationDates[index] || '';
+		const selectedVerification =
+			verification || findRecordByDate(dateStr) || verificationList[index];
 		const currentMember = member || selectedMember;
-		
-		if (selectedVerification) {
-			const formatDate = (dateStr: string) => {
-				if (!dateStr) return '';
-				if (dateStr.includes('T')) {
-					dateStr = dateStr.split('T')[0];
-				}
-				if (dateStr.includes('-') && dateStr.length >= 10) {
-					return dateStr.substring(0, 10);
-				}
-				if (dateStr.length === 8 && !dateStr.includes('-') && !dateStr.includes('년')) {
-					return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-				}
-				if (dateStr.includes('년') && dateStr.includes('월') && dateStr.includes('일')) {
-					const yearMatch = dateStr.match(/(\d{4})년/);
-					const monthMatch = dateStr.match(/(\d{1,2})월/);
-					const dayMatch = dateStr.match(/(\d{1,2})일/);
-					if (yearMatch && monthMatch && dayMatch) {
-						const year = yearMatch[1];
-						const month = monthMatch[1].padStart(2, '0');
-						const day = dayMatch[1].padStart(2, '0');
-						return `${year}-${month}-${day}`;
-					}
-				}
-				return dateStr;
-			};
+		const verificationDate = formatDateDisplay(
+			selectedVerification?.FDT || dateStr || ''
+		);
 
-			const verificationDate = formatDate(selectedVerification.VERDT || '');
-
-			setFormData({
-				beneficiary: currentMember?.P_NM || '',
-				verificationDate: verificationDate,
-				facilityAdmissionReasons: selectedVerification.VERREQ || ''
-			});
-		}
+		setOriginalFdt(verificationDate);
+		setFormData({
+			beneficiary: currentMember?.P_NM || '',
+			verificationDate,
+			facilityAdmissionReasons: selectedVerification?.FINFO || ''
+		});
 	};
 
 	// 수급자 선택 함수
@@ -217,6 +218,7 @@ export default function FactVerification() {
 			verificationDate: '',
 			facilityAdmissionReasons: ''
 		});
+		setOriginalFdt('');
 	};
 
 	// 폼 데이터 변경 함수
@@ -235,14 +237,15 @@ export default function FactVerification() {
 
 	// 수정 함수
 	const handleModify = () => {
-		if (!formData.verificationDate) {
-			const today = new Date();
-			const year = today.getFullYear();
-			const month = String(today.getMonth() + 1).padStart(2, '0');
-			const day = String(today.getDate()).padStart(2, '0');
-			const formattedDate = `${year}-${month}-${day}`;
-			setFormData(prev => ({ ...prev, verificationDate: formattedDate }));
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
 		}
+		if (!formData.verificationDate) {
+			alert('확인할 일자를 선택해주세요.');
+			return;
+		}
+		setOriginalFdt(formData.verificationDate);
 		setIsEditMode(true);
 	};
 
@@ -260,38 +263,32 @@ export default function FactVerification() {
 
 		setLoadingVerifications(true);
 		try {
-			const now = new Date();
-			const nowStr = now.toISOString().slice(0, 19).replace('T', ' ');
-
-			const formatDateForDB = (dateStr: string): string | null => {
-				if (!dateStr || dateStr.trim() === '') return null;
-				try {
-					if (dateStr.includes('-')) {
-						return dateStr.replace(/-/g, '');
-					}
-					return dateStr;
-				} catch (err) {
-					return null;
-				}
-			};
-
-			const existingVerification = selectedDateIndex !== null && verificationList[selectedDateIndex] 
-				? verificationList[selectedDateIndex] 
-				: null;
-
-			// TODO: 실제 API 엔드포인트로 변경 필요
-			// const query = existingVerification && existingVerification.VERNUM
-			// 	? `UPDATE [돌봄시설DB].[dbo].[F11050] SET ...`
-			// 	: `INSERT INTO [돌봄시설DB].[dbo].[F11050] ...`;
-
-			alert(existingVerification ? '사실 확인이 수정되었습니다.' : '사실 확인이 생성되었습니다.');
-			setIsEditMode(false);
-			if (selectedMember && selectedMember.ANCD && selectedMember.PNUM) {
-				await fetchVerifications(selectedMember.ANCD, selectedMember.PNUM, selectedMember);
+			const ancd = String(selectedMember.ANCD ?? '').trim();
+			const pnum = String(selectedMember.PNUM ?? '').trim();
+			const fdt = formatDateDisplay(formData.verificationDate);
+			const origFdt = formatDateDisplay(originalFdt || fdt);
+			const response = await fetch(`/api/f11030?ancd=${encodeURIComponent(ancd)}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					PNUM: pnum,
+					FDT: fdt,
+					origFDT: origFdt,
+					FINFO: formData.facilityAdmissionReasons
+				})
+			});
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || '저장 실패');
 			}
+
+			alert(origFdt && findRecordByDate(origFdt) ? '사실 확인이 수정되었습니다.' : '사실 확인이 생성되었습니다.');
+			setIsEditMode(false);
+			setOriginalFdt(fdt);
+			await fetchVerifications(ancd, pnum, selectedMember, fdt);
 		} catch (err) {
 			console.error('사실 확인 저장 오류:', err);
-			alert('사실 확인 저장 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '사실 확인 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingVerifications(false);
 		}
@@ -300,24 +297,20 @@ export default function FactVerification() {
 	// 취소 함수
 	const handleCancel = () => {
 		setIsEditMode(false);
-		
-		const today = new Date();
-		const year = today.getFullYear();
-		const month = String(today.getMonth() + 1).padStart(2, '0');
-		const day = String(today.getDate()).padStart(2, '0');
-		const formattedToday = `${year}-${month}-${day}`;
-		
+
+		const formattedToday = todayYmd();
 		const currentDate = selectedDateIndex !== null ? verificationDates[selectedDateIndex] : null;
-		
-		if (currentDate === formattedToday && selectedDateIndex !== null) {
-			setVerificationDates(prev => prev.filter((_, index) => index !== selectedDateIndex));
+		const saved = currentDate ? findRecordByDate(currentDate) : null;
+
+		if (currentDate === formattedToday && !saved && selectedDateIndex !== null) {
+			setVerificationDates((prev) => prev.filter((_, index) => index !== selectedDateIndex));
 			setSelectedDateIndex(null);
 			resetForm(selectedMember);
 			return;
 		}
-		
-		if (selectedDateIndex !== null && verificationList[selectedDateIndex]) {
-			handleSelectDate(selectedDateIndex, verificationList[selectedDateIndex], selectedMember);
+
+		if (selectedDateIndex !== null && saved) {
+			handleSelectDate(selectedDateIndex, saved, selectedMember);
 		} else if (selectedDateIndex !== null && verificationDates[selectedDateIndex]) {
 			resetForm(selectedMember);
 		}
@@ -485,11 +478,13 @@ export default function FactVerification() {
 			return;
 		}
 
-		const currentVerification = selectedDateIndex !== null && verificationList[selectedDateIndex] 
-			? verificationList[selectedDateIndex] 
-			: null;
+		const fdt = formatDateDisplay(
+			formData.verificationDate ||
+				(selectedDateIndex !== null ? verificationDates[selectedDateIndex] : '')
+		);
+		const currentVerification = fdt ? findRecordByDate(fdt) : null;
 
-		if (!currentVerification || !currentVerification.VERNUM) {
+		if (!currentVerification || !fdt) {
 			alert('삭제할 사실 확인을 선택해주세요.');
 			return;
 		}
@@ -500,17 +495,21 @@ export default function FactVerification() {
 
 		setLoadingVerifications(true);
 		try {
-			// TODO: 실제 API 엔드포인트로 변경 필요
-			// const deleteQuery = `DELETE FROM [돌봄시설DB].[dbo].[F11050] WHERE ...`;
+			const ancd = String(selectedMember.ANCD ?? '').trim();
+			const pnum = String(selectedMember.PNUM ?? '').trim();
+			const url = `/api/f11030?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}&fdt=${encodeURIComponent(fdt)}`;
+			const response = await fetch(url, { method: 'DELETE' });
+			const result = await response.json().catch(() => ({}));
+			if (!response.ok || !result?.success) {
+				throw new Error(result?.error || '삭제 실패');
+			}
 
 			alert('사실 확인이 삭제되었습니다.');
 			setIsEditMode(false);
-			if (selectedMember && selectedMember.ANCD && selectedMember.PNUM) {
-				await fetchVerifications(selectedMember.ANCD, selectedMember.PNUM, selectedMember);
-			}
+			await fetchVerifications(ancd, pnum, selectedMember);
 		} catch (err) {
 			console.error('사실 확인 삭제 오류:', err);
-			alert('사실 확인 삭제 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '사실 확인 삭제 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingVerifications(false);
 		}
@@ -648,18 +647,9 @@ export default function FactVerification() {
 						<div className="mb-4 flex items-center gap-4 flex-wrap">
 							<div className="flex items-center gap-2">
 								<label className="text-sm text-blue-900 font-medium whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">수급자</label>
-								{isEditMode ? (
-									<input
-										type="text"
-										value={formData.beneficiary}
-										onChange={(e) => handleFormChange('beneficiary', e.target.value)}
-										className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-									/>
-								) : (
-									<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
-										{formData.beneficiary || '-'}
-									</span>
-								)}
+								<span className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]">
+									{formData.beneficiary || '-'}
+								</span>
 							</div>
 							<div className="flex items-center gap-2">
 								<label className="text-sm text-blue-900 font-medium whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">작성일자</label>
@@ -687,6 +677,7 @@ export default function FactVerification() {
 									onChange={(e) => handleFormChange('facilityAdmissionReasons', e.target.value)}
 									className="w-full px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
 									rows={15}
+									maxLength={1000}
 									placeholder="시설입소요건및사유를 입력하세요"
 								/>
 							) : (

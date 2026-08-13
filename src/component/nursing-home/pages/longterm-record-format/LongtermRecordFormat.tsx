@@ -18,7 +18,8 @@ import {
 	applyNursingFieldsToDay,
 	formatVitalSignsFromRow
 } from '../../utils/nursingFields';
-import { mapF14070ToFormState } from './mapF14070';
+import { formatDateYmd, fetchF14020Range } from '../../utils/f14020Daily';
+import { mapF14070ToFormState, type F14070Beneficiary } from './mapF14070';
 
 interface MemberData {
 	[key: string]: any;
@@ -229,6 +230,48 @@ const mapTrainingFromRow = (row: any, idx: number, records: DailyRecords) => {
 /** 서식 날짜 표기: "7 / 13" */
 const formatSheetDate = (date: Date) => `${date.getMonth() + 1} / ${date.getDate()}`;
 
+const startOfDay = (d: Date) => {
+	const x = new Date(d);
+	x.setHours(0, 0, 0, 0);
+	return x;
+};
+
+const weekDayAt = (monday: Date, index: number) => {
+	const date = new Date(monday);
+	date.setHours(0, 0, 0, 0);
+	date.setDate(monday.getDate() + index);
+	return date;
+};
+
+/** 월~일 7칸 중 기준일과 같은 연·월인 요일만 true */
+const sameMonthDayFlags = (monday: Date, baseDate: Date) => {
+	const month = baseDate.getMonth();
+	const year = baseDate.getFullYear();
+	return Array.from({ length: 7 }, (_, i) => {
+		const d = weekDayAt(monday, i);
+		return d.getMonth() === month && d.getFullYear() === year;
+	});
+};
+
+/** 같은 달 날짜만 "M / D", 다른 달은 공란 */
+const weekDatesForBaseMonth = (monday: Date, baseDate: Date) => {
+	const flags = sameMonthDayFlags(monday, baseDate);
+	return flags.map((ok, i) => (ok ? formatSheetDate(weekDayAt(monday, i)) : ''));
+};
+
+const maskDailyRecordsForSameMonth = (daily: DailyRecords, flags: boolean[]): DailyRecords => {
+	const empty = createEmptyDailyRecords();
+	const next: DailyRecords = { ...empty };
+	(Object.keys(empty) as (keyof DailyRecords)[]).forEach((key) => {
+		const src = daily[key];
+		const blank = empty[key];
+		(next as unknown as Record<string, unknown[]>)[key] = (src as unknown[]).map((v, i) =>
+			flags[i] ? v : (blank as unknown[])[i]
+		);
+	});
+	return next;
+};
+
 const applyBaselineToAllDays = (baselineRow: any, records: DailyRecords) => {
 	for (let i = 0; i < 7; i++) {
 		mapPhysicalActivityFromRow(baselineRow, i, records);
@@ -273,40 +316,72 @@ const buildDailyRecords = (baselineRow: any | null, rangeRows: any[], weekStart:
 	return records;
 };
 
-const applyBeneficiaryFromRow = (row: any, applyLegacy: (raw: unknown) => void) => {
-	const hasDirect =
-		row?.ST_SP_ST != null ||
-		row?.ST_SCK_ALZ != null ||
-		row?.ST_MNG_BRN != null;
+const rowSvdt = (row: any) => formatDateYmd(row?.SVDT ?? row?.INDT);
 
-	if (hasDirect) {
-		return {
-			status: toStatusLabel(row?.ST_SP_ST),
-			dementia: ynChecked(row?.ST_SCK_ALZ),
-			stroke: ynChecked(row?.ST_SCK_APO),
-			hypertension: ynChecked(row?.ST_SCK_HBL),
-			diabetes: ynChecked(row?.ST_SCK_GLY),
-			arthritis: ynChecked(row?.ST_SCK_ARTH),
-			otherDisease: ynChecked(row?.ST_SCK_GITA),
-			otherDiseaseText: String(row?.ST_SCK_GITA_DSC ?? '').trim(),
-			tracheostomy: ynChecked(row?.ST_MNG_BRN),
-			dentures: resolveDenturesChecked(row?.ST_MNG_DNT, row?.ST_MNG_DNT_DSC),
-			nasogastricTube: ynChecked(row?.ST_MNG_LTUB),
-			urinaryCatheter: ynChecked(row?.ST_MNG_FIX_TUB),
-			cystostomy: ynChecked(row?.ST_MNG_CYS),
-			urostomy: ynChecked(row?.ST_MNG_URB),
-			colostomy: ynChecked(row?.ST_MNG_TOP),
-			diaper: ynChecked(row?.ST_MNG_DAP),
-			pressureSore: ynChecked(row?.ST_MNG_BAD),
-			pressureSoreArea: String(row?.ST_MNG_BAD_DSC ?? '').trim(),
-			pressureSorePrevention: ynChecked(row?.ST_MNG_BCHK),
-			pressureSorePreventionTool: String(row?.ST_MNG_BCHK_DSC ?? '').trim(),
-			roomNo: String(row?.ROOM_NO ?? '').trim()
-		};
-	}
+const hasSavedBeneficiaryStatus = (row: any) => {
+	const st = String(row?.ST_SP_ST ?? '').trim();
+	return st === '1' || st === '2' || st === '3' || st === '와상' || st === '준와상' || st === '자립';
+};
 
-	applyLegacy(row?.RG_JSON ?? row?.RG_ETC_DESC ?? row?.NS_ETC_DESC);
-	return null;
+const latestBySvdt = (rows: any[]) =>
+	[...rows].sort((a, b) => rowSvdt(b).localeCompare(rowSvdt(a)))[0] ?? null;
+
+/** 기준일 행 우선, 없으면 해당 주(같은 달) → 주 전체 → 기준일 이전 최신 */
+const pickBeneficiaryStatusRow = (
+	rows: any[],
+	preferredYmd: string,
+	flags: boolean[],
+	monday: Date
+) => {
+	const withStatus = rows.filter(hasSavedBeneficiaryStatus);
+	if (withStatus.length === 0) return null;
+
+	const exact = withStatus.find((r) => rowSvdt(r) === preferredYmd);
+	if (exact) return exact;
+
+	const inVisibleWeek = withStatus.filter((r) => {
+		const idx = dayIndexInWeek(rowSvdt(r), monday);
+		return idx >= 0 && flags[idx];
+	});
+	if (inVisibleWeek.length) return latestBySvdt(inVisibleWeek);
+
+	const inWeek = withStatus.filter((r) => dayIndexInWeek(rowSvdt(r), monday) >= 0);
+	if (inWeek.length) return latestBySvdt(inWeek);
+
+	const onOrBefore = withStatus.filter((r) => {
+		const ymd = rowSvdt(r);
+		return ymd && ymd <= preferredYmd;
+	});
+	if (onOrBefore.length) return latestBySvdt(onOrBefore);
+
+	return latestBySvdt(withStatus);
+};
+
+const mapBeneficiaryFromF14020 = (row: any): F14070Beneficiary | null => {
+	if (!row || !hasSavedBeneficiaryStatus(row)) return null;
+	return {
+		status: toStatusLabel(row?.ST_SP_ST),
+		dementia: ynChecked(row?.ST_SCK_ALZ),
+		stroke: ynChecked(row?.ST_SCK_APO),
+		hypertension: ynChecked(row?.ST_SCK_HBL),
+		diabetes: ynChecked(row?.ST_SCK_GLY),
+		arthritis: ynChecked(row?.ST_SCK_ARTH),
+		otherDisease: ynChecked(row?.ST_SCK_GITA),
+		otherDiseaseText: String(row?.ST_SCK_GITA_DSC ?? '').trim(),
+		tracheostomy: ynChecked(row?.ST_MNG_BRN),
+		dentures: resolveDenturesChecked(row?.ST_MNG_DNT, row?.ST_MNG_DNT_DSC),
+		nasogastricTube: ynChecked(row?.ST_MNG_LTUB),
+		urinaryCatheter: ynChecked(row?.ST_MNG_FIX_TUB),
+		cystostomy: ynChecked(row?.ST_MNG_CYS),
+		urostomy: ynChecked(row?.ST_MNG_URB),
+		colostomy: ynChecked(row?.ST_MNG_TOP),
+		diaper: ynChecked(row?.ST_MNG_DAP),
+		pressureSore: ynChecked(row?.ST_MNG_BAD),
+		pressureSoreArea: String(row?.ST_MNG_BAD_DSC ?? '').trim(),
+		pressureSorePrevention: ynChecked(row?.ST_MNG_BCHK),
+		pressureSorePreventionTool: String(row?.ST_MNG_BCHK_DSC ?? '').trim(),
+		roomNo: String(row?.ROOM_NO ?? '').trim()
+	};
 };
 
 export default function LongtermRecordFormat() {
@@ -315,7 +390,8 @@ export default function LongtermRecordFormat() {
 
 	const [year, setYear] = useState(new Date().getFullYear().toString());
 	const [weekDates, setWeekDates] = useState<string[]>([]);
-	const [weekStart, setWeekStart] = useState<Date>(() => startOfWeekMonday(new Date()));
+	const [baseDate, setBaseDate] = useState<Date>(() => startOfDay(new Date()));
+	const weekStart = useMemo(() => startOfWeekMonday(baseDate), [baseDate]);
 	const [loading, setLoading] = useState(false);
 
 	const [headerInfo, setHeaderInfo] = useState({
@@ -351,61 +427,11 @@ export default function LongtermRecordFormat() {
 	const [roomNo, setRoomNo] = useState('');
 
 	const [dailyRecords, setDailyRecords] = useState(createEmptyDailyRecords);
+	const [printEmpty, setPrintEmpty] = useState(false);
 
-	const calculateWeekDates = (start: Date) => {
-		const monday = startOfWeekMonday(start);
-		const dates: string[] = [];
-		for (let i = 0; i < 7; i++) {
-			const date = new Date(monday);
-			date.setDate(monday.getDate() + i);
-			dates.push(formatSheetDate(date));
-		}
-		setWeekDates(dates);
-		setYear(String(monday.getFullYear()));
-	};
-
-	const weekDatesFromMonday = (monday: Date) => {
-		const dates: string[] = [];
-		const start = new Date(monday);
-		start.setHours(0, 0, 0, 0);
-		for (let i = 0; i < 7; i++) {
-			const date = new Date(start);
-			date.setDate(start.getDate() + i);
-			dates.push(formatSheetDate(date));
-		}
-		return dates;
-	};
-
-	const applyLegacyBeneficiaryJson = (raw: unknown) => {
-		if (!raw) return;
-		try {
-			const j = typeof raw === 'string' ? JSON.parse(raw) : raw;
-			if (!j || typeof j !== 'object') return;
-
-			const m = (j as any).beneficiaryStatus ?? j;
-			if (m.status === '와상' || m.status === '준와상' || m.status === '자립') setStatus(m.status);
-			if (typeof m.dementia === 'boolean') setDementia(m.dementia);
-			if (typeof m.stroke === 'boolean') setStroke(m.stroke);
-			if (typeof m.hypertension === 'boolean') setHypertension(m.hypertension);
-			if (typeof m.diabetes === 'boolean') setDiabetes(m.diabetes);
-			if (typeof m.arthritis === 'boolean') setArthritis(m.arthritis);
-			if (typeof m.otherDisease === 'boolean') setOtherDisease(m.otherDisease);
-			if (typeof m.otherDiseaseText === 'string') setOtherDiseaseText(m.otherDiseaseText);
-			if (typeof m.tracheostomy === 'boolean') setTracheostomy(m.tracheostomy);
-			if (typeof m.dentures === 'boolean') setDentures(m.dentures);
-			if (typeof m.nasogastricTube === 'boolean') setNasogastricTube(m.nasogastricTube);
-			if (typeof m.urinaryCatheter === 'boolean') setUrinaryCatheter(m.urinaryCatheter);
-			if (typeof m.cystostomy === 'boolean') setCystostomy(m.cystostomy);
-			if (typeof m.urostomy === 'boolean') setUrostomy(m.urostomy);
-			if (typeof m.colostomy === 'boolean') setColostomy(m.colostomy);
-			if (typeof m.diaper === 'boolean') setDiaper(m.diaper);
-			if (typeof m.pressureSore === 'boolean') setPressureSore(m.pressureSore);
-			if (typeof m.pressureSoreArea === 'string') setPressureSoreArea(m.pressureSoreArea);
-			if (typeof m.pressureSorePrevention === 'boolean') setPressureSorePrevention(m.pressureSorePrevention);
-			if (typeof m.pressureSorePreventionTool === 'string') setPressureSorePreventionTool(m.pressureSorePreventionTool);
-		} catch {
-			// ignore parse errors
-		}
+	const applyWeekHeader = (monday: Date, monthAnchor: Date) => {
+		setWeekDates(weekDatesForBaseMonth(monday, monthAnchor));
+		setYear(String(monthAnchor.getFullYear()));
 	};
 
 	const applyBeneficiaryState = (state: {
@@ -488,7 +514,7 @@ export default function LongtermRecordFormat() {
 	};
 
 	/** 조회: Usp_P14070로 F14070 갱신 후, 해당 수급자 F14070 행으로 화면/출력 데이터 구성 */
-	const loadRecordData = async (pnum: string, start: Date) => {
+	const loadRecordData = async (pnum: string, start: Date, monthAnchor: Date = start) => {
 		if (!pnum) {
 			resetBeneficiaryDefaults();
 			setDailyRecords(createEmptyDailyRecords());
@@ -499,6 +525,7 @@ export default function LongtermRecordFormat() {
 		setDailyRecords(createEmptyDailyRecords());
 		try {
 			const monday = startOfWeekMonday(start);
+			const flags = sameMonthDayFlags(monday, monthAnchor);
 			const frDt = toYmd(monday);
 
 			const genRes = await fetch('/api/f14070', {
@@ -527,13 +554,39 @@ export default function LongtermRecordFormat() {
 			}
 
 			const mapped = mapF14070ToFormState(row);
-			const fallbackDates = weekDatesFromMonday(monday);
-			const dates = mapped.header.weekDates.some((d) => d)
-				? mapped.header.weekDates.map((d, i) => d || fallbackDates[i] || '')
-				: fallbackDates;
+			applyWeekHeader(monday, monthAnchor);
 
-			setYear(mapped.header.year || String(monday.getFullYear()));
-			setWeekDates(dates);
+			let beneficiary = mapped.beneficiary;
+			const ancd = String(selectedMember?.ANCD ?? '').trim();
+			if (ancd) {
+				try {
+					const lookback = new Date(monday);
+					lookback.setDate(lookback.getDate() - 90);
+					const sunday = weekDayAt(monday, 6);
+					const f14020Rows = await fetchF14020Range(
+						ancd,
+						pnum,
+						toYmd(lookback),
+						toYmd(sunday)
+					);
+					const statusRow = pickBeneficiaryStatusRow(
+						f14020Rows,
+						toYmd(monthAnchor),
+						flags,
+						monday
+					);
+					const overlay = mapBeneficiaryFromF14020(statusRow);
+					if (overlay) {
+						beneficiary = {
+							...overlay,
+							roomNo: overlay.roomNo || mapped.beneficiary.roomNo
+						};
+					}
+				} catch (e) {
+					console.error('F14020 수급자상태 조회 오류:', e);
+				}
+			}
+
 			setHeaderInfo({
 				name: mapped.header.name || String(selectedMember?.P_NM ?? '').trim(),
 				birthDate:
@@ -546,10 +599,10 @@ export default function LongtermRecordFormat() {
 					String(selectedMember?.P_CERTNO ?? selectedMember?.P_YYNO ?? '').trim(),
 				institutionName: mapped.header.institutionName,
 				institutionCode: mapped.header.institutionCode,
-				roomNo: mapped.header.roomNo
+				roomNo: beneficiary.roomNo || mapped.header.roomNo
 			});
-			applyBeneficiaryState(mapped.beneficiary);
-			setDailyRecords(mapped.daily);
+			applyBeneficiaryState(beneficiary);
+			setDailyRecords(maskDailyRecordsForSameMonth(mapped.daily, flags));
 		} catch (e) {
 			console.error('F14070 조회/생성 오류:', e);
 			alert('기록양식 정보를 불러오는 중 오류가 발생했습니다.');
@@ -735,26 +788,85 @@ export default function LongtermRecordFormat() {
 
 	const handlePrint = () => {
 		if (typeof window === 'undefined') return;
+		setPrintEmpty(false);
 		requestAnimationFrame(() => {
 			window.print();
 		});
 	};
 
-	useEffect(() => {
-		calculateWeekDates(weekStart);
-	}, [weekStart]);
+	const handlePrintEmpty = () => {
+		if (typeof window === 'undefined') return;
+		setPrintEmpty(true);
+	};
 
 	useEffect(() => {
-		void loadRecordData(selectedPnum, weekStart);
-	}, [selectedPnum, weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
+		if (!printEmpty) return;
+		const finish = () => setPrintEmpty(false);
+		window.addEventListener('afterprint', finish);
+		const frame = window.requestAnimationFrame(() => {
+			window.print();
+		});
+		const fallback = window.setTimeout(finish, 60_000);
+		return () => {
+			window.cancelAnimationFrame(frame);
+			window.clearTimeout(fallback);
+			window.removeEventListener('afterprint', finish);
+		};
+	}, [printEmpty]);
+
+	useEffect(() => {
+		applyWeekHeader(weekStart, baseDate);
+	}, [weekStart, baseDate]);
+
+	useEffect(() => {
+		void loadRecordData(selectedPnum, weekStart, baseDate);
+	}, [selectedPnum, weekStart, baseDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	useTabRefresh(() => {
 		if (!selectedPnum) return;
-		void loadRecordData(selectedPnum, weekStart);
+		void loadRecordData(selectedPnum, weekStart, baseDate);
 	});
 
+	const sheetDaily = printEmpty ? createEmptyDailyRecords() : dailyRecords;
+	const sheetWeekDates = printEmpty ? empty7() : (weekDates.length ? weekDates : empty7());
+	const sheetYear = printEmpty ? '' : year;
+	const sheetStatus = printEmpty ? '' : status;
+	const sheetDementia = !printEmpty && dementia;
+	const sheetStroke = !printEmpty && stroke;
+	const sheetHypertension = !printEmpty && hypertension;
+	const sheetDiabetes = !printEmpty && diabetes;
+	const sheetArthritis = !printEmpty && arthritis;
+	const sheetOtherDisease = !printEmpty && otherDisease;
+	const sheetOtherDiseaseText = printEmpty ? '' : otherDiseaseText;
+	const sheetTracheostomy = !printEmpty && tracheostomy;
+	const sheetDentures = !printEmpty && dentures;
+	const sheetNasogastricTube = !printEmpty && nasogastricTube;
+	const sheetUrinaryCatheter = !printEmpty && urinaryCatheter;
+	const sheetCystostomy = !printEmpty && cystostomy;
+	const sheetUrostomy = !printEmpty && urostomy;
+	const sheetColostomy = !printEmpty && colostomy;
+	const sheetDiaper = !printEmpty && diaper;
+	const sheetPressureSore = !printEmpty && pressureSore;
+	const sheetPressureSoreArea = printEmpty ? '' : pressureSoreArea;
+	const sheetPressureSorePrevention = !printEmpty && pressureSorePrevention;
+	const sheetPressureSorePreventionTool = printEmpty ? '' : pressureSorePreventionTool;
+	const sheetName = printEmpty ? '' : (headerInfo.name || String(selectedMember?.P_NM ?? '').trim());
+	const sheetBirthDate = printEmpty
+		? ''
+		: (headerInfo.birthDate || (selectedMember?.P_BRDT ? String(selectedMember.P_BRDT).substring(0, 10) : ''));
+	const sheetGradeLabel = printEmpty
+		? ''
+		: (headerInfo.gradeLabel || formatCareGradeLabel(selectedMember?.P_GRD, ''));
+	const sheetCertNo = printEmpty
+		? ''
+		: (headerInfo.certNo || String(selectedMember?.P_CERTNO ?? selectedMember?.P_YYNO ?? '').trim());
+	const sheetRoomNo = printEmpty
+		? ''
+		: (roomNo || headerInfo.roomNo || String(selectedMember?.P_ROOM ?? '').trim());
+
 	const vitalDisplay = (i: number) => {
-		const v = dailyRecords.vitalSigns[i]?.trim();
+		if (!sheetWeekDates[i]) return '';
+		const v = sheetDaily.vitalSigns[i]?.trim();
 		return v || <span className="tiny lt-center">/</span>;
 	};
 
@@ -775,21 +887,20 @@ return (
 						<div className="lt-longterm-card bg-white border border-blue-300 rounded-lg shadow-sm">
 							<div className="lt-no-print flex justify-end px-4 py-3 bg-blue-100 border-b border-blue-200">
 								<div className="mr-auto flex items-center gap-2 text-sm text-blue-900">
-									<span className="font-semibold">기준일(주 시작·월)</span>
+									<span className="font-semibold">기준일</span>
 									<input
 										type="date"
-										value={toYmd(weekStart)}
+										value={toYmd(baseDate)}
 										onChange={(e) => {
 											const v = e.target.value;
 											if (!v) return;
-											const d = new Date(`${v}T00:00:00`);
-											setWeekStart(startOfWeekMonday(d));
+											setBaseDate(startOfDay(new Date(`${v}T00:00:00`)));
 										}}
 										className="rounded border border-blue-300 bg-white px-2 py-1"
 									/>
 									<button
 										type="button"
-										onClick={() => void loadRecordData(selectedPnum, weekStart)}
+										onClick={() => void loadRecordData(selectedPnum, weekStart, baseDate)}
 										disabled={!selectedPnum || loading}
 										className="px-3 py-1 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
 									>
@@ -797,6 +908,13 @@ return (
 									</button>
 									{loading && <span className="text-blue-900/70">불러오는 중...</span>}
 								</div>
+								<button
+									type="button"
+									onClick={handlePrintEmpty}
+									className="mr-2 px-4 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50"
+								>
+									빈 양식 출력
+								</button>
 								<button
 									type="button"
 									onClick={handlePrint}
@@ -809,7 +927,7 @@ return (
 							<div className="relative">
 							<div
 								className={`lt-longterm-sheet-wrap p-4 overflow-x-auto ${
-									!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+									!selectedMember && !printEmpty ? 'blur-sm select-none pointer-events-none opacity-70' : ''
 								}`}
 							>
 								<div className="lt-sheet lt-form max-w-[210mm] mx-auto bg-white">
@@ -824,26 +942,19 @@ return (
 											<tr>
 												<td className="lbl tight" style={{ width: '11%' }}>수급자 성명</td>
 												<td className="lt-left val-bold" style={{ width: '14%' }}>
-													{headerInfo.name || String(selectedMember?.P_NM ?? '').trim()}
+													{sheetName}
 												</td>
 												<td className="lbl tight" style={{ width: '11%' }}>생년월일</td>
 												<td className="lt-center val-bold" style={{ width: '14%' }}>
-													{headerInfo.birthDate ||
-														(selectedMember?.P_BRDT
-															? String(selectedMember.P_BRDT).substring(0, 10)
-															: '')}
+													{sheetBirthDate}
 												</td>
 												<td className="lbl tight" style={{ width: '11%' }}>장기요양등급</td>
 												<td className="lt-center val-bold" style={{ width: '10%' }}>
-													{headerInfo.gradeLabel ||
-														formatCareGradeLabel(selectedMember?.P_GRD, '')}
+													{sheetGradeLabel}
 												</td>
 												<td className="lbl tight" style={{ width: '13%' }}>장기요양인정번호</td>
 												<td className="lt-center val-bold" style={{ width: '16%' }}>
-													{headerInfo.certNo ||
-														String(
-															selectedMember?.P_CERTNO ?? selectedMember?.P_YYNO ?? ''
-														).trim()}
+													{sheetCertNo}
 												</td>
 											</tr>
 											<tr>
@@ -857,9 +968,7 @@ return (
 												</td>
 												<td className="lbl tight">침실</td>
 												<td className="lt-center val-bold">
-													{roomNo ||
-														headerInfo.roomNo ||
-														String(selectedMember?.P_ROOM ?? '').trim()}
+													{sheetRoomNo}
 												</td>
 											</tr>
 										</tbody>
@@ -877,42 +986,42 @@ return (
 													<div className="split-top">
 														<div className="split-left lt-left">
 															<span className="cb-group">
-																<span className={`cb ${status === '와상' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetStatus === '와상' ? 'checked' : ''}`} />
 																와상
 															</span>
 															<span className="cb-group">
-																<span className={`cb ${status === '준와상' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetStatus === '준와상' ? 'checked' : ''}`} />
 																준와상
 															</span>
 															<span className="cb-group">
-																<span className={`cb ${status === '자립' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetStatus === '자립' ? 'checked' : ''}`} />
 																자립
 															</span>
 														</div>
 														<div className="split-right lt-left">
 															<span className="cb-group">
-																<span className={`cb ${dementia ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDementia ? 'checked' : ''}`} />
 																치매
 															</span>
 															<span className="cb-group">
-																<span className={`cb ${stroke ? 'checked' : ''}`} />
+																<span className={`cb ${sheetStroke ? 'checked' : ''}`} />
 																중풍
 															</span>
 															<span className="cb-group">
-																<span className={`cb ${hypertension ? 'checked' : ''}`} />
+																<span className={`cb ${sheetHypertension ? 'checked' : ''}`} />
 																고혈압
 															</span>
 															<span className="cb-group">
-																<span className={`cb ${diabetes ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDiabetes ? 'checked' : ''}`} />
 																당뇨
 															</span>
 															<span className="cb-group">
-																<span className={`cb ${arthritis ? 'checked' : ''}`} />
+																<span className={`cb ${sheetArthritis ? 'checked' : ''}`} />
 																관절염
 															</span>
 															<span className="cb-group">
-																<span className={`cb ${otherDisease ? 'checked' : ''}`} />
-																기타({String(otherDiseaseText ?? '').trim()})
+																<span className={`cb ${sheetOtherDisease ? 'checked' : ''}`} />
+																기타({String(sheetOtherDiseaseText ?? '').trim()})
 															</span>
 														</div>
 													</div>
@@ -921,19 +1030,19 @@ return (
 											<tr>
 												<td className="lt-left" colSpan={2}>
 													<span className="cb-group">
-														<span className={`cb ${tracheostomy ? 'checked' : ''}`} />
+														<span className={`cb ${sheetTracheostomy ? 'checked' : ''}`} />
 														기관지절개관
 													</span>
 													<span className="cb-group">
-														<span className={`cb ${dentures ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDentures ? 'checked' : ''}`} />
 														틀니(부분/전체)
 													</span>
 													<span className="cb-group">
-														<span className={`cb ${nasogastricTube ? 'checked' : ''}`} />
+														<span className={`cb ${sheetNasogastricTube ? 'checked' : ''}`} />
 														비위관(鼻胃管, L-tube)
 													</span>
 													<span className="cb-group">
-														<span className={`cb ${urinaryCatheter ? 'checked' : ''}`} />
+														<span className={`cb ${sheetUrinaryCatheter ? 'checked' : ''}`} />
 														고정소변배출관(유치도뇨관)
 													</span>
 												</td>
@@ -941,19 +1050,19 @@ return (
 											<tr>
 												<td className="lt-left" colSpan={2}>
 													<span className="cb-group">
-														<span className={`cb ${cystostomy ? 'checked' : ''}`} />
+														<span className={`cb ${sheetCystostomy ? 'checked' : ''}`} />
 														방광루
 													</span>
 													<span className="cb-group">
-														<span className={`cb ${urostomy ? 'checked' : ''}`} />
+														<span className={`cb ${sheetUrostomy ? 'checked' : ''}`} />
 														요루(요도샛길)
 													</span>
 													<span className="cb-group">
-														<span className={`cb ${colostomy ? 'checked' : ''}`} />
+														<span className={`cb ${sheetColostomy ? 'checked' : ''}`} />
 														장루(창자샛길)
 													</span>
 													<span className="cb-group">
-														<span className={`cb ${diaper ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDiaper ? 'checked' : ''}`} />
 														기저귀
 													</span>
 												</td>
@@ -961,12 +1070,12 @@ return (
 											<tr>
 												<td className="lt-left" colSpan={2}>
 													<span className="cb-group">
-														<span className={`cb ${pressureSore ? 'checked' : ''}`} />
-														욕창(부위: {String(pressureSoreArea ?? '').trim()})
+														<span className={`cb ${sheetPressureSore ? 'checked' : ''}`} />
+														욕창(부위: {String(sheetPressureSoreArea ?? '').trim()})
 													</span>
 													<span className="cb-group">
-														<span className={`cb ${pressureSorePrevention ? 'checked' : ''}`} />
-														욕창방지 보조도구({String(pressureSorePreventionTool ?? '').trim()})
+														<span className={`cb ${sheetPressureSorePrevention ? 'checked' : ''}`} />
+														욕창방지 보조도구({String(sheetPressureSorePreventionTool ?? '').trim()})
 													</span>
 												</td>
 											</tr>
@@ -981,11 +1090,11 @@ return (
 													구분
 												</th>
 												<th className="lt-center lbl" colSpan={7}>
-													( {year} )년&nbsp;&nbsp;월/일
+													( {sheetYear} )년&nbsp;&nbsp;월/일
 												</th>
 											</tr>
 											<tr>
-												{weekDates.map((d, i) => (
+												{sheetWeekDates.map((d, i) => (
 													<th key={i} className="day hdr">
 														{d}
 													</th>
@@ -1000,9 +1109,9 @@ return (
 												<td className="sub" colSpan={2}>
 													세면, 구강, 머리감기, 몸단장, 옷 갈아입히기
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.grooming[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.grooming[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1011,23 +1120,23 @@ return (
 													목욕
 												</td>
 												<td className="sub">소요시간</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center tiny time-cell">
-														{dailyRecords.bathTime[i] ? `${dailyRecords.bathTime[i]} 분` : '분'}
+														{sheetDaily.bathTime[i] ? `${sheetDaily.bathTime[i]} 분` : '분'}
 													</td>
 												))}
 											</tr>
 											<tr>
 												<td className="sub">방법</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left">
 														<div className="optcol">
 															<div>
-																<span className={`cb ${dailyRecords.bathMethod[i] === '1' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.bathMethod[i] === '1' ? 'checked' : ''}`} />
 																전신입욕
 															</div>
 															<div>
-																<span className={`cb ${dailyRecords.bathMethod[i] === '2' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.bathMethod[i] === '2' ? 'checked' : ''}`} />
 																샤워식
 															</div>
 														</div>
@@ -1039,19 +1148,19 @@ return (
 													식사
 												</td>
 												<td className="sub">종류</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left">
 														<div className="optcol">
 															<div>
-																<span className={`cb ${dailyRecords.mealType[i] === '일반식' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.mealType[i] === '일반식' ? 'checked' : ''}`} />
 																일반식
 															</div>
 															<div>
-																<span className={`cb ${dailyRecords.mealType[i] === '죽' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.mealType[i] === '죽' ? 'checked' : ''}`} />
 																죽
 															</div>
 															<div>
-																<span className={`cb ${dailyRecords.mealType[i] === '유동식(미음)' || dailyRecords.mealType[i] === '유동식' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.mealType[i] === '유동식(미음)' || sheetDaily.mealType[i] === '유동식' ? 'checked' : ''}`} />
 																유동식(미음)
 															</div>
 														</div>
@@ -1060,19 +1169,19 @@ return (
 											</tr>
 											<tr>
 												<td className="sub">섭취량</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left">
 														<div className="optcol">
 															<div>
-																<span className={`cb ${dailyRecords.mealIntake[i] === '1' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.mealIntake[i] === '1' ? 'checked' : ''}`} />
 																1
 															</div>
 															<div>
-																<span className={`cb ${dailyRecords.mealIntake[i] === '1/2이상' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.mealIntake[i] === '1/2이상' ? 'checked' : ''}`} />
 																1/2이상
 															</div>
 															<div>
-																<span className={`cb ${dailyRecords.mealIntake[i] === '1/2미만' ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.mealIntake[i] === '1/2미만' ? 'checked' : ''}`} />
 																1/2미만
 															</div>
 														</div>
@@ -1083,9 +1192,9 @@ return (
 												<td className="sub" colSpan={2}>
 													체위변경 (2시간마다)
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.positionChange[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.positionChange[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1093,9 +1202,9 @@ return (
 												<td className="sub" colSpan={2}>
 													화장실이용하기 (기저귀 교환)
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center tiny time-cell">
-														{dailyRecords.toiletUsage[i] ? `${dailyRecords.toiletUsage[i]} 회` : '회'}
+														{sheetDaily.toiletUsage[i] ? `${sheetDaily.toiletUsage[i]} 회` : '회'}
 													</td>
 												))}
 											</tr>
@@ -1103,9 +1212,9 @@ return (
 												<td className="sub" colSpan={2}>
 													이동도움 및 신체 기능유지·증진
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.movementAssistance[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.movementAssistance[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1113,15 +1222,15 @@ return (
 												<td className="sub" colSpan={2}>
 													산책(외출)동행
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left">
 														<div className="optcol">
 															<div>
-																<span className={`cb ${dailyRecords.walk[i] ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.walk[i] ? 'checked' : ''}`} />
 																산책
 															</div>
 															<div>
-																<span className={`cb ${dailyRecords.outing[i] ? 'checked' : ''}`} />
+																<span className={`cb ${sheetDaily.outing[i] ? 'checked' : ''}`} />
 																외출
 															</div>
 														</div>
@@ -1132,9 +1241,9 @@ return (
 												<td className="sub" colSpan={2}>
 													특이사항
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left" style={{ minHeight: '18px' }}>
-														{dailyRecords.physicalActivityNotes[i] || ''}
+														{sheetDaily.physicalActivityNotes[i] || ''}
 													</td>
 												))}
 											</tr>
@@ -1142,9 +1251,9 @@ return (
 												<td className="sub" colSpan={2}>
 													작성자 성명
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="sig">
-														<span className="tiny">{dailyRecords.physicalActivityPreparer[i] || '\u00a0'}</span>
+														<span className="tiny">{sheetDaily.physicalActivityPreparer[i] || '\u00a0'}</span>
 														<br />
 														<span className="tiny">(싸인)</span>
 													</td>
@@ -1158,9 +1267,9 @@ return (
 												<td className="sub" colSpan={2}>
 													인지관리지원
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.cognitiveSupport[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.cognitiveSupport[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1168,9 +1277,9 @@ return (
 												<td className="sub" colSpan={2}>
 													의사소통도움 등 말벗, 격려
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.communicationSupport[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.communicationSupport[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1178,9 +1287,9 @@ return (
 												<td className="sub" colSpan={2}>
 													특이사항
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left">
-														{dailyRecords.cognitiveNotes[i] || ''}
+														{sheetDaily.cognitiveNotes[i] || ''}
 													</td>
 												))}
 											</tr>
@@ -1188,9 +1297,9 @@ return (
 												<td className="sub" colSpan={2}>
 													작성자 성명
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="sig">
-														<span className="tiny">{dailyRecords.cognitivePreparer[i] || '\u00a0'}</span>
+														<span className="tiny">{sheetDaily.cognitivePreparer[i] || '\u00a0'}</span>
 														<br />
 														<span className="tiny">(싸인)</span>
 													</td>
@@ -1204,7 +1313,7 @@ return (
 												<td className="sub" colSpan={2}>
 													혈압/체온
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center tiny">
 														{vitalDisplay(i)}
 													</td>
@@ -1214,10 +1323,10 @@ return (
 												<td className="sub" colSpan={2}>
 													건강관리( 분)
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center tiny time-cell">
-														<span className={`cb ${dailyRecords.healthManagement[i] ? 'checked' : ''}`} />
-														{dailyRecords.healthTime[i] ? ` ${dailyRecords.healthTime[i]}` : ''}
+														<span className={`cb ${sheetDaily.healthManagement[i] ? 'checked' : ''}`} />
+														{sheetDaily.healthTime[i] ? ` ${sheetDaily.healthTime[i]}` : ''}
 													</td>
 												))}
 											</tr>
@@ -1225,10 +1334,10 @@ return (
 												<td className="sub" colSpan={2}>
 													간호관리( 분)
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center tiny time-cell">
-														<span className={`cb ${dailyRecords.nursingManagement[i] ? 'checked' : ''}`} />
-														{dailyRecords.nursingTime[i] ? ` ${dailyRecords.nursingTime[i]}` : ''}
+														<span className={`cb ${sheetDaily.nursingManagement[i] ? 'checked' : ''}`} />
+														{sheetDaily.nursingTime[i] ? ` ${sheetDaily.nursingTime[i]}` : ''}
 													</td>
 												))}
 											</tr>
@@ -1236,9 +1345,9 @@ return (
 												<td className="sub" colSpan={2}>
 													기타(응급서비스)
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.emergencyService[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.emergencyService[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1246,9 +1355,9 @@ return (
 												<td className="sub" colSpan={2}>
 													특이사항
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left">
-														{dailyRecords.healthNotes[i] || ''}
+														{sheetDaily.healthNotes[i] || ''}
 													</td>
 												))}
 											</tr>
@@ -1256,9 +1365,9 @@ return (
 												<td className="sub" colSpan={2}>
 													작성자 성명
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="sig">
-														<span className="tiny">{dailyRecords.healthPreparer[i] || '\u00a0'}</span>
+														<span className="tiny">{sheetDaily.healthPreparer[i] || '\u00a0'}</span>
 														<br />
 														<span className="tiny">(싸인)</span>
 													</td>
@@ -1272,9 +1381,9 @@ return (
 												<td className="sub" colSpan={2}>
 													신체·인지기능 향상 프로그램
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.trainingProgram[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.trainingProgram[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1282,9 +1391,9 @@ return (
 												<td className="sub" colSpan={2}>
 													신체기능·기본동작, 일상생활동작훈련
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.physicalFunctionTraining[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.physicalFunctionTraining[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1292,9 +1401,9 @@ return (
 												<td className="sub" colSpan={2}>
 													인지기능 향상훈련
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.cognitiveTraining[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.cognitiveTraining[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1302,9 +1411,9 @@ return (
 												<td className="sub" colSpan={2}>
 													물리(작업)치료
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center">
-														<span className={`cb ${dailyRecords.physicalTherapy[i] ? 'checked' : ''}`} />
+														<span className={`cb ${sheetDaily.physicalTherapy[i] ? 'checked' : ''}`} />
 													</td>
 												))}
 											</tr>
@@ -1312,9 +1421,9 @@ return (
 												<td className="sub" colSpan={2}>
 													특이사항
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="tiny lt-left">
-														{dailyRecords.trainingNotes[i] || ''}
+														{sheetDaily.trainingNotes[i] || ''}
 													</td>
 												))}
 											</tr>
@@ -1322,9 +1431,9 @@ return (
 												<td className="sub" colSpan={2}>
 													작성자 성명
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="sig">
-														<span className="tiny">{dailyRecords.trainingPreparer[i] || '\u00a0'}</span>
+														<span className="tiny">{sheetDaily.trainingPreparer[i] || '\u00a0'}</span>
 														<br />
 														<span className="tiny">(싸인)</span>
 													</td>
@@ -1337,9 +1446,9 @@ return (
 													<br />
 													외박 및 복귀시간, 외출시간
 												</td>
-												{weekDates.map((_, i) => (
+												{sheetWeekDates.map((_, i) => (
 													<td key={i} className="lt-center tiny">
-														{dailyRecords.admissionDischargeTime[i] || ''}
+														{sheetDaily.admissionDischargeTime[i] || ''}
 													</td>
 												))}
 											</tr>
@@ -1349,7 +1458,7 @@ return (
 									<div className="lt-footer">210mm×297mm[백상지 80g/㎡]</div>
 								</div>
 							</div>
-							{!selectedMember && (
+							{!selectedMember && !printEmpty && (
 								<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px] lt-no-print">
 									<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
 										수급자를 선택해주세요
