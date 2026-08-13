@@ -214,8 +214,6 @@ export default function MonthlyLongtermSummary() {
 		'PH_MEAL_KIND_NM',
 		'PH_MEAL_VAL',
 		'PH_MEAL_VAL_NM',
-		'PH_MEAL_WT',
-		'PH_MEAL_WT_NM',
 		// 간호/건강
 		'NS_SBDP',
 		'NS_EBDP',
@@ -237,6 +235,31 @@ export default function MonthlyLongtermSummary() {
 	];
 
 	const isRowDirty = rowEditableKeys.some((k) => String(rowDraft?.[k] ?? '') !== String(rowOriginal?.[k] ?? ''));
+
+	const pickRowDraft = (base: any) => {
+		const picked: any = {};
+		rowEditableKeys.forEach((k) => {
+			picked[k] = base?.[k] ?? '';
+		});
+		if (picked.AB_CNT === '' || picked.AB_CNT == null) {
+			picked.AB_CNT = base?.OUT_DAYS ?? '';
+		}
+		if (picked.SV_CNT === '' || picked.SV_CNT == null) {
+			picked.SV_CNT = base?.PROVIDED_DAYS ?? '';
+		}
+		return picked;
+	};
+
+	const prevYyyymm = () => {
+		let y = Number(selectedYear);
+		let m = Number(selectedMonth);
+		m -= 1;
+		if (m < 1) {
+			m = 12;
+			y -= 1;
+		}
+		return `${y}${String(m).padStart(2, '0')}`;
+	};
 
 	const requestCloseDetailsModal = () => {
 		if ((detailsEditing && isDetailsDirty) || (rowEditing && isRowDirty)) {
@@ -262,13 +285,52 @@ export default function MonthlyLongtermSummary() {
 		setDetailsOriginal(cur);
 		setDetailsDraft(cur);
 
-		const base = { ...(detailsBaseRow ?? {}) };
-		const picked: any = {};
-		rowEditableKeys.forEach((k) => {
-			picked[k] = base[k] ?? '';
-		});
+		const picked = pickRowDraft(detailsBaseRow ?? {});
 		setRowOriginal(picked);
 		setRowDraft(picked);
+	};
+
+	const handleCopyPrevMonthOpinions = async () => {
+		if (!selectedPnum) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		try {
+			const res = await fetch(
+				`/api/f14091?yyyymm=${encodeURIComponent(prevYyyymm())}&pnum=${encodeURIComponent(selectedPnum)}`
+			);
+			const json = await res.json().catch(() => ({}));
+			if (!json?.success || !json.data) {
+				alert('전월 소견이 없습니다.');
+				return;
+			}
+			const prev = {
+				PH_VIEW: String(json.data.PH_VIEW ?? '').trim(),
+				NS_VIEW: String(json.data.NS_VIEW ?? '').trim(),
+				FN_VIEW: String(json.data.FN_VIEW ?? '').trim(),
+				RG_VIEW: String(json.data.RG_VIEW ?? '').trim()
+			};
+			if (!prev.PH_VIEW && !prev.NS_VIEW && !prev.FN_VIEW && !prev.RG_VIEW) {
+				alert('전월 소견이 없습니다.');
+				return;
+			}
+
+			const next = { ...detailsDraft };
+			let filled = 0;
+			(['PH_VIEW', 'NS_VIEW', 'FN_VIEW', 'RG_VIEW'] as const).forEach((k) => {
+				if (!String(next[k] ?? '').trim() && prev[k]) {
+					next[k] = prev[k];
+					filled += 1;
+				}
+			});
+			setDetailsDraft(next);
+			if (filled === 0) {
+				alert('이미 입력된 소견이 있어 전월 내용을 덮어쓰지 않았습니다.');
+			}
+		} catch (e) {
+			console.error('전월 소견 조회 오류:', e);
+			alert('전월 소견을 불러오는 중 오류가 발생했습니다.');
+		}
 	};
 
 	const handleCancelEdit = () => {
@@ -483,7 +545,7 @@ export default function MonthlyLongtermSummary() {
 			<td>${escapeHtml(r.P_NO ?? '')}</td>
 			<th class="headLabel">급여제공기간</th>
 			<td>${escapeHtml(`${fmtDate10(periodStart)} ${fmtDate10(periodEnd)}`)}</td>
-			<th class="headLabel">서비스<br/>일일수</th>
+			<th class="headLabel">서비스<br/>일수</th>
 			<td class="center">${escapeHtml(svCnt)}</td>
 		</tr>
 		<tr>
@@ -874,11 +936,7 @@ export default function MonthlyLongtermSummary() {
 				setDetailsData(null);
 			}
 
-			const base = { ...(baseRowOverride ?? fallbackRow ?? {}) };
-			const picked: any = {};
-			rowEditableKeys.forEach((k) => {
-				picked[k] = base[k] ?? '';
-			});
+			const picked = pickRowDraft(baseRowOverride ?? fallbackRow ?? {});
 			setRowOriginal(picked);
 			setRowDraft(picked);
 		} catch (e) {
@@ -1192,6 +1250,13 @@ export default function MonthlyLongtermSummary() {
 										<button
 											disabled={detailsSaving}
 											className="px-4 py-1 text-sm text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:opacity-60"
+											onClick={handleCopyPrevMonthOpinions}
+										>
+											전월 소견 불러오기
+										</button>
+										<button
+											disabled={detailsSaving}
+											className="px-4 py-1 text-sm text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:opacity-60"
 											onClick={handleSaveDetails}
 										>
 											저장
@@ -1227,10 +1292,13 @@ export default function MonthlyLongtermSummary() {
 							) : (
 								<>
 									{(() => {
-										const r = (rowEditing ? rowDraft : detailsBaseRow) ?? {};
-										const rr = r as any;
-										const yyNo = (r as any).P_YYNO || '';
-										const yyEnd = (r as any).P_YYEDT || '';
+										const r = {
+											...(detailsBaseRow ?? {}),
+											...(rowEditing ? rowDraft : {})
+										} as any;
+										const rr = r;
+										const yyNo = r.P_YYNO || '';
+										const yyEnd = r.P_YYEDT || '';
 										const roomNo = (rr as any).ROOM_NO || '';
 										const meals = {
 											breakfastGood: (rr as any).MOST_BT_CNT ?? '',
@@ -1300,50 +1368,41 @@ export default function MonthlyLongtermSummary() {
 
 												{/* 식사 집계 */}
 												<div className="border-t border-blue-200 p-2 bg-blue-50/20">
-													<div className="grid grid-cols-12 gap-1 text-sm">
-														{/* 아침 */}
-														<div className="col-span-4 grid grid-cols-12 gap-1 items-center">
-															<div className="col-span-4 bg-blue-100 border border-blue-300 px-2 py-1 text-blue-900">아침식사</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">양호</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.breakfastGood}</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">이상</div>
-															<div className="hidden"></div>
-															<div className="hidden"></div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.breakfastBad}</div>
-														</div>
-														{/* 점심 */}
-														<div className="col-span-4 grid grid-cols-12 gap-1 items-center">
-															<div className="col-span-4 bg-blue-100 border border-blue-300 px-2 py-1 text-blue-900">점심식사</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">양호</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.lunchGood}</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">이상</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.lunchBad}</div>
-														</div>
-														{/* 저녁 */}
-														<div className="col-span-4 grid grid-cols-12 gap-1 items-center">
-															<div className="col-span-4 bg-blue-100 border border-blue-300 px-2 py-1 text-blue-900">저녁식사</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">양호</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.dinnerGood}</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">이상</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.dinnerBad}</div>
-														</div>
-
-														{/* 오전간식 */}
-														<div className="col-span-4 grid grid-cols-12 gap-1 items-center">
-															<div className="col-span-4 bg-blue-100 border border-blue-300 px-2 py-1 text-blue-900">오전간식</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">양호</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.mSnackGood}</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">이상</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.mSnackBad}</div>
-														</div>
-														{/* 오후간식 */}
-														<div className="col-span-4 grid grid-cols-12 gap-1 items-center">
-															<div className="col-span-4 bg-blue-100 border border-blue-300 px-2 py-1 text-blue-900">오후간식</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">양호</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.aSnackGood}</div>
-															<div className="col-span-3 bg-blue-100 border border-blue-300 px-2 py-1 text-center text-blue-900">이상</div>
-															<div className="col-span-2 border border-blue-300 px-2 py-1 bg-white text-center">{meals.aSnackBad}</div>
-														</div>
+													<div className="mb-1 text-sm font-semibold text-blue-900">식사 현황</div>
+													<div className="grid grid-cols-1 gap-1 sm:grid-cols-3">
+														{(() => {
+															const fmtCnt = (v: any) => {
+																if (v == null || v === '') return '';
+																const n = Number(v);
+																if (!Number.isFinite(n)) return '';
+																return `${n}회`;
+															};
+															return [
+															{ label: '아침식사', good: meals.breakfastGood, bad: meals.breakfastBad },
+															{ label: '점심식사', good: meals.lunchGood, bad: meals.lunchBad },
+															{ label: '저녁식사', good: meals.dinnerGood, bad: meals.dinnerBad },
+															{ label: '오전간식', good: meals.mSnackGood, bad: meals.mSnackBad },
+															{ label: '오후간식', good: meals.aSnackGood, bad: meals.aSnackBad }
+														].map((item) => (
+															<div key={item.label} className="flex items-stretch text-sm min-w-0">
+																<div className="w-[72px] shrink-0 bg-blue-100 border border-blue-300 px-2 py-1 text-blue-900 flex items-center">
+																	{item.label}
+																</div>
+																<div className="w-10 shrink-0 bg-blue-50 border-y border-r border-blue-300 px-1 py-1 text-xs text-center text-blue-800 flex items-center justify-center">
+																	양호
+																</div>
+																<div className="min-w-[2.5rem] flex-1 border-y border-r border-blue-300 px-1 py-1 bg-white text-center flex items-center justify-center">
+																	{fmtCnt(item.good)}
+																</div>
+																<div className="w-10 shrink-0 bg-blue-50 border-y border-r border-blue-300 px-1 py-1 text-xs text-center text-blue-800 flex items-center justify-center">
+																	이상
+																</div>
+																<div className="min-w-[2.5rem] flex-1 border-y border-r border-blue-300 px-1 py-1 bg-white text-center flex items-center justify-center">
+																	{fmtCnt(item.bad)}
+																</div>
+															</div>
+														));
+														})()}
 													</div>
 												</div>
 
@@ -1466,12 +1525,12 @@ export default function MonthlyLongtermSummary() {
 															<div className="col-span-10 border border-blue-300 px-2 py-1 text-sm bg-white">
 																{rowEditing ? (
 																	<input
-																		value={(r as any).PH_MEAL_WT ?? (r as any).PH_MEAL_WT_NM ?? ''}
-																		onChange={(e) => setRowValue('PH_MEAL_WT', e.target.value)}
+																		value={(r as any).PH_MEAL_VAL_NM ?? (r as any).PH_MEAL_VAL ?? ''}
+																		onChange={(e) => setRowValue('PH_MEAL_VAL_NM', e.target.value)}
 																		className="w-full outline-none"
 																	/>
 																) : (
-																	(r as any).PH_MEAL_WT ?? (r as any).PH_MEAL_WT_NM ?? ''
+																	(r as any).PH_MEAL_VAL_NM ?? (r as any).PH_MEAL_VAL ?? ''
 																)}
 															</div>
 														</div>

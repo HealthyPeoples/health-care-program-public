@@ -4,26 +4,26 @@
  * @file 보호자회의 — 화면 컴포넌트 (GuardianMeeting.tsx)
  *
  * @description
- * 요양원 보호자회의 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/guardian-meeting
+ * 요양원 보호자회의(F60040) 화면. 목록·상세 입력, 사진 첨부, 출력.
  *
  * @module component/nursing-home/pages/guardian-meeting/GuardianMeeting
  */
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 interface GuardianMeetingData {
 	ANCD: string | number;
-	MDT: string; // 간담일자 (PK)
-	STM?: string; // 시작시간
-	ETM?: string; // 종료시간
-	MPL?: string; // 장소
-	MDOC?: string; // 간담주제
-	MDES?: string; // 간담결과/내용(테이블 정의에 맞춰 저장)
-	MNM?: string; // 참석자
-	MCNT?: string | number; // 참석자수
-	MIMG?: string; // 사진1
-	MODT?: string; // 반영일자
-	MODES?: string; // 반영내용
-	ETC?: string; // 비고
+	MDT: string;
+	STM?: string;
+	ETM?: string;
+	MPL?: string;
+	MDOC?: string;
+	MDES?: string;
+	MNM?: string;
+	MCNT?: string | number;
+	MIMG?: string;
+	MODT?: string;
+	MODES?: string;
+	ETC?: string;
 	URDT?: string;
 	INEMPNO?: string | number;
 	INEMPNM?: string;
@@ -38,52 +38,194 @@ type UserInfo = {
 	[key: string]: any;
 };
 
-export default function GuardianMeeting() {
-	const formatDateYmd = (dateStr: string) => {
-		if (!dateStr) return '';
-		const s = String(dateStr).trim();
-		if (!s) return '';
+type MeetingForm = {
+	meetingDate: string;
+	meetingStartTime: string;
+	meetingEndTime: string;
+	meetingLocation: string;
+	meetingSubject: string;
+	meetingContent: string;
+	attendeeCount: string;
+	attendeeList: string;
+	meetingResult: string;
+	remarks: string;
+	photoMimg: string;
+};
 
-		if (s.includes('T') && s.length >= 10) return s.split('T')[0];
-		if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-		if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+type MeetingPhoto = { blobName: string };
 
-		const d = new Date(s);
-		if (!Number.isNaN(d.getTime())) {
-			const y = d.getFullYear();
-			const m = String(d.getMonth() + 1).padStart(2, '0');
-			const day = String(d.getDate()).padStart(2, '0');
-			return `${y}-${m}-${day}`;
-		}
+const MAX_PHOTOS = 3;
+const MIMG_MAX_LEN = 100;
 
-		return s.length >= 10 ? s.slice(0, 10) : s;
+const emptyForm = (): MeetingForm => ({
+	meetingDate: '',
+	meetingStartTime: '',
+	meetingEndTime: '',
+	meetingLocation: '',
+	meetingSubject: '',
+	meetingContent: '',
+	attendeeCount: '',
+	attendeeList: '',
+	meetingResult: '',
+	remarks: '',
+	photoMimg: '',
+});
+
+function formatDateYmd(dateStr: string | Date | null | undefined) {
+	if (!dateStr) return '';
+	if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
+		const y = dateStr.getFullYear();
+		const m = String(dateStr.getMonth() + 1).padStart(2, '0');
+		const day = String(dateStr.getDate()).padStart(2, '0');
+		return `${y}-${m}-${day}`;
+	}
+	const s = String(dateStr).trim();
+	if (!s) return '';
+	if (s.includes('T') && s.length >= 10) return s.split('T')[0];
+	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+	const d = new Date(s);
+	if (!Number.isNaN(d.getTime())) {
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${y}-${m}-${day}`;
+	}
+	return s.length >= 10 ? s.slice(0, 10) : s;
+}
+
+function todayYmdLocal(base = new Date()) {
+	return formatDateYmd(base);
+}
+
+function toHm(v: string | null | undefined) {
+	if (v == null || v === '') return '';
+	const s = String(v).trim();
+	const m = s.match(/^(\d{1,2}):(\d{2})/);
+	if (!m) return s.slice(0, 5);
+	return `${m[1].padStart(2, '0')}:${m[2]}`;
+}
+
+/** 참석인원: 빈 값 허용, 1 이상 정수만. 거부 시 null */
+function sanitizeAttendeeCountInput(raw: string): string | null {
+	const s = String(raw ?? '').trim();
+	if (s === '') return '';
+	if (!/^\d+$/.test(s)) return null;
+	const n = Number(s);
+	if (!Number.isFinite(n) || n < 1) return null;
+	return String(Math.trunc(n));
+}
+
+function parseMimgPhotos(mimg: string | null | undefined): MeetingPhoto[] {
+	const s = String(mimg ?? '').trim();
+	if (!s) return [];
+	const fromToken = (raw: string): MeetingPhoto | null => {
+		const t = String(raw || '').trim();
+		if (!t) return null;
+		const q = t.match(/blobName=([^&]+)/i);
+		const blobName = q ? decodeURIComponent(q[1]) : t;
+		return blobName ? { blobName } : null;
 	};
+	if (s.startsWith('[')) {
+		try {
+			const parsed = JSON.parse(s);
+			if (Array.isArray(parsed)) {
+				return parsed
+					.map((p: unknown) => {
+						if (typeof p === 'string') return fromToken(p);
+						if (p && typeof p === 'object') {
+							return fromToken(String((p as { blobName?: unknown }).blobName ?? ''));
+						}
+						return null;
+					})
+					.filter((p): p is MeetingPhoto => Boolean(p?.blobName))
+					.slice(0, MAX_PHOTOS);
+			}
+		} catch {
+			/* fall through */
+		}
+	}
+	return s
+		.split(',')
+		.map(fromToken)
+		.filter((p): p is MeetingPhoto => Boolean(p?.blobName))
+		.slice(0, MAX_PHOTOS);
+}
 
+function serializeMimgPhotos(photos: MeetingPhoto[]): string {
+	const names: string[] = [];
+	for (const p of photos) {
+		const blobName = String(p?.blobName || '').trim();
+		if (!blobName) continue;
+		const next = [...names, blobName].join(',');
+		if (next.length > MIMG_MAX_LEN) break;
+		names.push(blobName);
+		if (names.length >= MAX_PHOTOS) break;
+	}
+	return names.join(',');
+}
+
+function photoViewUrl(blobName: string) {
+	return `/api/f60040/photos?blobName=${encodeURIComponent(blobName)}`;
+}
+
+function escapeHtml(s: string) {
+	return String(s ?? '')
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}
+
+async function fetchPhotoAsDataUrl(blobName: string): Promise<string | null> {
+	try {
+		const res = await fetch(photoViewUrl(blobName), { credentials: 'include', cache: 'no-store' });
+		if (!res.ok) return null;
+		const blob = await res.blob();
+		return await new Promise<string | null>((resolve) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+			reader.onerror = () => resolve(null);
+			reader.readAsDataURL(blob);
+		});
+	} catch {
+		return null;
+	}
+}
+
+function mapRowToForm(meeting: GuardianMeetingData): MeetingForm {
+	return {
+		meetingDate: formatDateYmd(meeting.MDT || ''),
+		meetingStartTime: toHm(meeting.STM),
+		meetingEndTime: toHm(meeting.ETM),
+		meetingLocation: meeting.MPL || '',
+		meetingSubject: meeting.MDOC || '',
+		meetingContent: meeting.MDES || '',
+		attendeeCount: meeting.MCNT == null || meeting.MCNT === '' ? '' : String(meeting.MCNT),
+		attendeeList: meeting.MNM || '',
+		meetingResult: meeting.MODES || '',
+		remarks: meeting.ETC || '',
+		photoMimg: String(meeting.MIMG || '').trim(),
+	};
+}
+
+export default function GuardianMeeting() {
 	const [meetingList, setMeetingList] = useState<GuardianMeetingData[]>([]);
 	const [selectedMeeting, setSelectedMeeting] = useState<GuardianMeetingData | null>(null);
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [loading, setLoading] = useState(false);
+	const [photoUploading, setPhotoUploading] = useState(false);
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 10;
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 	const [hasProgramAccess, setHasProgramAccess] = useState<boolean>(true);
+	const photoInputRef = useRef<HTMLInputElement | null>(null);
 
-	// 기간 필터
 	const [startDate, setStartDate] = useState<string>('');
 	const [endDate, setEndDate] = useState<string>('');
+	const [formData, setFormData] = useState<MeetingForm>(emptyForm);
 
-	// 폼 데이터
-	const [formData, setFormData] = useState({
-		meetingDate: '', // 간담회일자
-		meetingStartTime: '', // 간담회시작시간
-		meetingEndTime: '', // 간담회종료시간
-		meetingLocation: '', // 간담회장소
-		meetingSubject: '', // 간담회주제
-		meetingContent: '', // 간담회내용
-		attendeeCount: '', // 참석인원
-		attendeeList: '', // 참석자명단
-		meetingResult: '' // 간담회결과
-	});
+	const attachedPhotos = useMemo(() => parseMimgPhotos(formData.photoMimg), [formData.photoMimg]);
 
 	const fetchUserAndPermission = async () => {
 		try {
@@ -114,12 +256,7 @@ export default function GuardianMeeting() {
 				setHasProgramAccess(true);
 				return;
 			}
-
-			// F00131이 "사용 가능 목록"인 경우가 많아, 레코드가 없으면 기본 허용
-			if (typeof perm.allowed === 'boolean') {
-				setHasProgramAccess(perm.allowed === false ? false : true);
-				return;
-			}
+			// F00131은 사용 가능 프로그램 매핑이라, 레코드가 없어도 기본 허용
 			setHasProgramAccess(true);
 		} catch (e) {
 			console.error('사용자/권한 조회 오류:', e);
@@ -127,47 +264,48 @@ export default function GuardianMeeting() {
 		}
 	};
 
-	// 간담회 목록 조회
-	const fetchMeetings = async () => {
+	const fetchMeetings = async (range?: { start?: string; end?: string }): Promise<GuardianMeetingData[]> => {
 		setLoading(true);
 		try {
 			const ancd = userInfo?.ancd;
 			if (!ancd) {
 				setMeetingList([]);
-				return;
+				return [];
 			}
+			const start = range?.start ?? startDate;
+			const end = range?.end ?? endDate;
 			const url = `/api/f60040?ancd=${encodeURIComponent(String(ancd))}&startDate=${encodeURIComponent(
-				startDate
-			)}&endDate=${encodeURIComponent(endDate)}`;
+				start
+			)}&endDate=${encodeURIComponent(end)}`;
 			const response = await fetch(url, { method: 'GET' });
 			const result = await response.json().catch(() => ({}));
 			if (!response.ok || !result?.success) {
 				throw new Error(result?.error || '간담회 목록 조회 실패');
 			}
 			const list = Array.isArray(result.data) ? result.data : [];
-			setMeetingList(
-				list.map((r: any) => ({
-					...r,
-					MDT: formatDateYmd(r?.MDT),
-					MODT: formatDateYmd(r?.MODT),
-					URDT: formatDateYmd(r?.URDT),
-				}))
-			);
+			const mapped: GuardianMeetingData[] = list.map((r: any) => ({
+				...r,
+				MDT: formatDateYmd(r?.MDT),
+				MODT: formatDateYmd(r?.MODT),
+				URDT: formatDateYmd(r?.URDT),
+			}));
+			setMeetingList(mapped);
+			return mapped;
 		} catch (err) {
 			console.error('간담회 목록 조회 오류:', err);
 			setMeetingList([]);
+			return [];
 		} finally {
 			setLoading(false);
 		}
 	};
 
 	useEffect(() => {
-		// 최초 진입 시: 오늘 기준 최근 1년
 		const today = new Date();
-		const end = formatDateYmd(today.toISOString());
+		const end = todayYmdLocal(today);
 		const oneYearAgo = new Date(today);
 		oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-		const start = formatDateYmd(oneYearAgo.toISOString());
+		const start = todayYmdLocal(oneYearAgo);
 		setStartDate(start);
 		setEndDate(end);
 
@@ -182,7 +320,6 @@ export default function GuardianMeeting() {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [startDate, endDate, userInfo?.ancd]);
 
-	// 페이지네이션 계산
 	const totalPages = Math.ceil(meetingList.length / itemsPerPage);
 	const startIndex = (currentPage - 1) * itemsPerPage;
 	const endIndex = startIndex + itemsPerPage;
@@ -192,36 +329,47 @@ export default function GuardianMeeting() {
 		setCurrentPage(page);
 	};
 
-	// 간담회 선택
 	const handleSelectMeeting = (meeting: GuardianMeetingData) => {
+		if (isEditMode) return;
 		setSelectedMeeting(meeting);
 		setIsEditMode(false);
-		setFormData({
-			meetingDate: formatDateYmd(meeting.MDT || ''),
-			meetingStartTime: meeting.STM || '',
-			meetingEndTime: meeting.ETM || '',
-			meetingLocation: meeting.MPL || '',
-			meetingSubject: meeting.MDOC || '',
-			// 테이블에 "간담결과내용(MDES)"만 명시되어 있어, 화면의 "내용"과 "결과"를 합쳐 저장/표시
-			meetingContent: meeting.MDES || '',
-			attendeeCount: String(meeting.MCNT ?? ''),
-			attendeeList: meeting.MNM || '',
-			meetingResult: meeting.MODES || ''
-		});
+		setFormData(mapRowToForm(meeting));
 	};
 
-	// 폼 데이터 변경
-	const handleFormChange = (field: string, value: string) => {
-		setFormData(prev => ({ ...prev, [field]: value }));
+	const handleFormChange = (field: keyof MeetingForm, value: string) => {
+		if (field === 'attendeeCount') {
+			const next = sanitizeAttendeeCountInput(value);
+			if (next === null) return;
+			setFormData((prev) => ({ ...prev, attendeeCount: next }));
+			return;
+		}
+		setFormData((prev) => ({ ...prev, [field]: value }));
 	};
 
-	// 검색
+	const deleteBlobQuietly = async (blobName: string) => {
+		try {
+			await fetch('/api/f60040/photos', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
+				body: JSON.stringify({ blobName }),
+			});
+		} catch {
+			/* ignore */
+		}
+	};
+
+	const discardUnsavedPhotos = async (currentMimg: string, originalMimg?: string) => {
+		const current = parseMimgPhotos(currentMimg);
+		const original = new Set(parseMimgPhotos(originalMimg).map((p) => p.blobName));
+		await Promise.all(current.filter((p) => !original.has(p.blobName)).map((p) => deleteBlobQuietly(p.blobName)));
+	};
+
 	const handleSearch = () => {
 		setCurrentPage(1);
 		fetchMeetings();
 	};
 
-	// 추가
 	const handleAdd = () => {
 		if (!hasProgramAccess) {
 			alert('프로그램 사용 권한이 없습니다.');
@@ -230,19 +378,11 @@ export default function GuardianMeeting() {
 		setSelectedMeeting(null);
 		setIsEditMode(true);
 		setFormData({
-			meetingDate: '',
-			meetingStartTime: '',
-			meetingEndTime: '',
-			meetingLocation: '',
-			meetingSubject: '',
-			meetingContent: '',
-			attendeeCount: '',
-			attendeeList: '',
-			meetingResult: ''
+			...emptyForm(),
+			meetingDate: todayYmdLocal(),
 		});
 	};
 
-	// 수정
 	const handleModify = () => {
 		if (!hasProgramAccess) {
 			alert('프로그램 사용 권한이 없습니다.');
@@ -255,15 +395,98 @@ export default function GuardianMeeting() {
 		setIsEditMode(true);
 	};
 
-	// 저장
+	const handleCancelEdit = async () => {
+		await discardUnsavedPhotos(formData.photoMimg, selectedMeeting?.MIMG);
+		setIsEditMode(false);
+		if (selectedMeeting) {
+			setFormData(mapRowToForm(selectedMeeting));
+		} else {
+			setFormData(emptyForm());
+		}
+	};
+
+	const handleUploadPhotos = async (files: FileList | null) => {
+		if (!isEditMode) {
+			alert('수정 또는 추가 후 사진을 첨부할 수 있습니다.');
+			return;
+		}
+		if (!files || files.length === 0) return;
+		const remain = MAX_PHOTOS - attachedPhotos.length;
+		if (remain <= 0) {
+			alert(`사진은 최대 ${MAX_PHOTOS}장까지 첨부할 수 있습니다.`);
+			return;
+		}
+		const picked = Array.from(files).slice(0, remain);
+		setPhotoUploading(true);
+		try {
+			const next = [...attachedPhotos];
+			for (const file of picked) {
+				const fd = new FormData();
+				fd.append('file', file);
+				const res = await fetch('/api/f60040/photos', {
+					method: 'POST',
+					body: fd,
+					credentials: 'include',
+				});
+				const json = await res.json().catch(() => ({}));
+				if (!res.ok || !json?.success || !json?.photo?.blobName) {
+					throw new Error(json?.error || `${file.name} 업로드에 실패했습니다.`);
+				}
+				const blobName = String(json.photo.blobName);
+				const candidate = [...next, { blobName }];
+				const trial = serializeMimgPhotos(candidate);
+				if (parseMimgPhotos(trial).length < candidate.length) {
+					await deleteBlobQuietly(blobName);
+					alert(`사진 경로가 저장 길이(${MIMG_MAX_LEN}자)를 초과해 더 이상 첨부할 수 없습니다.`);
+					break;
+				}
+				next.push({ blobName });
+			}
+			setFormData((p) => ({ ...p, photoMimg: serializeMimgPhotos(next) }));
+			if (files.length > remain) {
+				alert(`사진은 최대 ${MAX_PHOTOS}장까지 첨부됩니다. 초과분은 제외되었습니다.`);
+			}
+		} catch (e) {
+			alert(e instanceof Error ? e.message : '사진 업로드 중 오류가 발생했습니다.');
+		} finally {
+			setPhotoUploading(false);
+			if (photoInputRef.current) photoInputRef.current.value = '';
+		}
+	};
+
+	const handleRemovePhoto = (blobName: string) => {
+		if (!isEditMode) return;
+		const next = attachedPhotos.filter((p) => p.blobName !== blobName);
+		setFormData((p) => ({ ...p, photoMimg: serializeMimgPhotos(next) }));
+	};
+
 	const handleSave = async () => {
 		if (!hasProgramAccess) {
 			alert('프로그램 사용 권한이 없습니다.');
 			return;
 		}
-		if (!formData.meetingDate) {
+
+		const newMdt = formatDateYmd(formData.meetingDate);
+		if (!newMdt) {
 			alert('간담회일자를 입력해주세요.');
 			return;
+		}
+
+		const isNew = !selectedMeeting;
+		if (isNew) {
+			const duplicated = meetingList.some((m) => formatDateYmd(m.MDT) === newMdt);
+			if (duplicated) {
+				alert('해당 일자에 이미 간담회가 있습니다. 다른 날짜를 선택하거나 기존 자료를 수정해 주세요.');
+				return;
+			}
+		}
+
+		if (formData.attendeeCount !== '') {
+			const cnt = Number(formData.attendeeCount);
+			if (!Number.isInteger(cnt) || cnt < 1) {
+				alert('참석인원은 1명 이상만 입력할 수 있습니다.');
+				return;
+			}
 		}
 
 		setLoading(true);
@@ -271,21 +494,22 @@ export default function GuardianMeeting() {
 			const ancd = userInfo?.ancd;
 			if (!ancd) throw new Error('기관정보(ANCD)를 확인할 수 없습니다.');
 
-			const payload: any = {
+			const origMdt = selectedMeeting?.MDT ? formatDateYmd(selectedMeeting.MDT) : newMdt;
+			const payload: Record<string, unknown> = {
 				ANCD: ancd,
-				MDT: formatDateYmd(formData.meetingDate),
-				STM: formData.meetingStartTime || null,
-				ETM: formData.meetingEndTime || null,
+				MDT: newMdt,
+				origMDT: origMdt,
+				isNew,
+				STM: toHm(formData.meetingStartTime) || null,
+				ETM: toHm(formData.meetingEndTime) || null,
 				MPL: formData.meetingLocation || null,
 				MDOC: formData.meetingSubject || null,
-				// 화면의 "내용"은 MDES로 저장
 				MDES: formData.meetingContent || null,
-				// 참석자명단은 MNM, 참석자수는 MCNT
 				MNM: formData.attendeeList || null,
-				MCNT: formData.attendeeCount || null,
-				// 화면의 "결과"는 MODES로 저장(테이블에 MODES가 존재)
-				MODT: null,
+				MCNT: formData.attendeeCount === '' ? null : Number(formData.attendeeCount),
+				MIMG: formData.photoMimg || null,
 				MODES: formData.meetingResult || null,
+				ETC: formData.remarks || null,
 				INEMPNO: userInfo?.empno != null ? String(userInfo.empno) : null,
 				INEMPNM: userInfo?.empnm != null ? String(userInfo.empnm) : null,
 			};
@@ -300,18 +524,35 @@ export default function GuardianMeeting() {
 				throw new Error(result?.error || '간담회 저장에 실패했습니다.');
 			}
 
-			alert(selectedMeeting ? '간담회가 수정되었습니다.' : '간담회가 생성되었습니다.');
+			const savedMimg = serializeMimgPhotos(attachedPhotos);
+			const kept = new Set(parseMimgPhotos(savedMimg).map((p) => p.blobName));
+			const previous = parseMimgPhotos(selectedMeeting?.MIMG);
+			await Promise.all(previous.filter((p) => !kept.has(p.blobName)).map((p) => deleteBlobQuietly(p.blobName)));
+
+			alert(isNew ? '간담회가 생성되었습니다.' : '간담회가 수정되었습니다.');
 			setIsEditMode(false);
-			await fetchMeetings();
+
+			let nextStart = startDate;
+			let nextEnd = endDate;
+			if (newMdt && (!nextStart || newMdt < nextStart)) nextStart = newMdt;
+			if (newMdt && (!nextEnd || newMdt > nextEnd)) nextEnd = newMdt;
+			if (nextStart !== startDate) setStartDate(nextStart);
+			if (nextEnd !== endDate) setEndDate(nextEnd);
+
+			const refreshed = await fetchMeetings({ start: nextStart, end: nextEnd });
+			const saved = refreshed.find((m) => formatDateYmd(m.MDT) === newMdt);
+			if (saved) {
+				setSelectedMeeting(saved);
+				setFormData(mapRowToForm(saved));
+			}
 		} catch (err) {
 			console.error('간담회 저장 오류:', err);
-			alert('간담회 저장 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '간담회 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// 삭제
 	const handleDelete = async () => {
 		if (!hasProgramAccess) {
 			alert('프로그램 사용 권한이 없습니다.');
@@ -342,29 +583,20 @@ export default function GuardianMeeting() {
 				throw new Error(result?.error || '간담회 삭제에 실패했습니다.');
 			}
 
+			await Promise.all(parseMimgPhotos(selectedMeeting.MIMG).map((p) => deleteBlobQuietly(p.blobName)));
+
 			alert('간담회가 삭제되었습니다.');
 			setSelectedMeeting(null);
-			setFormData({
-				meetingDate: '',
-				meetingStartTime: '',
-				meetingEndTime: '',
-				meetingLocation: '',
-				meetingSubject: '',
-				meetingContent: '',
-				attendeeCount: '',
-				attendeeList: '',
-				meetingResult: ''
-			});
+			setFormData(emptyForm());
 			await fetchMeetings();
 		} catch (err) {
 			console.error('간담회 삭제 오류:', err);
-			alert('간담회 삭제 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '간담회 삭제 중 오류가 발생했습니다.');
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// 결과등록
 	const handleRegisterResult = async () => {
 		if (!hasProgramAccess) {
 			alert('프로그램 사용 권한이 없습니다.');
@@ -387,9 +619,10 @@ export default function GuardianMeeting() {
 			const mdt = formatDateYmd(selectedMeeting.MDT);
 			if (!mdt) throw new Error('간담회일자(MDT)를 확인할 수 없습니다.');
 
-			const payload: any = {
+			const payload = {
 				ANCD: ancd,
 				MDT: mdt,
+				origMDT: mdt,
 				MODES: formData.meetingResult || null,
 				INEMPNO: userInfo?.empno != null ? String(userInfo.empno) : null,
 				INEMPNM: userInfo?.empnm != null ? String(userInfo.empnm) : null,
@@ -406,18 +639,22 @@ export default function GuardianMeeting() {
 			}
 
 			alert('간담회결과가 등록되었습니다.');
-			await fetchMeetings();
+			const refreshed = await fetchMeetings();
+			const saved = refreshed.find((m) => formatDateYmd(m.MDT) === mdt);
+			if (saved) {
+				setSelectedMeeting(saved);
+				setFormData(mapRowToForm(saved));
+			}
 		} catch (err) {
 			console.error('간담회결과 등록 오류:', err);
-			alert('간담회결과 등록 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '간담회결과 등록 중 오류가 발생했습니다.');
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// 출력
 	const handlePrint = async () => {
-		if (!selectedMeeting) {
+		if (!selectedMeeting && !formData.meetingDate) {
 			alert('출력할 간담회를 선택해주세요.');
 			return;
 		}
@@ -428,6 +665,22 @@ export default function GuardianMeeting() {
 			return;
 		}
 
+		const printPhotos: { src: string }[] = [];
+		for (const p of attachedPhotos) {
+			const dataUrl = await fetchPhotoAsDataUrl(p.blobName);
+			if (dataUrl) printPhotos.push({ src: dataUrl });
+		}
+
+		const photoHtml =
+			printPhotos.length > 0
+				? printPhotos
+						.map(
+							(p) =>
+								`<div class="photo-item"><img src="${escapeHtml(p.src)}" alt="간담회 사진" /></div>`
+						)
+						.join('')
+				: '';
+
 		const printHTML = `
 <!DOCTYPE html>
 <html lang="ko">
@@ -436,15 +689,8 @@ export default function GuardianMeeting() {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>보호자간담회</title>
 	<style>
-		@page {
-			size: A4;
-			margin: 20mm;
-		}
-		* {
-			margin: 0;
-			padding: 0;
-			box-sizing: border-box;
-		}
+		@page { size: A4; margin: 20mm; }
+		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
 			font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
 			font-size: 11pt;
@@ -452,65 +698,26 @@ export default function GuardianMeeting() {
 			color: #000;
 			background: #fff;
 		}
-		.print-container {
-			width: 100%;
-			max-width: 210mm;
-			margin: 0 auto;
-			padding: 0;
-		}
-		.header {
-			text-align: center;
-			margin-bottom: 20px;
-		}
-		.header h1 {
-			font-size: 18pt;
-			font-weight: bold;
-		}
-		.info-table {
-			width: 100%;
-			border-collapse: collapse;
-			margin-bottom: 20px;
-			border: 1px solid #000;
-		}
-		.info-table td {
-			border: 1px solid #000;
-			padding: 8px 10px;
-			font-size: 10pt;
-		}
-		.info-table td.label {
-			background-color: #f0f0f0;
-			font-weight: bold;
-			width: 120px;
-			text-align: center;
-		}
-		.info-table td.value {
-			width: auto;
-		}
-		.content-section {
-			margin-top: 20px;
-			margin-bottom: 20px;
-		}
+		.print-container { width: 100%; max-width: 210mm; margin: 0 auto; }
+		.header { text-align: center; margin-bottom: 20px; }
+		.header h1 { font-size: 18pt; font-weight: bold; }
+		.info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #000; }
+		.info-table td { border: 1px solid #000; padding: 8px 10px; font-size: 10pt; }
+		.info-table td.label { background-color: #f0f0f0; font-weight: bold; width: 120px; text-align: center; }
+		.content-section { margin-top: 20px; margin-bottom: 20px; }
 		.section-title {
-			font-size: 12pt;
-			font-weight: bold;
-			margin-bottom: 10px;
-			padding: 5px;
-			background-color: #f0f0f0;
-			border: 1px solid #000;
+			font-size: 12pt; font-weight: bold; margin-bottom: 10px; padding: 5px;
+			background-color: #f0f0f0; border: 1px solid #000;
 		}
 		.section-content {
-			border: 1px solid #000;
-			padding: 15px;
-			min-height: 150px;
-			font-size: 10pt;
-			line-height: 1.8;
-			white-space: pre-wrap;
+			border: 1px solid #000; padding: 15px; min-height: 120px;
+			font-size: 10pt; line-height: 1.8; white-space: pre-wrap;
 		}
+		.photo-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+		.photo-item { width: 48%; border: 1px solid #000; padding: 6px; }
+		.photo-item img { width: 100%; max-height: 90mm; object-fit: contain; display: block; }
 		@media print {
-			body {
-				-webkit-print-color-adjust: exact;
-				print-color-adjust: exact;
-			}
+			body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 		}
 	</style>
 </head>
@@ -519,47 +726,51 @@ export default function GuardianMeeting() {
 		<div class="header">
 			<h1>보호자간담회</h1>
 		</div>
-		
 		<table class="info-table">
 			<tr>
 				<td class="label">간담회일자</td>
-				<td class="value">${formData.meetingDate || '-'}</td>
+				<td>${escapeHtml(formData.meetingDate || '-')}</td>
 				<td class="label">간담회시간</td>
-				<td class="value">${formData.meetingStartTime || '-'} ~ ${formData.meetingEndTime || '-'}</td>
+				<td>${escapeHtml(formData.meetingStartTime || '-')} ~ ${escapeHtml(formData.meetingEndTime || '-')}</td>
 			</tr>
 			<tr>
 				<td class="label">간담회장소</td>
-				<td class="value" colspan="3">${formData.meetingLocation || '-'}</td>
+				<td colspan="3">${escapeHtml(formData.meetingLocation || '-')}</td>
 			</tr>
 			<tr>
 				<td class="label">간담회주제</td>
-				<td class="value" colspan="3">${formData.meetingSubject || '-'}</td>
+				<td colspan="3">${escapeHtml(formData.meetingSubject || '-')}</td>
 			</tr>
 			<tr>
 				<td class="label">참석인원</td>
-				<td class="value" colspan="3">${formData.attendeeCount || '-'}명</td>
+				<td colspan="3">${escapeHtml(formData.attendeeCount || '-')}명</td>
 			</tr>
 		</table>
-
 		<div class="content-section">
 			<div class="section-title">간담회내용</div>
-			<div class="section-content">${formData.meetingContent || ''}</div>
+			<div class="section-content">${escapeHtml(formData.meetingContent || '')}</div>
 		</div>
-
 		<div class="content-section">
 			<div class="section-title">참석자명단</div>
-			<div class="section-content">${formData.attendeeList || ''}</div>
+			<div class="section-content">${escapeHtml(formData.attendeeList || '')}</div>
 		</div>
-
 		<div class="content-section">
 			<div class="section-title">간담회결과</div>
-			<div class="section-content">${formData.meetingResult || ''}</div>
+			<div class="section-content">${escapeHtml(formData.meetingResult || '')}</div>
 		</div>
+		${
+			photoHtml
+				? `<div class="content-section"><div class="section-title">사진</div><div class="section-content"><div class="photo-grid">${photoHtml}</div></div></div>`
+				: ''
+		}
+		${
+			formData.remarks
+				? `<div class="content-section"><div class="section-title">비고</div><div class="section-content">${escapeHtml(formData.remarks)}</div></div>`
+				: ''
+		}
 	</div>
 	<script>
-		window.onload = function() {
-			window.print();
-		};
+		window.onload = function() { window.print(); };
 	</script>
 </body>
 </html>
@@ -569,28 +780,22 @@ export default function GuardianMeeting() {
 		printWindow.document.close();
 	};
 
-	// 닫기
 	const handleClose = () => {
 		window.history.back();
 	};
 
-	// 날짜 형식 변환
 	const formatDate = (dateStr: string) => {
 		if (!dateStr) return '-';
-		if (dateStr.includes('-')) return dateStr.substring(0, 10);
-		if (dateStr.length === 8) {
-			return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-		}
-		return dateStr;
+		const ymd = formatDateYmd(dateStr);
+		return ymd || '-';
 	};
 
 	return (
 		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
-			{/* 상단 헤더 */}
 			<div className="p-4 border-b border-blue-200 bg-blue-50">
 				<div className="flex flex-wrap items-center justify-between gap-2">
 					<h1 className="text-2xl font-bold text-blue-900">보호자간담회</h1>
-					<div className="flex items-center gap-4">
+					<div className="flex flex-wrap items-center justify-end gap-4">
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">기간</label>
 							<input
@@ -607,27 +812,79 @@ export default function GuardianMeeting() {
 								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
 							/>
 						</div>
-						<div className="flex items-center gap-2">
-							<button
+						<div className="flex flex-wrap items-center gap-2">
+							{/* <button
 								onClick={handleSearch}
 								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 							>
 								검색
-							</button>
-							<button
+							</button> */}
+							{!isEditMode ? (
+								<>
+									<button
+										onClick={handleAdd}
+										className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+									>
+										추가
+									</button>
+									<button
+										onClick={handleModify}
+										disabled={!hasProgramAccess || !selectedMeeting || loading}
+										className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										수정
+									</button>
+									<button
+										onClick={handleDelete}
+										disabled={!hasProgramAccess || !selectedMeeting || loading}
+										className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										삭제
+									</button>
+									<button
+										onClick={handleRegisterResult}
+										disabled={!hasProgramAccess || !selectedMeeting || loading}
+										className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										결과등록
+									</button>
+									<button
+										onClick={() => void handlePrint()}
+										disabled={loading}
+										className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50"
+									>
+										출력
+									</button>
+								</>
+							) : (
+								<>
+									<button
+										onClick={() => void handleCancelEdit()}
+										className="px-4 py-1.5 text-sm border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
+									>
+										취소
+									</button>
+									<button
+										onClick={() => void handleSave()}
+										disabled={!hasProgramAccess || loading || photoUploading}
+										className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50"
+									>
+										{loading ? '저장 중...' : '저장'}
+									</button>
+								</>
+							)}
+							{/* <button
 								onClick={handleClose}
 								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 							>
 								닫기
-							</button>
+							</button> */}
 						</div>
 					</div>
 				</div>
 			</div>
 
-			{/* 메인 컨텐츠 영역 */}
-			<div className="flex flex-1 h-[calc(100vh-180px)]">
-				{/* 좌측 패널: 간담회 목록 */}
+			<div className="flex flex-1 min-h-0 h-[calc(100vh-140px)]">
 				<div className="flex flex-col w-full lg:w-1/3 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b lg:border-b-0 lg:h-full lg:min-h-0 lg:overflow-hidden">
 					<div className="p-2 border-b border-blue-200 bg-blue-50">
 						<div className="grid grid-cols-2 gap-2 text-xs font-semibold text-blue-900">
@@ -639,13 +896,24 @@ export default function GuardianMeeting() {
 						{loading ? (
 							<div className="p-4 text-center text-blue-900/60">로딩 중...</div>
 						) : meetingList.length === 0 ? (
-							<div className="p-4 text-center text-blue-900/60">간담회 데이터가 없습니다</div>
+							<div className="p-4 text-center text-blue-900/60">
+								<div>간담회 데이터가 없습니다</div>
+								<button
+									type="button"
+									onClick={handleAdd}
+									className="mt-3 px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+								>
+									추가
+								</button>
+							</div>
 						) : (
-							currentMeetings.map((meeting, index) => (
+							currentMeetings.map((meeting) => (
 								<div
-									key={index}
+									key={meeting.MDT || meeting.MDOC}
 									onClick={() => handleSelectMeeting(meeting)}
-									className={`p-2 border-b border-blue-50 hover:bg-blue-50 cursor-pointer ${
+									className={`p-2 border-b border-blue-50 ${
+										isEditMode ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50 cursor-pointer'
+									} ${
 										selectedMeeting?.MDT === meeting.MDT ? 'bg-blue-100' : ''
 									}`}
 								>
@@ -657,7 +925,6 @@ export default function GuardianMeeting() {
 							))
 						)}
 					</div>
-					{/* 페이지네이션 */}
 					{totalPages > 1 && (
 						<div className="p-2 bg-white border-t border-blue-200">
 							<div className="flex items-center justify-center gap-1">
@@ -675,7 +942,7 @@ export default function GuardianMeeting() {
 								>
 									&lt;
 								</button>
-								
+
 								{Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
 									const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
 									return (
@@ -692,7 +959,7 @@ export default function GuardianMeeting() {
 										</button>
 									);
 								})}
-								
+
 								<button
 									onClick={() => handlePageChange(currentPage + 1)}
 									disabled={currentPage === totalPages}
@@ -712,10 +979,13 @@ export default function GuardianMeeting() {
 					)}
 				</div>
 
-				{/* 우측 패널: 상세 입력 폼 */}
 				<div className="flex-1 p-4 overflow-y-auto bg-white">
+					{isEditMode && !selectedMeeting ? (
+						<div className="mb-3 px-3 py-2 text-sm text-blue-900 bg-blue-50 border border-blue-200 rounded">
+							새 간담회를 작성 중입니다. 보호자 간담회는 하루에 1건만 등록할 수 있습니다.
+						</div>
+					) : null}
 					<div className="space-y-4">
-						{/* 간담회일자, 간담회시간 */}
 						<div className="flex flex-wrap items-center gap-4">
 							<div className="flex items-center gap-2">
 								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">간담회일자</label>
@@ -758,7 +1028,6 @@ export default function GuardianMeeting() {
 							</div>
 						</div>
 
-						{/* 간담회장소 */}
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">간담회장소</label>
 							{isEditMode ? (
@@ -766,6 +1035,7 @@ export default function GuardianMeeting() {
 									type="text"
 									value={formData.meetingLocation}
 									onChange={(e) => handleFormChange('meetingLocation', e.target.value)}
+									maxLength={100}
 									className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
 									placeholder="간담회장소를 입력하세요"
 								/>
@@ -776,7 +1046,6 @@ export default function GuardianMeeting() {
 							)}
 						</div>
 
-						{/* 간담회주제 */}
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">간담회주제</label>
 							{isEditMode ? (
@@ -794,7 +1063,6 @@ export default function GuardianMeeting() {
 							)}
 						</div>
 
-						{/* 간담회내용 */}
 						<div>
 							<label className="block mb-2 text-sm font-medium text-blue-900">간담회내용</label>
 							{isEditMode ? (
@@ -812,15 +1080,22 @@ export default function GuardianMeeting() {
 							)}
 						</div>
 
-						{/* 참석인원, 참석자명단 */}
 						<div className="flex items-start gap-4">
 							<div className="flex items-center gap-2">
 								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">참석인원</label>
 								{isEditMode ? (
 									<input
 										type="number"
+										min={1}
+										step={1}
+										inputMode="numeric"
 										value={formData.attendeeCount}
 										onChange={(e) => handleFormChange('attendeeCount', e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === '-' || e.key === 'e' || e.key === 'E' || e.key === '+' || e.key === '.') {
+												e.preventDefault();
+											}
+										}}
 										className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 w-24"
 										placeholder="인원"
 									/>
@@ -836,6 +1111,7 @@ export default function GuardianMeeting() {
 									<textarea
 										value={formData.attendeeList}
 										onChange={(e) => handleFormChange('attendeeList', e.target.value)}
+										maxLength={500}
 										className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
 										rows={5}
 										placeholder="참석자명단을 입력하세요"
@@ -848,14 +1124,18 @@ export default function GuardianMeeting() {
 							</div>
 						</div>
 
-						{/* 간담회결과 */}
 						<div>
 							<label className="block mb-2 text-sm font-medium text-blue-900">간담회결과</label>
-							{isEditMode ? (
+							{isEditMode || selectedMeeting ? (
 								<textarea
 									value={formData.meetingResult}
 									onChange={(e) => handleFormChange('meetingResult', e.target.value)}
-									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
+									readOnly={!isEditMode && !selectedMeeting}
+									className={`w-full px-3 py-2 text-sm border rounded focus:outline-none ${
+										isEditMode
+											? 'bg-white border-blue-300 focus:border-blue-500'
+											: 'bg-white border-blue-200 focus:border-blue-400'
+									}`}
 									rows={5}
 									placeholder="간담회결과를 입력하세요"
 								/>
@@ -865,72 +1145,78 @@ export default function GuardianMeeting() {
 								</div>
 							)}
 						</div>
-					</div>
-				</div>
-			</div>
 
-			{/* 하단 버튼 영역 */}
-			<div className="p-4 border-t border-blue-200 bg-blue-50">
-				<div className="flex justify-end gap-2">
-					{!isEditMode ? (
-						<>
-							<button
-								onClick={handleAdd}
-								disabled={!hasProgramAccess}
-								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-							>
-								추가
-							</button>
-							<button
-								onClick={handleModify}
-								disabled={!hasProgramAccess || !selectedMeeting}
-								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-							>
-								수정
-							</button>
-							<button
-								onClick={handleDelete}
-								disabled={!hasProgramAccess || !selectedMeeting}
-								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-							>
-								삭제
-							</button>
-							<button
-								onClick={handleRegisterResult}
-								disabled={!hasProgramAccess || !selectedMeeting}
-								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-							>
-								결과등록
-							</button>
-							<button
-								onClick={handlePrint}
-								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-							>
-								출력
-							</button>
-						</>
-					) : (
-						<>
-							<button
-								onClick={() => {
-									setIsEditMode(false);
-									if (selectedMeeting) {
-										handleSelectMeeting(selectedMeeting);
-									}
-								}}
-								className="px-4 py-1.5 text-sm border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
-							>
-								취소
-							</button>
-							<button
-								onClick={handleSave}
-								disabled={!hasProgramAccess}
-								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-							>
-								저장
-							</button>
-						</>
-					)}
+						<div>
+							<div className="flex items-center justify-between mb-2">
+								<label className="text-sm font-medium text-blue-900">사진 (최대 {MAX_PHOTOS}장)</label>
+								{isEditMode ? (
+									<>
+										<input
+											ref={photoInputRef}
+											type="file"
+											accept="image/jpeg,image/png,image/webp,image/gif"
+											multiple
+											className="hidden"
+											onChange={(e) => void handleUploadPhotos(e.target.files)}
+										/>
+										<button
+											type="button"
+											disabled={photoUploading || attachedPhotos.length >= MAX_PHOTOS}
+											onClick={() => photoInputRef.current?.click()}
+											className="px-3 py-1 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50"
+										>
+											{photoUploading ? '업로드 중...' : '사진등록'}
+										</button>
+									</>
+								) : null}
+							</div>
+							{attachedPhotos.length === 0 ? (
+								<div className="px-3 py-6 text-sm text-center text-blue-900/50 border border-blue-200 rounded bg-gray-50">
+									등록된 사진이 없습니다
+								</div>
+							) : (
+								<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+									{attachedPhotos.map((p) => (
+										<div key={p.blobName} className="relative border border-blue-200 rounded overflow-hidden bg-gray-50">
+											{/* eslint-disable-next-line @next/next/no-img-element */}
+											<img
+												src={photoViewUrl(p.blobName)}
+												alt="간담회 사진"
+												className="w-full h-40 object-contain bg-white"
+											/>
+											{isEditMode ? (
+												<button
+													type="button"
+													onClick={() => handleRemovePhoto(p.blobName)}
+													className="absolute top-1 right-1 px-2 py-0.5 text-xs text-white bg-red-600 rounded hover:bg-red-700"
+												>
+													삭제
+												</button>
+											) : null}
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+
+						<div className="flex items-center gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">비고</label>
+							{isEditMode ? (
+								<input
+									type="text"
+									value={formData.remarks}
+									onChange={(e) => handleFormChange('remarks', e.target.value)}
+									maxLength={100}
+									className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									placeholder="비고"
+								/>
+							) : (
+								<span className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50">
+									{formData.remarks || '-'}
+								</span>
+							)}
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>

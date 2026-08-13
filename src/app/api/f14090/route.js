@@ -138,7 +138,7 @@ export async function POST(req) {
       // 신체활동
       'PH_HEAD_HELP','PH_MOVE_HELP','PH_CHANG_HELP','PH_WORK_HELP','PH_OUT_HELP',
       'PH_BATH_CNT','PH_BATH_METH','PH_BATH_METH_NM',
-      'PH_MEAL_KIND','PH_MEAL_KIND_NM','PH_MEAL_VAL','PH_MEAL_VAL_NM','PH_MEAL_WT','PH_MEAL_WT_NM',
+      'PH_MEAL_KIND','PH_MEAL_KIND_NM','PH_MEAL_VAL','PH_MEAL_VAL_NM',
       // 간호/건강
       'NS_SBDP','NS_EBDP','NS_TMPBD',
       'NS_ETC','NS_SORE_CHK','NS_MEDI_CHK','NS_SORE_MNG_NM',

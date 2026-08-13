@@ -145,6 +145,39 @@ async function uploadProgramDailyLogPhoto({ ancd, buffer, fileName, mimeType, si
 }
 
 /**
+ * 보호자간담회(F60040.MIMG nvarchar(100)) 사진.
+ * 경로를 짧게 유지해 DB 길이 제한에 맞춥니다. 예: f60040/190000/m8k2ab12.jpg
+ * @param {{ ancd: string|number, buffer: Buffer, fileName: string, mimeType: string, size?: number }} opts
+ */
+async function uploadGuardianMeetingPhoto({ ancd, buffer, fileName, mimeType, size }) {
+  const { mime, name } = assertAllowedImage(fileName, mimeType, size ?? buffer?.length);
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('업로드할 이미지 데이터가 없습니다.');
+  }
+
+  const container = await getContainerClient();
+  const stamp = Date.now().toString(36).slice(-6);
+  const rand = Math.random().toString(36).slice(2, 6);
+  const ext = extFromMime(mime);
+  const blobName = `f60040/${sanitizeBlobPathSegment(ancd)}/${stamp}${rand}.${ext}`;
+  if (blobName.length > 100) {
+    throw new Error('사진 경로가 너무 깁니다. 기관코드를 확인해 주세요.');
+  }
+
+  const blockBlob = container.getBlockBlobClient(blobName);
+  await blockBlob.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mime },
+  });
+
+  return {
+    blobName,
+    fileName: name.slice(0, 120),
+    contentType: mime,
+    size: buffer.length,
+  };
+}
+
+/**
  * 자료실 파일 → 전용 컨테이너(data-room)에 기관코드 폴더로 저장
  * 사진(program-daily-log/{ancd}/...)과 동일하게 기관코드가 가상 폴더가 됩니다.
  * blobName 예: 190000/ms6c1a-ab12cd_서식.xlsx
@@ -195,6 +228,14 @@ function isProgramDailyLogBlob(blobName) {
   return String(blobName || '').trim().startsWith('program-daily-log/');
 }
 
+function isGuardianMeetingBlob(blobName) {
+  return String(blobName || '').trim().startsWith('f60040/');
+}
+
+function isSharedPhotoBlob(blobName) {
+  return isProgramDailyLogBlob(blobName) || isGuardianMeetingBlob(blobName);
+}
+
 /** 자료실 blob 경로 형식 검증 (기관코드 폴더 하위) */
 function isValidDataRoomBlobName(blobName) {
   const name = String(blobName || '').trim();
@@ -224,7 +265,7 @@ async function deleteBlobByName(blobName) {
   const name = String(blobName || '').trim();
   if (!name) return false;
 
-  if (isProgramDailyLogBlob(name)) {
+  if (isSharedPhotoBlob(name)) {
     const container = await getContainerClient();
     const result = await container.getBlockBlobClient(name).deleteIfExists();
     return Boolean(result?.succeeded);
@@ -246,7 +287,7 @@ async function deleteBlobByName(blobName) {
  */
 async function downloadBlobByName(blobName) {
   const name = String(blobName || '').trim();
-  if (!name || !isProgramDailyLogBlob(name)) return null;
+  if (!name || !isSharedPhotoBlob(name)) return null;
   const container = await getContainerClient();
   const blockBlob = container.getBlockBlobClient(name);
   const exists = await blockBlob.exists();
@@ -303,7 +344,9 @@ module.exports = {
   getContainerName,
   getDataRoomContainerName,
   uploadProgramDailyLogPhoto,
+  uploadGuardianMeetingPhoto,
   uploadDataRoomFile,
+  isGuardianMeetingBlob,
   deleteBlobByName,
   downloadBlobByName,
   downloadDataRoomBlob,
