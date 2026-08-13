@@ -60,6 +60,7 @@ export default function EmergencyRecord() {
 		actionTaken: '', // EMACT (조치사항)
 		handler: '' // EMHND (담당자)
 	});
+	const EMDES_MAX_LENGTH = 500;
 
 	// 날짜 생성 함수
 	const handleCreateDate = () => {
@@ -164,16 +165,24 @@ export default function EmergencyRecord() {
 		}
 	};
 
-	// 날짜 형식 변환 함수
-	const formatDateDisplay = (dateStr: string) => {
+	// 날짜 형식 변환 함수 (yyyy-mm-dd)
+	const formatDateDisplay = (dateInput: string | Date | null | undefined) => {
+		if (dateInput == null || dateInput === '') return '';
+		if (dateInput instanceof Date && !Number.isNaN(dateInput.getTime())) {
+			const y = dateInput.getFullYear();
+			const m = String(dateInput.getMonth() + 1).padStart(2, '0');
+			const d = String(dateInput.getDate()).padStart(2, '0');
+			return `${y}-${m}-${d}`;
+		}
+		let dateStr = String(dateInput).trim();
 		if (!dateStr) return '';
 		if (dateStr.includes('T')) {
 			dateStr = dateStr.split('T')[0];
 		}
-		if (dateStr.includes('-') && dateStr.length >= 10) {
+		if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
 			return dateStr.substring(0, 10);
 		}
-		if (dateStr.length === 8 && !dateStr.includes('-') && !dateStr.includes('년')) {
+		if (/^\d{8}$/.test(dateStr)) {
 			return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
 		}
 		if (dateStr.includes('년') && dateStr.includes('월') && dateStr.includes('일')) {
@@ -186,6 +195,13 @@ export default function EmergencyRecord() {
 				const day = dayMatch[1].padStart(2, '0');
 				return `${year}-${month}-${day}`;
 			}
+		}
+		const parsed = new Date(dateStr);
+		if (!Number.isNaN(parsed.getTime())) {
+			const y = parsed.getFullYear();
+			const m = String(parsed.getMonth() + 1).padStart(2, '0');
+			const d = String(parsed.getDate()).padStart(2, '0');
+			return `${y}-${m}-${d}`;
 		}
 		return dateStr;
 	};
@@ -201,36 +217,9 @@ export default function EmergencyRecord() {
 		const currentMember = member || selectedMember;
 		
 		if (selectedEmergency) {
-			const formatDate = (dateStr: string) => {
-				if (!dateStr) return '';
-				if (dateStr.includes('T')) {
-					dateStr = dateStr.split('T')[0];
-				}
-				if (dateStr.includes('-') && dateStr.length >= 10) {
-					return dateStr.substring(0, 10);
-				}
-				if (dateStr.length === 8 && !dateStr.includes('-') && !dateStr.includes('년')) {
-					return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-				}
-				if (dateStr.includes('년') && dateStr.includes('월') && dateStr.includes('일')) {
-					const yearMatch = dateStr.match(/(\d{4})년/);
-					const monthMatch = dateStr.match(/(\d{1,2})월/);
-					const dayMatch = dateStr.match(/(\d{1,2})일/);
-					if (yearMatch && monthMatch && dayMatch) {
-						const year = yearMatch[1];
-						const month = monthMatch[1].padStart(2, '0');
-						const day = dayMatch[1].padStart(2, '0');
-						return `${year}-${month}-${day}`;
-					}
-				}
-				return dateStr;
-			};
-
-			const emergencyDate = formatDate(selectedEmergency.EMDT || '');
-
 			setFormData({
 				beneficiary: currentMember?.P_NM || '',
-				emergencyDate: emergencyDate,
+				emergencyDate: formatDateDisplay(selectedEmergency.EMDT || dateKey || ''),
 				emergencySituation: selectedEmergency.EMDES1 || '',
 				actionTaken: selectedEmergency.EMDES2 || '',
 				handler: selectedEmergency.EMEMP || ''
@@ -277,6 +266,16 @@ export default function EmergencyRecord() {
 		setFormData(prev => ({ ...prev, [field]: value }));
 	};
 
+	const handleLimitedTextChange = (field: 'emergencySituation' | 'actionTaken', value: string) => {
+		const label = field === 'emergencySituation' ? '응급상황' : '조치사항';
+		if (value.length > EMDES_MAX_LENGTH) {
+			alert(`${label}은 ${EMDES_MAX_LENGTH}자까지 입력할 수 있습니다.`);
+			handleFormChange(field, value.slice(0, EMDES_MAX_LENGTH));
+			return;
+		}
+		handleFormChange(field, value);
+	};
+
 	// 수정 함수
 	const handleModify = () => {
 		if (!formData.emergencyDate) {
@@ -299,6 +298,15 @@ export default function EmergencyRecord() {
 
 		if (!formData.emergencyDate) {
 			alert('응급일자를 입력해주세요.');
+			return;
+		}
+
+		if (formData.emergencySituation.length > EMDES_MAX_LENGTH) {
+			alert(`응급상황은 ${EMDES_MAX_LENGTH}자까지 입력할 수 있습니다.`);
+			return;
+		}
+		if (formData.actionTaken.length > EMDES_MAX_LENGTH) {
+			alert(`조치사항은 ${EMDES_MAX_LENGTH}자까지 입력할 수 있습니다.`);
 			return;
 		}
 
@@ -499,7 +507,7 @@ export default function EmergencyRecord() {
 				<td class="label">수급자</td>
 				<td class="value">${formData.beneficiary || '-'}</td>
 				<td class="label">응급일자</td>
-				<td class="value">${formData.emergencyDate || '-'}</td>
+				<td class="value">${formatDateDisplay(formData.emergencyDate) || '-'}</td>
 			</tr>
 			<tr>
 				<td class="label">담당자</td>
@@ -718,13 +726,13 @@ export default function EmergencyRecord() {
 								{isEditMode ? (
 									<input
 										type="date"
-										value={formData.emergencyDate}
+										value={formatDateDisplay(formData.emergencyDate)}
 										onChange={(e) => handleFormChange('emergencyDate', e.target.value)}
 										className="px-3 py-1.5 text-sm border-b-2 border-blue-300 bg-transparent focus:outline-none focus:border-blue-500 min-w-[150px]"
 									/>
 								) : (
 									<span className="px-3 py-1.5 text-sm border-b-2 border-blue-200 min-w-[150px]">
-										{formData.emergencyDate || '-'}
+										{formatDateDisplay(formData.emergencyDate) || '-'}
 									</span>
 								)}
 							</div>
@@ -760,11 +768,18 @@ export default function EmergencyRecord() {
 
 						{/* 응급상황 */}
 						<div className="mb-4">
-							<label className="block mb-2 text-sm font-medium text-blue-900">응급상황</label>
+							<div className="flex items-center justify-between mb-2">
+								<label className="text-sm font-medium text-blue-900">응급상황</label>
+								<span className="text-xs text-blue-700">
+									{isEditMode
+										? `${formData.emergencySituation.length} / ${EMDES_MAX_LENGTH}자`
+										: `최대 ${EMDES_MAX_LENGTH}자`}
+								</span>
+							</div>
 							{isEditMode ? (
 								<textarea
 									value={formData.emergencySituation}
-									onChange={(e) => handleFormChange('emergencySituation', e.target.value)}
+									onChange={(e) => handleLimitedTextChange('emergencySituation', e.target.value)}
 									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
 									rows={8}
 									placeholder="응급상황을 입력하세요"
@@ -778,11 +793,18 @@ export default function EmergencyRecord() {
 
 						{/* 조치사항 */}
 						<div className="mb-4">
-							<label className="block mb-2 text-sm font-medium text-blue-900">조치사항</label>
+							<div className="flex items-center justify-between mb-2">
+								<label className="text-sm font-medium text-blue-900">조치사항</label>
+								<span className="text-xs text-blue-700">
+									{isEditMode
+										? `${formData.actionTaken.length} / ${EMDES_MAX_LENGTH}자`
+										: `최대 ${EMDES_MAX_LENGTH}자`}
+								</span>
+							</div>
 							{isEditMode ? (
 								<textarea
 									value={formData.actionTaken}
-									onChange={(e) => handleFormChange('actionTaken', e.target.value)}
+									onChange={(e) => handleLimitedTextChange('actionTaken', e.target.value)}
 									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
 									rows={8}
 									placeholder="조치사항을 입력하세요"
