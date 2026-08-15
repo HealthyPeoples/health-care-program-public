@@ -363,14 +363,9 @@ export default function VitalSigns() {
 		setMemberSearchTerm('');
 		setMemberSearchResults([]);
 		setShowMemberSearchResults(false);
-		if (mode === 'all') {
-			const { start, end } = getCurrentMonthRange();
-			setStartDate(start);
-			setEndDate(end);
-		} else {
-			setStartDate('');
-			setEndDate('');
-		}
+		const { start, end } = getCurrentMonthRange();
+		setStartDate(start);
+		setEndDate(end);
 		setShowPrintModal(true);
 	};
 
