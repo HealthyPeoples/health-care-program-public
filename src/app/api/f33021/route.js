@@ -12,6 +12,40 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F33021]';
 
+let ensureTimeColumnsPromise = null;
+
+async function ensureTimeColumns(pool) {
+	if (!pool) return;
+	if (!ensureTimeColumnsPromise) {
+		ensureTimeColumnsPromise = pool
+			.request()
+			.query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM [돌봄시설DB].sys.columns c
+        INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
+        WHERE t.name = N'F33021' AND c.name = N'VTM_ST'
+      )
+      BEGIN
+        ALTER TABLE ${TABLE_NAME} ADD [VTM_ST] VARCHAR(8) NULL;
+      END
+
+      IF NOT EXISTS (
+        SELECT 1 FROM [돌봄시설DB].sys.columns c
+        INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
+        WHERE t.name = N'F33021' AND c.name = N'VTM_EN'
+      )
+      BEGIN
+        ALTER TABLE ${TABLE_NAME} ADD [VTM_EN] VARCHAR(8) NULL;
+      END
+    `)
+			.catch((err) => {
+				ensureTimeColumnsPromise = null;
+				throw err;
+			});
+	}
+	await ensureTimeColumnsPromise;
+}
+
 function toYmd(v) {
 	if (!v) return '';
 	const s = String(v);
@@ -30,11 +64,35 @@ function normalizeVtmGu(v) {
 	return String(v ?? '').trim().padStart(2, '0').slice(-2);
 }
 
+function normalizeTimeHm(v) {
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		const iso = v.toISOString();
+		if (/^(1970|1900)-01-01T/.test(iso)) return iso.slice(11, 16);
+		const h = String(v.getHours()).padStart(2, '0');
+		const m = String(v.getMinutes()).padStart(2, '0');
+		return `${h}:${m}`;
+	}
+	const s = String(v).trim();
+	if (/^\d{2}:\d{2}/.test(s)) return s.slice(0, 5);
+	if (/^\d{4}$/.test(s)) return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+	if (s === '2400') return '24:00';
+	return '';
+}
+
+function timeToVtmGu(v) {
+	const hm = normalizeTimeHm(v);
+	if (/^\d{2}:\d{2}$/.test(hm) && hm !== '24:00') return hm.slice(0, 2);
+	return '';
+}
+
 function mapRow(r) {
 	return {
 		...r,
 		VDT: toYmd(r.VDT),
 		VTM_GU: normalizeVtmGu(r.VTM_GU),
+		VTM_ST: normalizeTimeHm(r.VTM_ST),
+		VTM_EN: normalizeTimeHm(r.VTM_EN),
 	};
 }
 
@@ -58,6 +116,10 @@ export async function GET(req) {
 		const pool = await connPool;
 		if (!pool) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		}
+
+		if (mode !== 'dates') {
+			await ensureTimeColumns(pool);
 		}
 
 		const request = pool.request();
@@ -108,6 +170,8 @@ export async function GET(req) {
         [PNUM],
         [VDT],
         [VTM_GU],
+        [VTM_ST],
+        [VTM_EN],
         [ANNT_STAT_GU],
         [ANNT_STAT_DESC],
         [PSS_NPPY_VAL_GU],
@@ -120,7 +184,7 @@ export async function GET(req) {
         [INEMPNM]
       FROM ${TABLE_NAME}
       ${where}
-      ORDER BY [VDT] DESC, [VTM_GU] ASC
+      ORDER BY [VDT] DESC, COALESCE(NULLIF(LTRIM(RTRIM(CONVERT(varchar(8), [VTM_ST]))), ''), [VTM_GU]) ASC
     `;
 
 		const result = await request.query(query);
@@ -144,10 +208,13 @@ export async function POST(req) {
 		const body = await req.json().catch(() => ({}));
 		const pnum = body?.PNUM ?? body?.pnum;
 		const vdt = body?.VDT ?? body?.vdt;
-		const vtmGu = body?.VTM_GU ?? body?.vtmGu;
+		const vtmSt = normalizeTimeHm(body?.VTM_ST ?? body?.vtmSt ?? '');
+		const vtmEn = normalizeTimeHm(body?.VTM_EN ?? body?.vtmEn ?? '');
+		const vtmGuRaw = body?.VTM_GU ?? body?.vtmGu ?? timeToVtmGu(vtmSt);
+		const matchVtmGuRaw = body?.MATCH_VTM_GU ?? body?.matchVtmGu ?? vtmGuRaw;
 
-		if (!pnum || !vdt || !vtmGu) {
-			return jsonError({ success: false, error: 'PNUM, VDT, VTM_GU는 필수입니다' }, 400);
+		if (!pnum || !vdt || !vtmGuRaw) {
+			return jsonError({ success: false, error: 'PNUM, VDT, VTM_GU(또는 VTM_ST)는 필수입니다' }, 400);
 		}
 
 		const vdtDigits = ymdToDigits(vdt);
@@ -155,7 +222,8 @@ export async function POST(req) {
 			return jsonError({ success: false, error: 'VDT 형식이 올바르지 않습니다 (yyyy-mm-dd)' }, 400);
 		}
 
-		const vtm = normalizeVtmGu(vtmGu);
+		const vtm = normalizeVtmGu(vtmGuRaw);
+		const matchVtm = normalizeVtmGu(matchVtmGuRaw) || vtm;
 		if (!vtm) {
 			return jsonError({ success: false, error: 'VTM_GU 형식이 올바르지 않습니다' }, 400);
 		}
@@ -165,11 +233,16 @@ export async function POST(req) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
+		await ensureTimeColumns(pool);
+
 		const request = pool.request();
 		request.input('ANCD', gate.sessionAncd);
 		request.input('PNUM', String(pnum));
 		request.input('VDT', vdtDigits);
+		request.input('MATCH_VTM_GU', matchVtm);
 		request.input('VTM_GU', vtm);
+		request.input('VTM_ST', vtmSt || null);
+		request.input('VTM_EN', vtmEn || null);
 		request.input('ANNT_STAT_GU', body?.ANNT_STAT_GU ?? body?.anntStatGu ?? '1');
 		request.input('ANNT_STAT_DESC', body?.ANNT_STAT_DESC ?? body?.anntStatDesc ?? '');
 		request.input('PSS_NPPY_VAL_GU', body?.PSS_NPPY_VAL_GU ?? body?.pssNppyValGu ?? '0');
@@ -183,13 +256,16 @@ export async function POST(req) {
 
 		const query = `
       MERGE ${TABLE_NAME} AS T
-      USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, CONVERT(date, @VDT, 112) AS VDT, @VTM_GU AS VTM_GU) AS S
+      USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, CONVERT(date, @VDT, 112) AS VDT, @MATCH_VTM_GU AS VTM_GU) AS S
         ON (T.[ANCD] = S.[ANCD]
             AND CAST(T.[PNUM] AS VARCHAR) = CAST(S.[PNUM] AS VARCHAR)
             AND CONVERT(date, T.[VDT]) = S.[VDT]
             AND T.[VTM_GU] = S.[VTM_GU])
       WHEN MATCHED THEN
         UPDATE SET
+          [VTM_GU] = @VTM_GU,
+          [VTM_ST] = @VTM_ST,
+          [VTM_EN] = @VTM_EN,
           [ANNT_STAT_GU] = @ANNT_STAT_GU,
           [ANNT_STAT_DESC] = @ANNT_STAT_DESC,
           [PSS_NPPY_VAL_GU] = @PSS_NPPY_VAL_GU,
@@ -202,14 +278,14 @@ export async function POST(req) {
           [INEMPNM] = @INEMPNM
       WHEN NOT MATCHED THEN
         INSERT (
-          [ANCD],[PNUM],[VDT],[VTM_GU],
+          [ANCD],[PNUM],[VDT],[VTM_GU],[VTM_ST],[VTM_EN],
           [ANNT_STAT_GU],[ANNT_STAT_DESC],
           [PSS_NPPY_VAL_GU],[PSS_CTHT_VAL],[INTK_VAL],
           [PSS_GU],[DNG_GU],[NPPY_CNG_GU],
           [INEMPNO],[INEMPNM]
         )
         VALUES (
-          @ANCD,@PNUM,CONVERT(date, @VDT, 112),@VTM_GU,
+          @ANCD,@PNUM,CONVERT(date, @VDT, 112),@VTM_GU,@VTM_ST,@VTM_EN,
           @ANNT_STAT_GU,@ANNT_STAT_DESC,
           @PSS_NPPY_VAL_GU,@PSS_CTHT_VAL,@INTK_VAL,
           @PSS_GU,@DNG_GU,@NPPY_CNG_GU,

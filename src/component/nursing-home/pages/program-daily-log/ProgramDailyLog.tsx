@@ -9,6 +9,11 @@
  * @module component/nursing-home/pages/program-daily-log/ProgramDailyLog
  */
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import ProgramAttendeeEvalModal, {
+	LevelBadge,
+	type AttendeeEval,
+} from "./ProgramAttendeeEvalModal";
+import { formatCareGradeLabel, normalizePGrdForSelect } from "../../utils/careGrade";
 
 /** F14030 행 */
 interface F14030Row {
@@ -144,7 +149,7 @@ function emptyForm(svdDate: string): Record<string, string> {
 		SVDT: svdDate,
 		SVSTM: "",
 		SVETM: "",
-		SVGU: "",
+		SVGU: "1",
 		SVDIC: "",
 		SVDES: "",
 		PGMAN0: "",
@@ -226,8 +231,103 @@ function timeFromRow(value: unknown): string {
 	return padTimeForInput(s);
 }
 
+/** F14040 계획서 — 일지 선택·자동반영·출력 공통 */
+type F14040PlanLite = {
+	PGSEQ?: number;
+	PG_GU?: string | null;
+	PGNM?: string | null;
+	DEL?: string | null;
+	PGOJ?: string | null;
+	PGJB?: string | null;
+	PGDES?: string | null;
+	PGMAN1?: string | null;
+	PGMAN2?: string | null;
+	PGADD?: string | null;
+};
+
 /** 출력용 F14040 행(참여 실적 집계) */
-type F14040PlanForPrint = { PGSEQ?: number; PG_GU?: string | null; PGNM?: string | null };
+type F14040PlanForPrint = F14040PlanLite;
+
+/** V14030AB 일지 출력 행 */
+type V14030ABPrintRow = {
+	ANCD?: number | null;
+	DSEQ?: number | null;
+	SVDT?: string;
+	weekday?: string;
+	institutionName?: string;
+	startTime?: string;
+	endTime?: string;
+	serviceGu?: string;
+	programTitle?: string;
+	serviceContent?: string;
+	attendees?: string;
+	facilitator?: string;
+	assistant?: string;
+	goal?: string;
+	materials?: string;
+	programContent?: string;
+	comment?: string;
+	place?: string;
+	MIMG?: string;
+	PG_GU?: string;
+	programGu?: string;
+};
+
+/** V14030C 수급자 개별평가 */
+type V14030CEvalRow = {
+	DSEQ?: number | null;
+	PNUM?: number | null;
+	name?: string;
+	joinLevel?: string;
+	happLevel?: string;
+	remark?: string;
+};
+
+function isDeletedPlan(del: string | null | undefined): boolean {
+	return String(del ?? "").trim().toUpperCase() === "D";
+}
+
+function pgman0FromEvals(evals: AttendeeEval[]): string {
+	return evals
+		.map((e) => e.name)
+		.filter(Boolean)
+		.join(" ")
+		.slice(0, 200);
+}
+
+function sexLabelFromMember(raw: unknown): string {
+	const s = String(raw ?? "").trim();
+	if (s === "1" || s === "M" || s === "남") return "남";
+	if (s === "2" || s === "F" || s === "여") return "여";
+	return s || "-";
+}
+
+function clipField(v: unknown, max: number): string {
+	return String(v ?? "").trim().slice(0, max);
+}
+
+/** F14040 선택 시 일지 폼에 계획서 컬럼을 반영 (PG_GU, PGADD, PGMAN1, PGMAN2, PGOJ, PGJB, PGDES, PGNM) */
+function applyPlanToForm(prev: Record<string, string>, plan: F14040PlanLite): Record<string, string> {
+	const gu = String(plan.PG_GU ?? "")
+		.trim()
+		.replace(/^0+/, "")
+		.charAt(0);
+	const o = PG_GU_OPTIONS.find((x) => x.code === gu);
+	return {
+		...prev,
+		PGSEQ: plan.PGSEQ != null ? String(plan.PGSEQ) : "",
+		SVDIC: clipField(plan.PGNM, 200),
+		PG_GU: o ? o.code : gu,
+		PG_GU_NM: o ? o.label : prev.PG_GU_NM,
+		PGADD: clipField(plan.PGADD, 50),
+		PGMAN1: clipField(plan.PGMAN1, 20),
+		PGMAN2: clipField(plan.PGMAN2, 20),
+		PGOJ: clipField(plan.PGOJ, 500),
+		PGJB: clipField(plan.PGJB, 200),
+		PGDES: clipField(plan.PGDES, 1000),
+		SVGU: prev.SVGU === "2" ? "2" : "1",
+	};
+}
 
 type ParticipationSection = {
 	participant: string;
@@ -451,56 +551,10 @@ ${rowsHtml}
 </html>`;
 }
 
-function programTitleForLogPrint(
-	row: F14030Row,
-	planMeta: ReadonlyMap<number, { pgGu: string; pgnm: string }>,
-): string {
-	const seq = parsePgseq(row.PGSEQ);
-	const plan = seq != null ? planMeta.get(seq) : undefined;
-	const titleFromPlan = plan?.pgnm?.trim() ?? "";
-	const svdic = String(row.SVDIC ?? "").trim();
-	const sub = String(row.SVDIC_SUB ?? "").trim();
-	return titleFromPlan || (sub ? `${svdic} (${sub})` : svdic) || "(프로그램명 없음)";
-}
-
-function programNameFullLineForLogPrint(
-	row: F14030Row,
-	planMeta: ReadonlyMap<number, { pgGu: string; pgnm: string }>,
-): string {
-	const seq = parsePgseq(row.PGSEQ);
-	const plan = seq != null ? planMeta.get(seq) : undefined;
-	let guCode = "";
-	if (plan?.pgGu && plan.pgGu.trim()) guCode = plan.pgGu.trim().replace(/^0+/, "");
-	else guCode = String(row.PG_GU ?? "").trim().replace(/^0+/, "");
-	const short = shortPgGuLabelForPrint(guCode);
-	const title = programTitleForLogPrint(row, planMeta);
-	return `${short} - ${title}`;
-}
-
 function svguLabelForPrint(codeRaw: string): string {
 	const c = String(codeRaw ?? "").trim();
 	const o = SVGU_OPTIONS.find((x) => x.code === c);
 	return o ? o.label : c || "—";
-}
-
-function formatDateTimeForLogPrint(row: F14030Row): string {
-	const d = formatYmd(row.SVDT);
-	const a = timeFromRow(row.SVSTM);
-	const b = timeFromRow(row.SVETM);
-	if (!d) return "—";
-	if (a && b) return `${d} ${a} ~ ${b}`;
-	if (a) return `${d} ${a}`;
-	return d;
-}
-
-function sortRowsChronologicalForLogPrint(a: F14030Row, b: F14030Row): number {
-	const da = formatYmd(a.SVDT);
-	const db = formatYmd(b.SVDT);
-	if (da !== db) return da.localeCompare(db);
-	const ta = String(a.SVSTM ?? "");
-	const tb = String(b.SVSTM ?? "");
-	if (ta !== tb) return ta.localeCompare(tb);
-	return (a.DSEQ ?? 0) - (b.DSEQ ?? 0);
 }
 
 async function fetchPhotoAsDataUrl(blobName: string): Promise<string | null> {
@@ -529,26 +583,109 @@ async function resolvePrintPhotoSrcs(mimg: string | null | undefined): Promise<{
 	return out;
 }
 
+const WEEKDAY_EN_TO_KO: Record<string, string> = {
+	sunday: "일",
+	monday: "월",
+	tuesday: "화",
+	wednesday: "수",
+	thursday: "목",
+	friday: "금",
+	saturday: "토",
+};
+
+function weekdayKoFromView(svdt: string, weekdayRaw: string): string {
+	const raw = String(weekdayRaw ?? "").trim();
+	const lower = raw.toLowerCase();
+	if (WEEKDAY_EN_TO_KO[lower]) return WEEKDAY_EN_TO_KO[lower];
+	if (/^[일월화수목금토]/.test(raw)) return raw.charAt(0);
+	if (svdt) {
+		const d = new Date(`${svdt}T00:00:00`);
+		if (!Number.isNaN(d.getTime())) {
+			return ["일", "월", "화", "수", "목", "금", "토"][d.getDay()] ?? "";
+		}
+	}
+	return raw;
+}
+
+function formatViewDateTimeForLogPrint(row: V14030ABPrintRow): string {
+	const d = String(row.SVDT ?? "").trim();
+	const wd = weekdayKoFromView(d, String(row.weekday ?? ""));
+	const a = String(row.startTime ?? "").trim();
+	const b = String(row.endTime ?? "").trim();
+	if (!d) return "—";
+	const datePart = wd ? `${d} (${wd})` : d;
+	if (a && b) return `${datePart} ${a} ~ ${b}`;
+	if (a) return `${datePart} ${a}`;
+	return datePart;
+}
+
+function f14030ToPrintRow(row: F14030Row, institutionName: string): V14030ABPrintRow {
+	return {
+		ANCD: row.ANCD ?? null,
+		DSEQ: row.DSEQ ?? null,
+		SVDT: formatYmd(row.SVDT),
+		weekday: "",
+		institutionName,
+		startTime: timeFromRow(row.SVSTM),
+		endTime: timeFromRow(row.SVETM),
+		serviceGu: svguLabelForPrint(String(row.SVGU ?? "")),
+		programTitle: String(row.SVDIC ?? "").trim(),
+		serviceContent: String(row.SVDES ?? "").trim(),
+		attendees: String(row.PGMAN0 ?? "").trim(),
+		facilitator: String(row.PGMAN1 ?? "").trim(),
+		assistant: String(row.PGMAN2 ?? "").trim(),
+		goal: String(row.PGOJ ?? "").trim(),
+		materials: String(row.PGJB ?? "").trim(),
+		programContent: String(row.PGDES ?? "").trim(),
+		comment: String(row.ETC ?? "").trim(),
+		place: String(row.PGADD ?? "").trim(),
+		MIMG: String(row.MIMG ?? ""),
+		PG_GU: String(row.PG_GU ?? "").trim(),
+		programGu: labelFromPgGuCode(String(row.PG_GU ?? "")),
+	};
+}
+
+function buildIndivEvalTableHtml(evals: V14030CEvalRow[]): string {
+	if (!evals.length) {
+		return `<div class="eval-empty">등록된 개별평가가 없습니다.</div>`;
+	}
+	const body = evals
+		.map((ev) => {
+			return `<tr>
+	<td class="eval-name">${escapeHtml(String(ev.name ?? "").trim() || " ")}</td>
+	<td class="eval-lv">${escapeHtml(String(ev.joinLevel ?? "").trim() || " ")}</td>
+	<td class="eval-lv">${escapeHtml(String(ev.happLevel ?? "").trim() || " ")}</td>
+	<td class="eval-rm">${escapeHtml(String(ev.remark ?? "").trim() || " ")}</td>
+</tr>`;
+		})
+		.join("");
+	return `<table class="eval-table">
+<thead><tr><th>수급자</th><th>참여도</th><th>만족도</th><th>특이사항</th></tr></thead>
+<tbody>${body}</tbody>
+</table>`;
+}
+
 function buildSingleProgramDailyLogSheetHtml(
-	row: F14030Row,
-	planMeta: ReadonlyMap<number, { pgGu: string; pgnm: string }>,
+	row: V14030ABPrintRow,
+	evals: V14030CEvalRow[],
 	institutionName: string,
 	pageBreakAfter: boolean,
 	printPhotos: { src: string; fileName?: string }[] = [],
 ): string {
 	const pb = pageBreakAfter ? "page-break-after:always;break-after:page;" : "";
-	const org = escapeHtml(institutionName.trim() || "—");
-	const progName = escapeHtml(programNameFullLineForLogPrint(row, planMeta));
-	const place = escapeHtml(String(row.PGADD ?? "").trim() || " ");
-	const dt = escapeHtml(formatDateTimeForLogPrint(row));
-	const svgu = escapeHtml(svguLabelForPrint(String(row.SVGU ?? "")));
-	const man1 = escapeHtml(String(row.PGMAN1 ?? "").trim() || " ");
-	const man2 = escapeHtml(String(row.PGMAN2 ?? "").trim() || " ");
-	const attendees = escapeHtml(String(row.PGMAN0 ?? "").trim() || " ");
-	const goal = escapeHtml(String(row.PGOJ ?? "").trim() || " ");
-	const materials = escapeHtml(String(row.PGJB ?? "").trim() || " ");
-	const process = escapeHtml(String(row.PGDES ?? "").trim() || " ");
-	const evaluation = escapeHtml(String(row.SVDES ?? "").trim() || " ");
+	const org = escapeHtml(String(row.institutionName ?? "").trim() || institutionName.trim() || "—");
+	const progName = escapeHtml(String(row.programTitle ?? "").trim() || " ");
+	const place = escapeHtml(String(row.place ?? "").trim() || " ");
+	const dt = escapeHtml(formatViewDateTimeForLogPrint(row));
+	const gu = escapeHtml(String(row.programGu ?? "").trim() || String(row.serviceGu ?? "").trim() || " ");
+	const man1 = escapeHtml(String(row.facilitator ?? "").trim() || " ");
+	const man2 = escapeHtml(String(row.assistant ?? "").trim() || " ");
+	const attendees = escapeHtml(String(row.attendees ?? "").trim() || " ");
+	const goal = escapeHtml(String(row.goal ?? "").trim() || " ");
+	const materials = escapeHtml(String(row.materials ?? "").trim() || " ");
+	const process = escapeHtml(String(row.programContent ?? "").trim() || " ");
+	const evaluation = escapeHtml(String(row.serviceContent ?? "").trim() || " ");
+	const evalTable = buildIndivEvalTableHtml(evals);
 
 	const photoCells =
 		printPhotos.length > 0
@@ -590,7 +727,7 @@ function buildSingleProgramDailyLogSheetHtml(
 		<td class="cell-label">일시</td>
 		<td class="cell-val">${dt}</td>
 		<td class="cell-label">구분</td>
-		<td class="cell-val">${svgu}</td>
+		<td class="cell-val">${gu}</td>
 	</tr>
 	<tr class="row-fixed">
 		<td class="cell-label">진행자</td>
@@ -618,6 +755,10 @@ function buildSingleProgramDailyLogSheetHtml(
 		<td class="cell-label">평가</td>
 		<td class="cell-val cell-pre" colspan="3">${evaluation}</td>
 	</tr>
+	<tr class="row-indiv">
+		<td class="cell-label">수급자<br/>개별평가</td>
+		<td class="cell-val cell-indiv" colspan="3">${evalTable}</td>
+	</tr>
 	<tr class="row-photo">
 		<td class="cell-label">사진</td>
 		<td class="cell-val cell-photo" colspan="3"><div class="photo-grid">${photoCells}</div></td>
@@ -640,12 +781,10 @@ html, body { height: 100%; }
 body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.5pt; color: #000; background: #fff; }
 .log-sheet {
 	width: 190mm;
-	height: 277mm;
-	max-height: 277mm;
+	min-height: 277mm;
 	margin: 0 auto;
 	display: flex;
 	flex-direction: column;
-	overflow: hidden;
 }
 .log-top {
 	display: flex;
@@ -680,7 +819,16 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.
 .row-goal { height: 14mm; }
 .row-mat { height: 10mm; }
 .row-process { height: 42mm; }
-.row-eval { height: 28mm; }
+.row-eval { height: 22mm; }
+.row-indiv td { vertical-align: top; }
+.cell-indiv { padding: 4px 6px; }
+.eval-table { width: 100%; border-collapse: collapse; font-size: 9pt; table-layout: fixed; }
+.eval-table th, .eval-table td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
+.eval-table th { text-align: center; font-weight: 600; background: #f5f5f5; }
+.eval-name { width: 18%; }
+.eval-lv { width: 12%; text-align: center; }
+.eval-rm { width: 58%; word-break: break-word; }
+.eval-empty { font-size: 9.5pt; color: #444; padding: 4px 0; }
 .row-photo { height: auto; }
 .row-photo td { height: 72mm; vertical-align: top; }
 .cell-photo { padding: 4px; }
@@ -713,7 +861,7 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.
 .photo-empty { width: 100%; height: 100%; min-height: 68mm; }
 @media print {
 	body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-	.log-sheet { height: 277mm; page-break-inside: avoid; }
+	.log-sheet { min-height: 277mm; }
 }
 </style>
 </head>
@@ -795,11 +943,13 @@ export default function ProgramDailyLog() {
 	const [periodLogStart, setPeriodLogStart] = useState(initialRange.start);
 	const [periodLogEnd, setPeriodLogEnd] = useState(initialRange.end);
 
-	/** F14040 치료프로그램(일지 PGSEQ → PG_GU·PGNM) */
-	type F14040PlanLite = { PGSEQ?: number; PG_GU?: string | null; PGNM?: string | null };
+	/** F14040 치료프로그램(일지 PGSEQ → 계획서 필드 자동반영) */
 	const [f14040Plans, setF14040Plans] = useState<F14040PlanLite[]>([]);
+	const [f14040LoadError, setF14040LoadError] = useState<string | null>(null);
+	const [attendeeEvals, setAttendeeEvals] = useState<AttendeeEval[]>([]);
+	const [attendeeModalOpen, setAttendeeModalOpen] = useState(false);
+	const [svdesSamples, setSvdesSamples] = useState<string[]>([]);
 
-	const didInitialMonthLoad = useRef(false);
 	/** 목록 조회 세대 — 기간 변경·새 조회 시작 시 이전 비동기 결과 무시 */
 	const listFetchEpoch = useRef(0);
 
@@ -863,6 +1013,29 @@ export default function ProgramDailyLog() {
 		return m;
 	}, [pgseqToPlanMeta]);
 
+	const pgseqToPlan = useMemo(() => {
+		const m = new Map<number, F14040PlanLite>();
+		for (const r of f14040Plans) {
+			const seq = parsePgseq(r.PGSEQ);
+			if (seq == null) continue;
+			m.set(seq, r);
+		}
+		return m;
+	}, [f14040Plans]);
+
+	const selectablePlans = useMemo(() => {
+		const currentSeq = parsePgseq(formData.PGSEQ);
+		return f14040Plans
+			.filter((p) => {
+				const seq = parsePgseq(p.PGSEQ);
+				if (seq == null) return false;
+				if (currentSeq != null && seq === currentSeq) return true;
+				return !isDeletedPlan(p.DEL);
+			})
+			.slice()
+			.sort((a, b) => String(a.PGNM ?? "").localeCompare(String(b.PGNM ?? ""), "ko"));
+	}, [f14040Plans, formData.PGSEQ]);
+
 	const [programListPage, setProgramListPage] = useState(1);
 	const programTotalPages = Math.max(1, Math.ceil(programsForDate.length / PROGRAM_LIST_PAGE_SIZE));
 	const pagedProgramsForDate = useMemo(() => {
@@ -896,6 +1069,8 @@ export default function ProgramDailyLog() {
 			setProgramListPage(1);
 			setDatePage(1);
 			setFormData(emptyForm(workPeriodStart));
+			setAttendeeEvals([]);
+			setAttendeeModalOpen(false);
 		} catch (e) {
 			if (run !== listFetchEpoch.current) return;
 			setRows([]);
@@ -918,17 +1093,132 @@ export default function ProgramDailyLog() {
 		})();
 	}, []);
 
+	const applyAttendeeEvals = useCallback((next: AttendeeEval[]) => {
+		setAttendeeEvals(next);
+		setFormData((p) => ({ ...p, PGMAN0: pgman0FromEvals(next) }));
+	}, []);
+
+	const loadAttendeeEvals = useCallback(async (dseq: number) => {
+		try {
+			const [j31, j10] = await Promise.all([
+				fetch(`/api/f14031?dseq=${encodeURIComponent(String(dseq))}`, { cache: "no-store" }).then((r) =>
+					r.json(),
+				),
+				fetch("/api/f10010", { cache: "no-store" }).then((r) => r.json()),
+			]);
+			if (!j31?.success || !Array.isArray(j31.data)) {
+				setAttendeeEvals([]);
+				return;
+			}
+			const members = new Map<number, Record<string, unknown>>();
+			if (j10?.success && Array.isArray(j10.data)) {
+				for (const r of j10.data as Record<string, unknown>[]) {
+					const pnum = parseInt(String(r.PNUM ?? ""), 10);
+					if (Number.isFinite(pnum)) members.set(pnum, r);
+				}
+			}
+			const next: AttendeeEval[] = j31.data
+				.map((r: { PNUM?: number; P_GRD?: string; JOIN_FLAG?: string; PLAY_FLAG?: string; HAPP_FLAG?: string; RESP_DESC?: string }) => {
+					const pnum = Number(r.PNUM);
+					if (!Number.isFinite(pnum)) return null;
+					const m = members.get(pnum);
+					const pGrd = normalizePGrdForSelect(r.P_GRD || m?.P_GRD);
+					return {
+						PNUM: pnum,
+						name: String(m?.P_NM ?? "").trim() || `수급자 ${pnum}`,
+						sex: sexLabelFromMember(m?.P_SEX),
+						birthday: formatYmd(m?.P_BRDT),
+						gradeLabel: formatCareGradeLabel(r.P_GRD || m?.P_GRD),
+						P_GRD: pGrd,
+						JOIN_FLAG: String(r.JOIN_FLAG ?? "").trim(),
+						PLAY_FLAG: String(r.PLAY_FLAG ?? "").trim(),
+						HAPP_FLAG: String(r.HAPP_FLAG ?? "").trim(),
+						RESP_DESC: String(r.RESP_DESC ?? "").trim(),
+					};
+				})
+				.filter((x: AttendeeEval | null): x is AttendeeEval => Boolean(x))
+				.sort((a: AttendeeEval, b: AttendeeEval) => a.name.localeCompare(b.name, "ko"));
+			setAttendeeEvals(next);
+			setFormData((p) => ({ ...p, PGMAN0: pgman0FromEvals(next) || p.PGMAN0 }));
+		} catch {
+			setAttendeeEvals([]);
+		}
+	}, []);
+
+	const persistPendingAttendeeEvals = useCallback(async (dseq: number, rows: AttendeeEval[]) => {
+		for (const row of rows) {
+			const res = await fetch("/api/f14031", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({
+					action: "save",
+					DSEQ: dseq,
+					PNUM: row.PNUM,
+					P_GRD: row.P_GRD,
+					JOIN_FLAG: row.JOIN_FLAG,
+					PLAY_FLAG: row.PLAY_FLAG,
+					HAPP_FLAG: row.HAPP_FLAG,
+					RESP_DESC: row.RESP_DESC,
+				}),
+			});
+			const json = await res.json();
+			if (!res.ok || !json?.success) {
+				throw new Error(json?.error || `${row.name} 개별평가 저장에 실패했습니다.`);
+			}
+		}
+	}, []);
+
+	const fetchF14040Plans = useCallback(async () => {
+		try {
+			const res = await fetch("/api/f14040", { cache: "no-store", credentials: "include" });
+			const json = await res.json();
+			if (!res.ok || !json?.success || !Array.isArray(json.data)) {
+				throw new Error(json?.error || "프로그램계획서 목록을 불러오지 못했습니다.");
+			}
+			setF14040Plans(json.data as F14040PlanLite[]);
+			setF14040LoadError(null);
+		} catch (e) {
+			setF14040Plans([]);
+			setF14040LoadError(e instanceof Error ? e.message : "프로그램계획서 목록을 불러오지 못했습니다.");
+		}
+	}, []);
+
 	useEffect(() => {
+		void fetchF14040Plans();
+	}, [fetchF14040Plans]);
+
+	useEffect(() => {
+		const seq = parsePgseq(formData.PGSEQ);
+		if (seq == null) {
+			setSvdesSamples([]);
+			return;
+		}
+		let cancelled = false;
 		(async () => {
 			try {
-				const res = await fetch("/api/f14040", { cache: "no-store" });
+				const res = await fetch(`/api/f14039?pgseq=${encodeURIComponent(String(seq))}&smp_flag=1`, {
+					cache: "no-store",
+				});
 				const json = await res.json();
-				if (json?.success && Array.isArray(json.data)) setF14040Plans(json.data as F14040PlanLite[]);
+				if (cancelled) return;
+				if (!json?.success || !Array.isArray(json.data)) {
+					setSvdesSamples([]);
+					return;
+				}
+				setSvdesSamples(
+					json.data
+						.map((r: { SMP_DSC?: string }) => String(r.SMP_DSC ?? "").trim())
+						.filter(Boolean),
+				);
 			} catch {
-				/* ignore */
+				if (!cancelled) setSvdesSamples([]);
 			}
 		})();
-	}, []);
+		return () => {
+			cancelled = true;
+		};
+	}, [formData.PGSEQ]);
 
 	useEffect(() => {
 		setDatePage((p) => Math.min(p, dateTotalPages));
@@ -942,12 +1232,11 @@ export default function ProgramDailyLog() {
 		setProgramListPage(1);
 	}, [selectedSvdDate]);
 
-	/** 최초 진입 시에만 당월(업무기간 기본값) 전체 조회 */
 	useEffect(() => {
-		if (didInitialMonthLoad.current) return;
-		didInitialMonthLoad.current = true;
+		if (!workPeriodStart || !workPeriodEnd) return;
+		if (workPeriodStart > workPeriodEnd) return;
 		void reloadFull();
-	}, [reloadFull]);
+	}, [workPeriodStart, workPeriodEnd, reloadFull]);
 
 	const handleSearch = () => {
 		void reloadFull();
@@ -959,6 +1248,7 @@ export default function ProgramDailyLog() {
 		setIsAddingNewProgram(false);
 		setFormFieldsUnlocked(false);
 		setFormData(emptyForm(svdDate));
+		setAttendeeEvals([]);
 	};
 
 	const handleSelectProgram = (program: F14030Row) => {
@@ -966,18 +1256,38 @@ export default function ProgramDailyLog() {
 		setIsAddingNewProgram(false);
 		setFormFieldsUnlocked(false);
 		setEditingDseq(program.DSEQ);
-		setFormData(mergePlanPgGuFromF14040(rowToForm(program), pgseqToPgGuMap));
+		let fd = mergePlanPgGuFromF14040(rowToForm(program), pgseqToPgGuMap);
+		if (!fd.PGSEQ && fd.SVDIC.trim()) {
+			const hits = f14040Plans.filter(
+				(p) => !isDeletedPlan(p.DEL) && String(p.PGNM ?? "").trim() === fd.SVDIC.trim(),
+			);
+			if (hits.length === 1 && hits[0].PGSEQ != null) {
+				fd = { ...fd, PGSEQ: String(hits[0].PGSEQ) };
+			}
+		}
+		setFormData(fd);
+		void loadAttendeeEvals(program.DSEQ);
 	};
 
 	const handleNew = () => {
-		if (!selectedSvdDate) {
-			alert("왼쪽에서 서비스일자를 먼저 선택해 주세요.");
+		const editingNow = isAddingNewProgram || (editingDseq != null && formFieldsUnlocked);
+		if (editingNow && !confirm("작성 중인 내용이 저장되지 않습니다. 신규로 전환할까요?")) {
 			return;
 		}
+		const today = formatYmd(new Date());
+		const defaultDate =
+			selectedSvdDate ||
+			(workPeriodStart && workPeriodEnd && today >= workPeriodStart && today <= workPeriodEnd
+				? today
+				: workPeriodStart) ||
+			today;
+		setSelectedSvdDate(defaultDate);
 		setIsAddingNewProgram(true);
 		setFormFieldsUnlocked(true);
 		setEditingDseq(null);
-		setFormData(emptyForm(selectedSvdDate));
+		setFormData(emptyForm(defaultDate));
+		setAttendeeEvals([]);
+		void fetchF14040Plans();
 	};
 
 	/** 수정·신규 입력 모드 종료 — 저장 없이 읽기 전용으로 복귀 */
@@ -988,6 +1298,7 @@ export default function ProgramDailyLog() {
 			setEditingDseq(null);
 			if (selectedSvdDate) setFormData(emptyForm(selectedSvdDate));
 			else setFormData(emptyForm(workPeriodStart));
+			setAttendeeEvals([]);
 			return;
 		}
 		if (editingDseq != null && selectedSvdDate) {
@@ -1055,8 +1366,8 @@ export default function ProgramDailyLog() {
 			alert("서비스일자를 입력해 주세요.");
 			return;
 		}
-		if (!formData.SVDIC?.trim()) {
-			alert("서비스제목을 입력해 주세요.");
+		if (!formData.PGSEQ?.trim() || !formData.SVDIC?.trim()) {
+			alert("프로그램명을 선택해 주세요.");
 			return;
 		}
 
@@ -1072,8 +1383,12 @@ export default function ProgramDailyLog() {
 			if (!res.ok || !json.success) {
 				throw new Error(json.error || "저장에 실패했습니다.");
 			}
-			alert(action === "create" ? "등록되었습니다." : "수정되었습니다.");
 			const newDseq = json.dseq as number | undefined;
+			const pickDseqAfter = action === "create" ? (newDseq != null ? Number(newDseq) : null) : editingDseq;
+			if (action === "create" && pickDseqAfter != null && attendeeEvals.length > 0) {
+				await persistPendingAttendeeEvals(pickDseqAfter, attendeeEvals);
+			}
+			alert(action === "create" ? "등록되었습니다." : "수정되었습니다.");
 			const data = await fetchDataRows();
 			setRows(data);
 			const svd = formData.SVDT.trim();
@@ -1086,6 +1401,7 @@ export default function ProgramDailyLog() {
 					setFormFieldsUnlocked(false);
 					setEditingDseq(pickDseq);
 					setFormData(mergePlanPgGuFromF14040(rowToForm(row), pgseqToPgGuMap));
+					void loadAttendeeEvals(pickDseq);
 					const sorted = data
 						.filter((r) => formatYmd(r.SVDT) === svd)
 						.sort((a, b) => {
@@ -1143,6 +1459,7 @@ export default function ProgramDailyLog() {
 			setEditingDseq(null);
 			setIsAddingNewProgram(false);
 			setFormFieldsUnlocked(false);
+			setAttendeeEvals([]);
 		} catch (e) {
 			alert(e instanceof Error ? e.message : "삭제 중 오류가 발생했습니다.");
 		} finally {
@@ -1186,10 +1503,20 @@ export default function ProgramDailyLog() {
 			return;
 		}
 		try {
-			const printPhotos = await resolvePrintPhotoSrcs(formData.MIMG || row.MIMG);
+			const res = await fetch(`/api/v14030ab?dseq=${encodeURIComponent(String(editingDseq))}&includeEvals=1`, {
+				cache: "no-store",
+			});
+			const json = await res.json();
+			if (!res.ok || !json?.success) {
+				throw new Error(json?.error || "출력 데이터를 불러오지 못했습니다.");
+			}
+			const viewRows: V14030ABPrintRow[] = Array.isArray(json.data) ? json.data : [];
+			const evals: V14030CEvalRow[] = Array.isArray(json.evals) ? json.evals : [];
+			const viewRow = viewRows[0] ?? f14030ToPrintRow(row, institutionNameForPrint);
+			const printPhotos = await resolvePrintPhotoSrcs(formData.MIMG || row.MIMG || viewRow.MIMG);
 			const sheet = buildSingleProgramDailyLogSheetHtml(
-				row,
-				pgseqToPlanMeta,
+				viewRow,
+				evals,
 				institutionNameForPrint,
 				false,
 				printPhotos,
@@ -1212,36 +1539,51 @@ export default function ProgramDailyLog() {
 			return;
 		}
 		try {
-			const [j30, j40] = await Promise.all([
+			const [jView, j30] = await Promise.all([
+				fetch(
+					`/api/v14030ab?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}&includeEvals=1`,
+					{ cache: "no-store" },
+				).then((r) => r.json()),
 				fetch(
 					`/api/f14030?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
 					{ cache: "no-store" },
 				).then((r) => r.json()),
-				fetch("/api/f14040", { cache: "no-store" }).then((r) => r.json()),
 			]);
-			if (!j30?.success) {
-				alert(String(j30?.error || "일지 데이터를 불러오지 못했습니다."));
+			if (!jView?.success) {
+				alert(String(jView?.error || "일지 출력 데이터를 불러오지 못했습니다."));
 				return;
 			}
-			const dataRows: F14030Row[] = Array.isArray(j30.data) ? j30.data : [];
-			const plans: F14040PlanForPrint[] =
-				j40?.success && Array.isArray(j40.data) ? j40.data : [];
-			const planMeta = buildPlanMetaFromF14040Json(plans);
-			const sorted = [...dataRows].sort(sortRowsChronologicalForLogPrint);
-			if (sorted.length === 0) {
+			const viewRows: V14030ABPrintRow[] = Array.isArray(jView.data) ? jView.data : [];
+			const evals: V14030CEvalRow[] = Array.isArray(jView.evals) ? jView.evals : [];
+			const fallbackRows: F14030Row[] = j30?.success && Array.isArray(j30.data) ? j30.data : [];
+			const mimgByDseq = new Map<number, string>();
+			for (const r of fallbackRows) {
+				if (r.DSEQ != null && r.MIMG) mimgByDseq.set(r.DSEQ, String(r.MIMG));
+			}
+			const evalsByDseq = new Map<number, V14030CEvalRow[]>();
+			for (const ev of evals) {
+				const dseq = ev.DSEQ;
+				if (dseq == null) continue;
+				const list = evalsByDseq.get(dseq) ?? [];
+				list.push(ev);
+				evalsByDseq.set(dseq, list);
+			}
+			if (viewRows.length === 0) {
 				alert("해당 기간에 출력할 일지가 없습니다.");
 				return;
 			}
 			const sheets = [];
-			for (let i = 0; i < sorted.length; i++) {
-				const row = sorted[i];
-				const printPhotos = await resolvePrintPhotoSrcs(row.MIMG);
+			for (let i = 0; i < viewRows.length; i++) {
+				const viewRow = viewRows[i];
+				const dseq = viewRow.DSEQ ?? null;
+				const mimg = (dseq != null ? mimgByDseq.get(dseq) : "") || viewRow.MIMG;
+				const printPhotos = await resolvePrintPhotoSrcs(mimg);
 				sheets.push(
 					buildSingleProgramDailyLogSheetHtml(
-						row,
-						planMeta,
+						viewRow,
+						dseq != null ? evalsByDseq.get(dseq) ?? [] : [],
 						institutionNameForPrint,
-						i < sorted.length - 1,
+						i < viewRows.length - 1,
 						printPhotos,
 					),
 				);
@@ -1295,7 +1637,15 @@ export default function ProgramDailyLog() {
 		}
 	};
 
-	const fieldRo = "px-2 py-1.5 text-sm border border-blue-300 rounded bg-white w-full max-w-full";
+	const fieldRo =
+		"px-2 py-1.5 text-sm border border-blue-300 rounded bg-white w-full max-w-full focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-600";
+	const btnBase =
+		"px-3 py-1.5 text-sm font-medium rounded border transition-colors disabled:opacity-40 disabled:pointer-events-none";
+	const btnBlue = `${btnBase} text-blue-900 bg-blue-100 border-blue-300 hover:bg-blue-200`;
+	const btnAmber = `${btnBase} text-amber-900 bg-amber-100 border-amber-400 hover:bg-amber-200`;
+	const btnGreen = `${btnBase} text-white bg-green-600 border-green-700 hover:bg-green-700 disabled:hover:bg-green-600`;
+	const btnRed = `${btnBase} text-red-800 bg-red-50 border-red-300 hover:bg-red-100`;
+	const btnWhite = `${btnBase} text-blue-900 bg-white border-blue-300 hover:bg-blue-50`;
 
 	/** 상단 표에서 행을 고르지 않았을 때 하단 폼 비활성 표시(「추가」로 신규 입력 중은 제외) */
 	const formAreaLocked =
@@ -1389,13 +1739,50 @@ export default function ProgramDailyLog() {
 		}));
 	};
 
+	const onProgramPlanChange = (pgseqStr: string) => {
+		if (!canEditFormFields) return;
+		if (!pgseqStr) {
+			setFormData((prev) => ({
+				...prev,
+				PGSEQ: "",
+				SVDIC: "",
+				PG_GU: "",
+				PG_GU_NM: "",
+				PGADD: "",
+				PGMAN1: "",
+				PGMAN2: "",
+				PGOJ: "",
+				PGJB: "",
+				PGDES: "",
+			}));
+			return;
+		}
+		const seq = parsePgseq(pgseqStr);
+		const plan = seq != null ? pgseqToPlan.get(seq) : undefined;
+		if (!plan) {
+			setFormData((prev) => ({ ...prev, PGSEQ: pgseqStr }));
+			return;
+		}
+		setFormData((prev) => applyPlanToForm(prev, plan));
+	};
+
 	const showModifyButton =
 		!formAreaLocked && editingDseq != null && !isAddingNewProgram && !formFieldsUnlocked;
 
 	return (
-		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
+		<div className="flex flex-col h-full min-h-0 w-full max-w-full min-w-0 overflow-hidden text-black bg-white">
 			<div className="flex flex-wrap items-center justify-between gap-2 p-4 border-b border-blue-200 bg-blue-50 print:hidden">
-				<h1 className="text-xl font-semibold text-blue-900">프로그램 일지</h1>
+				<div className="flex items-center gap-2">
+					<h1 className="text-xl font-semibold text-blue-900">프로그램 일지</h1>
+					<button
+						type="button"
+						onClick={handleNew}
+						disabled={saveLoading}
+						className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50"
+					>
+						신규생성
+					</button>
+				</div>
 				<div className="flex flex-wrap items-center gap-4">
 					<div className="flex items-center gap-2">
 						<label className="text-sm font-medium text-blue-900 whitespace-nowrap">업무기간</label>
@@ -1412,9 +1799,8 @@ export default function ProgramDailyLog() {
 							onChange={(e) => setWorkPeriodEnd(e.target.value)}
 							className="px-2 py-1 text-sm bg-white border border-blue-300 rounded"
 						/>
-
 					</div>
-					<div className="flex items-center gap-2">
+					{/* <div className="flex items-center gap-2">
 						<button
 							type="button"
 							onClick={handleSearch}
@@ -1423,8 +1809,7 @@ export default function ProgramDailyLog() {
 						>
 							검색
 						</button>
-
-					</div>
+					</div> */}
 				</div>
 			</div>
 
@@ -1530,10 +1915,18 @@ export default function ProgramDailyLog() {
 					</div>
 				</div>
 
-				<div className="flex flex-col flex-1 min-w-0 bg-white">
+				<div className="flex flex-col flex-1 min-w-0 min-h-0 h-full overflow-hidden bg-white">
 					<div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-						<div className="shrink-0 border-b border-blue-200 bg-white flex flex-col overflow-x-auto w-full min-w-0">
-							<table className="w-max max-w-none text-sm min-w-[640px] table-fixed border-collapse">
+						{!isAddingNewProgram ? (
+						<div className="shrink-0 border-b border-blue-200 bg-white w-full min-w-0">
+							<table className="w-full text-sm table-fixed border-collapse">
+								<colgroup>
+									<col className="w-[8.5rem]" />
+									<col className="w-[6.5rem]" />
+									<col className="w-[6.5rem]" />
+									<col className="w-[9.5rem]" />
+									<col />
+								</colgroup>
 								<thead>
 									<tr className="h-10 border-b border-blue-200 bg-blue-50">
 										<th className="px-2 font-semibold text-center text-blue-900 border-r border-blue-200 whitespace-nowrap align-middle">
@@ -1548,7 +1941,7 @@ export default function ProgramDailyLog() {
 										<th className="px-2 font-semibold text-center text-blue-900 border-r border-blue-200 whitespace-nowrap align-middle">
 											프로그램구분
 										</th>
-										<th className="px-2 font-semibold text-center text-blue-900 whitespace-nowrap align-middle">서비스제목</th>
+										<th className="px-2 font-semibold text-center text-blue-900 whitespace-nowrap align-middle">프로그램명</th>
 									</tr>
 								</thead>
 								<tbody className="h-[9rem]">
@@ -1578,8 +1971,8 @@ export default function ProgramDailyLog() {
 													<tr
 														key={program.DSEQ ?? String(program.SVSTM) + String(program.SVDIC)}
 														onClick={() => handleSelectProgram(program)}
-														className={`h-12 max-h-12 border-b border-blue-50 hover:bg-blue-50 cursor-pointer ${
-															selected ? "bg-blue-100" : ""
+														className={`h-12 max-h-12 border-b border-blue-100 hover:bg-blue-50 cursor-pointer ${
+															selected ? "bg-blue-100 font-medium" : "bg-white"
 														}`}
 													>
 														<td className="px-2 align-middle text-center border-r border-blue-100 whitespace-nowrap truncate">
@@ -1653,20 +2046,23 @@ export default function ProgramDailyLog() {
 								</div>
 							) : null}
 						</div>
+						) : null}
 
-						<div className="flex flex-wrap items-center justify-between gap-2 p-4 border-y border-blue-200 bg-blue-50 print:hidden shrink-0">
-							<div className="flex flex-wrap items-center gap-2">
+						<div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-blue-200 bg-blue-50 print:hidden shrink-0">
+							<div className="flex flex-wrap items-center gap-1.5">
 								<button
 									type="button"
 									onClick={handleCopyToCenter}
-									className="px-3 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+									disabled={isAddingNewProgram}
+									className={btnBlue}
 								>
 									센터로복사
 								</button>
 								<button
 									type="button"
 									onClick={handleNew}
-									className="px-3 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+									disabled={isAddingNewProgram}
+									className={btnBlue}
 								>
 									추가
 								</button>
@@ -1674,7 +2070,7 @@ export default function ProgramDailyLog() {
 									<button
 										type="button"
 										onClick={() => setFormFieldsUnlocked(true)}
-										className="px-3 py-2 text-sm font-medium text-blue-900 bg-amber-100 border border-amber-400 rounded hover:bg-amber-200"
+										className={btnAmber}
 									>
 										수정
 									</button>
@@ -1684,7 +2080,7 @@ export default function ProgramDailyLog() {
 										type="button"
 										onClick={handleCancelEdit}
 										disabled={saveLoading}
-										className="px-3 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 disabled:opacity-50"
+										className={btnWhite}
 									>
 										취소
 									</button>
@@ -1693,65 +2089,70 @@ export default function ProgramDailyLog() {
 									type="button"
 									onClick={() => void handleSave()}
 									disabled={saveLoading || !canEditFormFields}
-									className="px-3 py-2 text-sm font-medium text-white bg-green-600 border border-green-700 rounded hover:bg-green-700 disabled:opacity-50"
+									className={btnGreen}
 								>
 									{saveLoading ? "처리 중…" : editingDseq != null ? "저장(수정)" : "저장(등록)"}
 								</button>
 								<button
 									type="button"
 									onClick={() => void handleDelete()}
-									disabled={saveLoading || editingDseq == null}
-									className="px-3 py-2 text-sm font-medium text-red-800 bg-red-50 border border-red-300 rounded hover:bg-red-100 disabled:opacity-40"
+									disabled={saveLoading || editingDseq == null || isAddingNewProgram}
+									className={btnRed}
 								>
 									삭제
 								</button>
 							</div>
-							<div className="flex flex-wrap items-center gap-2">
+							<div className="flex flex-wrap items-center gap-1.5">
 								<button
 									type="button"
 									onClick={handleCopyDate}
-									className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+									disabled={isAddingNewProgram}
+									className={btnBlue}
 								>
 									일자복사
 								</button>
 								<button
 									type="button"
 									onClick={handleCopyByCase}
-									className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+									disabled={isAddingNewProgram}
+									className={btnBlue}
 								>
 									건별복사
 								</button>
 								<button
 									type="button"
 									onClick={handlePrintSingleProgramLog}
-									className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+									disabled={isAddingNewProgram}
+									className={btnBlue}
 								>
 									해당 일지 출력
 								</button>
 								<button
 									type="button"
 									onClick={handleOpenPeriodLogModal}
-									className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+									disabled={isAddingNewProgram}
+									className={btnBlue}
 								>
 									기간설정 일지출력
 								</button>
 								<button
 									type="button"
 									onClick={() => void handlePrintProgramParticipation()}
-									className="px-3 py-1.5 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+									disabled={isAddingNewProgram}
+									className={btnBlue}
 								>
 									프로그램 참여 실적 출력
 								</button>
 							</div>
 						</div>
 
-						<div className="relative flex-1 min-h-0 overflow-hidden bg-white">
+						<div className="relative flex-1 min-h-0 overflow-y-auto bg-slate-50/50">
 							<div
-								className={`h-full overflow-y-auto p-4 ${formAreaLocked ? "pointer-events-none" : ""}`}
+								className={`p-4 ${formAreaLocked ? "pointer-events-none" : ""}`}
 							>
 								<fieldset
 									disabled={!canEditFormFields}
-									className={`grid gap-3 max-w-5xl min-w-0 border-0 p-0 m-0 ${
+									className={`grid gap-3 w-full min-w-0 border-0 p-0 m-0 ${
 										formAreaLocked ? "blur-sm select-none opacity-70" : ""
 									}`}
 								>
@@ -1800,24 +2201,48 @@ export default function ProgramDailyLog() {
 
 									<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 									<div>
-										<label className="block text-xs text-blue-900/80 mb-0.5">서비스구분 (SVGU)</label>
+										<label className="block text-xs text-blue-900/80 mb-0.5">
+											프로그램명
+											{selectablePlans.length > 0 ? ` (${selectablePlans.length}건)` : ""}
+										</label>
 										<select
-											value={
-												formData.SVGU === "1" || formData.SVGU === "2" ? formData.SVGU : ""
-											}
-											onChange={(e) => setFormData((p) => ({ ...p, SVGU: e.target.value }))}
+											value={formData.PGSEQ}
+											onChange={(e) => onProgramPlanChange(e.target.value)}
 											className={fieldRo}
 										>
-											<option value="">선택</option>
-											{SVGU_OPTIONS.map((o) => (
-												<option key={o.code} value={o.code}>
-													{o.code}. {o.label}
+											<option value="">해당 기관 프로그램계획서에서 선택</option>
+											{formData.PGSEQ &&
+											!selectablePlans.some((p) => String(parsePgseq(p.PGSEQ) ?? "") === formData.PGSEQ) ? (
+												<option value={formData.PGSEQ}>
+													{formData.SVDIC.trim() || `일련번호 ${formData.PGSEQ}`}
 												</option>
-											))}
+											) : null}
+											{selectablePlans.map((p) => {
+												const seq = parsePgseq(p.PGSEQ);
+												if (seq == null) return null;
+												const guLbl = labelFromPgGuCode(String(p.PG_GU ?? ""));
+												const name = String(p.PGNM ?? "").trim() || `(일련번호 ${seq})`;
+												return (
+													<option key={seq} value={String(seq)}>
+														{guLbl ? `${name} · ${guLbl}` : name}
+													</option>
+												);
+											})}
 										</select>
+										{f14040LoadError ? (
+											<p className="mt-1 text-[11px] text-red-600">{f14040LoadError}</p>
+										) : selectablePlans.length === 0 ? (
+											<p className="mt-1 text-[11px] text-blue-900/65">
+												등록된 프로그램이 없습니다. 프로그램계획서에서 먼저 등록해 주세요.
+											</p>
+										) : (
+											<p className="mt-1 text-[11px] text-blue-900/65">
+												선택 시 프로그램 구분·장소·진행자·보조 진행자·목표·준비물·운영과정이 계획서 내용으로 채워집니다.
+											</p>
+										)}
 									</div>
 									<div>
-										<label className="block text-xs text-blue-900/80 mb-0.5">프로그램 구분 (PG_GU)</label>
+										<label className="block text-xs text-blue-900/80 mb-0.5">프로그램 구분</label>
 										<select
 											value={formData.PG_GU}
 											onChange={(e) => onPgGuChange(e.target.value)}
@@ -1833,58 +2258,8 @@ export default function ProgramDailyLog() {
 									</div>
 								</div>
 
-								<div className="grid grid-cols-3 gap-2 sm:gap-3 items-end min-w-0">
-									<div className="min-w-0">
-										<label className="block text-xs text-blue-900/80 mb-0.5">프로그램구분명 (PG_GU_NM)</label>
-										<input
-											value={formData.PG_GU_NM}
-											onChange={(e) => setFormData((p) => ({ ...p, PG_GU_NM: e.target.value }))}
-											maxLength={50}
-											className={fieldRo}
-										/>
-									</div>
-									<div className="min-w-0">
-										<label className="block text-xs text-blue-900/80 mb-0.5">서비스제목 (SVDIC)</label>
-										<input
-											value={formData.SVDIC}
-											onChange={(e) => setFormData((p) => ({ ...p, SVDIC: e.target.value }))}
-											maxLength={200}
-											className={fieldRo}
-										/>
-									</div>
-									<div className="min-w-0">
-										<label className="block text-xs text-blue-900/80 mb-0.5">서비스제목 보조 (SVDIC_SUB)</label>
-										<input
-											value={formData.SVDIC_SUB}
-											onChange={(e) => setFormData((p) => ({ ...p, SVDIC_SUB: e.target.value }))}
-											maxLength={50}
-											className={fieldRo}
-										/>
-									</div>
-								</div>
-
-								<div>
-									<label className="block text-xs text-blue-900/80 mb-0.5">서비스평가 (SVDES)</label>
-									<textarea
-										value={formData.SVDES}
-										onChange={(e) => setFormData((p) => ({ ...p, SVDES: e.target.value }))}
-										maxLength={2000}
-										rows={5}
-										className={fieldRo + " min-h-[100px] resize-y"}
-									/>
-								</div>
-
-								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-									<div>
-										<label className="block text-xs text-blue-900/80 mb-0.5">프로그램 참석자 (PGMAN0)</label>
-										<input
-											value={formData.PGMAN0}
-											onChange={(e) => setFormData((p) => ({ ...p, PGMAN0: e.target.value }))}
-											maxLength={200}
-											className={fieldRo}
-										/>
-									</div>
-									<div>
+								<div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+									<div className="sm:col-span-2">
 										<label className="block text-xs text-blue-900/80 mb-0.5">프로그램 장소 (PGADD)</label>
 										<input
 											value={formData.PGADD}
@@ -1929,8 +2304,8 @@ export default function ProgramDailyLog() {
 										value={formData.PGJB}
 										onChange={(e) => setFormData((p) => ({ ...p, PGJB: e.target.value }))}
 										maxLength={200}
-										rows={4}
-										className={fieldRo + " min-h-[5.5rem] resize-y"}
+										rows={2}
+										className={fieldRo + " min-h-[2.75rem] resize-y"}
 									/>
 								</div>
 								<div>
@@ -1939,29 +2314,106 @@ export default function ProgramDailyLog() {
 										value={formData.PGDES}
 										onChange={(e) => setFormData((p) => ({ ...p, PGDES: e.target.value }))}
 										maxLength={1000}
-										rows={20}
-										className={fieldRo + " min-h-[30rem] resize-y"}
+										rows={10}
+										className={fieldRo + " min-h-[15rem] resize-y"}
 									/>
 								</div>
 
-								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-									<div>
-										<label className="block text-xs text-blue-900/80 mb-0.5">비고 (ETC)</label>
-										<input
-											value={formData.ETC}
-											onChange={(e) => setFormData((p) => ({ ...p, ETC: e.target.value }))}
-											maxLength={1000}
-											className={fieldRo}
-										/>
+								<div>
+									<label className="block text-xs text-blue-900/80 mb-0.5">서비스평가 (SVDES)</label>
+									<select
+										value=""
+										onChange={(e) => {
+											const v = e.target.value;
+											if (!v) return;
+											setFormData((p) => ({ ...p, SVDES: v.slice(0, 2000) }));
+										}}
+										className={fieldRo + " mb-1.5"}
+									>
+										<option value="">
+											{!formData.PGSEQ
+												? "프로그램을 먼저 선택해 주세요"
+												: svdesSamples.length === 0
+													? "등록된 총평 샘플이 없습니다"
+													: "총평 샘플 선택"}
+										</option>
+										{svdesSamples.map((s, i) => (
+											<option key={`${i}-${s.slice(0, 16)}`} value={s}>
+												{s.length > 60 ? `${s.slice(0, 60)}…` : s}
+											</option>
+										))}
+									</select>
+									<textarea
+										value={formData.SVDES}
+										onChange={(e) => setFormData((p) => ({ ...p, SVDES: e.target.value }))}
+										maxLength={2000}
+										rows={5}
+										className={fieldRo + " min-h-[100px] resize-y"}
+									/>
+								</div>
+
+								</fieldset>
+
+								<div className="space-y-2 rounded border border-blue-200 bg-white p-3">
+									<div className="flex flex-wrap items-center justify-start gap-2">
+										<label className="block text-xs text-blue-900/80">프로그램 참석자</label>
+										<button
+											type="button"
+											disabled={!canEditFormFields}
+											onClick={() => setAttendeeModalOpen(true)}
+											className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-40"
+										>
+											프로그램 참석자 등록 및 수정
+										</button>
 									</div>
-									<div>
-										<label className="block text-xs text-blue-900/80 mb-0.5">PGSEQ</label>
-										<input
-											value={formData.PGSEQ}
-											onChange={(e) => setFormData((p) => ({ ...p, PGSEQ: e.target.value.replace(/\D/g, "") }))}
-											className={fieldRo}
-										/>
-									</div>
+									{attendeeEvals.length === 0 ? (
+										<div className="text-sm text-blue-900/55 py-2 px-2 border border-dashed border-blue-200 rounded bg-blue-50/30">
+											등록된 참석자가 없습니다. 버튼을 눌러 수급자를 선택·평가해 주세요.
+										</div>
+									) : (
+										<div className="flex flex-wrap gap-1.5">
+											{attendeeEvals.map((ev) => (
+												<div key={ev.PNUM} className="relative group">
+													<span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 text-blue-950 text-sm border border-blue-200 cursor-default">
+														{ev.name}
+													</span>
+													<div className="pointer-events-none invisible group-hover:visible absolute left-0 bottom-full mb-1 z-30 w-64 rounded border border-blue-300 bg-white shadow-lg p-2.5 text-xs text-blue-950">
+														<div className="font-semibold mb-1.5">{ev.name}</div>
+														<div className="grid grid-cols-[3.2rem_1fr] gap-y-1 items-center">
+															<span className="text-blue-900/70">참여도</span>
+															<span><LevelBadge flag={ev.JOIN_FLAG} /></span>
+															<span className="text-blue-900/70">수행도</span>
+															<span><LevelBadge flag={ev.PLAY_FLAG} /></span>
+															<span className="text-blue-900/70">만족도</span>
+															<span><LevelBadge flag={ev.HAPP_FLAG} /></span>
+															<span className="text-blue-900/70">특이사항</span>
+															<span className="whitespace-pre-wrap break-words">{ev.RESP_DESC || "-"}</span>
+														</div>
+													</div>
+												</div>
+											))}
+										</div>
+									)}
+									<p className="text-[11px] text-blue-900/60">
+										참석자 변경은 「프로그램 참석자 등록 및 수정」 버튼에서 평가를 저장·삭제하세요.
+									</p>
+								</div>
+
+								<fieldset
+									disabled={!canEditFormFields}
+									className={`grid gap-3 w-full min-w-0 border-0 p-0 m-0 ${
+										formAreaLocked ? "blur-sm select-none opacity-70" : ""
+									}`}
+								>
+
+								<div>
+									<label className="block text-xs text-blue-900/80 mb-0.5">비고 (ETC)</label>
+									<input
+										value={formData.ETC}
+										onChange={(e) => setFormData((p) => ({ ...p, ETC: e.target.value }))}
+										maxLength={1000}
+										className={fieldRo}
+									/>
 								</div>
 
 								<div className="rounded border border-blue-200 bg-blue-50/40 p-3 space-y-2">
@@ -2036,8 +2488,8 @@ export default function ProgramDailyLog() {
 								</fieldset>
 							</div>
 							{formAreaLocked ? (
-								<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
-									<p className="text-center text-lg font-semibold text-blue-900 bg-white/95 px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
+								<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-slate-50/70">
+									<p className="text-center text-base font-semibold text-blue-900 bg-white px-8 py-5 rounded-lg border border-blue-300 shadow-md max-w-sm">
 										프로그램 일지를 선택해 주세요
 									</p>
 								</div>
@@ -2046,6 +2498,18 @@ export default function ProgramDailyLog() {
 					</div>
 				</div>
 			</div>
+
+			<ProgramAttendeeEvalModal
+				open={attendeeModalOpen}
+				onClose={() => setAttendeeModalOpen(false)}
+				canEdit={canEditFormFields}
+				programName={formData.SVDIC}
+				serviceDate={formData.SVDT}
+				pgseq={formData.PGSEQ}
+				dseq={editingDseq}
+				evals={attendeeEvals}
+				onEvalsChange={applyAttendeeEvals}
+			/>
 
 			{periodLogModalOpen ? (
 				<div

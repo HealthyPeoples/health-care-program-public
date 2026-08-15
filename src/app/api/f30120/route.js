@@ -295,6 +295,8 @@ export async function PUT(req) {
 		let setClauses = [];
 
 		if (scope === 'daily') {
+			request.input('SBDS', sql.Int, body.SBDS ?? null);
+			request.input('EBDS', sql.Int, body.EBDS ?? null);
 			request.input('SBDP', sql.Int, body.SBDP ?? null);
 			request.input('EBDP', sql.Int, body.EBDP ?? null);
 			request.input('TMPBD', sql.Decimal(3, 1), body.TMPBD ?? null);
@@ -305,6 +307,8 @@ export async function PUT(req) {
 			request.input('INEMPNM', sql.VarChar(100), body.INEMPNM ?? null);
 			request.input('NS_WRITE_NAME', sql.NVarChar(20), body.NS_WRITE_NAME ?? body.INEMPNM ?? null);
 			setClauses = [
+				'[SBDS] = @SBDS',
+				'[EBDS] = @EBDS',
 				'[SBDP] = @SBDP',
 				'[EBDP] = @EBDP',
 				'[TMPBD] = @TMPBD',

@@ -14,12 +14,12 @@ import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
 import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
-	EXCRETION_TIME_SLOTS,
 	formatDateYmd,
 	isCheckedFlag,
-	labelToVtmGu,
+	resolveObservationTimes,
+	timeToVtmGu,
 	toCheckFlag,
-	vtmGuToLabel,
+	toHtmlTimeValue,
 	type F33021Row,
 } from '../../utils/excretionObservationFields';
 
@@ -44,10 +44,70 @@ interface ObservationData extends F33021Row {
 	OBSERVER: string;
 }
 
+const HOURS_24 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES_60 = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+const timeSelectClass = 'px-2 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500';
+
+function splitHm(value: string): { hour: string; minute: string } {
+	const hm = String(value ?? '').trim();
+	if (/^\d{2}:\d{2}$/.test(hm)) return { hour: hm.slice(0, 2), minute: hm.slice(3, 5) };
+	return { hour: '', minute: '' };
+}
+
+function Time24Select({
+	value,
+	onChange,
+}: {
+	value: string;
+	onChange: (next: string) => void;
+}) {
+	const { hour, minute } = splitHm(value);
+	const update = (nextHour: string, nextMinute: string) => {
+		if (!nextHour && !nextMinute) {
+			onChange('');
+			return;
+		}
+		onChange(`${nextHour || '00'}:${nextMinute || '00'}`);
+	};
+
+	return (
+		<div className="flex items-center gap-1 min-w-0">
+			<select
+				value={hour}
+				onChange={(e) => update(e.target.value, minute)}
+				className={timeSelectClass}
+				aria-label="시"
+			>
+				<option value="">시</option>
+				{HOURS_24.map((h) => (
+					<option key={h} value={h}>
+						{h}
+					</option>
+				))}
+			</select>
+			<span className="text-sm text-blue-900">:</span>
+			<select
+				value={minute}
+				onChange={(e) => update(hour, e.target.value)}
+				className={timeSelectClass}
+				aria-label="분"
+			>
+				<option value="">분</option>
+				{MINUTES_60.map((m) => (
+					<option key={m} value={m}>
+						{m}
+					</option>
+				))}
+			</select>
+		</div>
+	);
+}
+
 export default function IntensiveExcretionObservation() {
 	const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
 	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
 	const [selectedObservationIndex, setSelectedObservationIndex] = useState<number | null>(null);
+	const [isNewMode, setIsNewMode] = useState(false);
 	const [observationDates, setObservationDates] = useState<string[]>([]);
 	const [observationList, setObservationList] = useState<ObservationData[]>([]);
 	const [loadingObservations, setLoadingObservations] = useState(false);
@@ -59,7 +119,9 @@ export default function IntensiveExcretionObservation() {
 	const emptyIntensiveForm = (beneficiary = '', observer = ''): {
 		beneficiary: string;
 		observationDate: string;
-		observationTime: string;
+		observationStartTime: string;
+		observationEndTime: string;
+		originalVtmGu: string;
 		urine: boolean;
 		stool: boolean;
 		diaperChange: boolean;
@@ -67,7 +129,9 @@ export default function IntensiveExcretionObservation() {
 	} => ({
 		beneficiary,
 		observationDate: formatDateYmd(new Date().toISOString()),
-		observationTime: EXCRETION_TIME_SLOTS[0].label,
+		observationStartTime: '',
+		observationEndTime: '',
+		originalVtmGu: '',
 		urine: false,
 		stool: false,
 		diaperChange: false,
@@ -208,7 +272,7 @@ export default function IntensiveExcretionObservation() {
 	const fetchObservationDates = async (ancd: string, pnum: string) => {
 		if (!ancd || !pnum) {
 			setObservationDates([]);
-			return;
+			return [] as string[];
 		}
 
 		setLoadingObservations(true);
@@ -224,9 +288,11 @@ export default function IntensiveExcretionObservation() {
 				.map((r: { VDT?: string }) => formatDateYmd(String(r?.VDT ?? '')))
 				.filter((d: string) => d && /^\d{4}-\d{2}-\d{2}$/.test(d));
 			setObservationDates(dates);
+			return dates;
 		} catch (err) {
 			console.error('관찰일자 조회 오류:', err);
 			setObservationDates([]);
+			return [] as string[];
 		} finally {
 			setLoadingObservations(false);
 		}
@@ -250,15 +316,20 @@ export default function IntensiveExcretionObservation() {
 				throw new Error(result?.error || '관찰 데이터 조회 실패');
 			}
 			const list = Array.isArray(result.data) ? result.data : [];
-			const mapped: ObservationData[] = list.map((r: F33021Row) => ({
-				...r,
-				OBSDT: formatDateYmd(r.VDT),
-				OBSTM: vtmGuToLabel(String(r.VTM_GU ?? '')),
-				URINE: String(r.PSS_GU ?? '0'),
-				STOOL: String(r.DNG_GU ?? '0'),
-				DIAPER: String(r.NPPY_CNG_GU ?? '0'),
-				OBSERVER: String(r.INEMPNM ?? ''),
-			}));
+			const mapped: ObservationData[] = list.map((r: F33021Row) => {
+				const times = resolveObservationTimes(r);
+				return {
+					...r,
+					OBSDT: formatDateYmd(r.VDT),
+					OBSTM: times.label,
+					VTM_ST: times.start,
+					VTM_EN: times.end,
+					URINE: String(r.PSS_GU ?? '0'),
+					STOOL: String(r.DNG_GU ?? '0'),
+					DIAPER: String(r.NPPY_CNG_GU ?? '0'),
+					OBSERVER: String(r.INEMPNM ?? ''),
+				};
+			});
 			setObservationList(mapped);
 		} catch (err) {
 			console.error('관찰 데이터 조회 오류:', err);
@@ -273,6 +344,7 @@ export default function IntensiveExcretionObservation() {
 		setSelectedMember(member);
 		setSelectedDateIndex(null);
 		setSelectedObservationIndex(null);
+		setIsNewMode(false);
 		setObservationList([]);
 		setFormData(emptyIntensiveForm(member.P_NM || '', defaultObserver));
 		fetchObservationDates(member.ANCD, member.PNUM);
@@ -287,15 +359,20 @@ export default function IntensiveExcretionObservation() {
 		}
 		setFormData(prev => ({ ...prev, observationDate: selectedDate || '' }));
 		setSelectedObservationIndex(null);
+		setIsNewMode(false);
 	};
 
 	// 관찰 데이터 선택 함수
 	const handleSelectObservation = (index: number, observation: ObservationData) => {
 		setSelectedObservationIndex(index);
+		setIsNewMode(false);
+		const times = resolveObservationTimes(observation);
 		setFormData({
 			beneficiary: selectedMember?.P_NM || '',
 			observationDate: observation.OBSDT || '',
-			observationTime: observation.OBSTM || vtmGuToLabel(String(observation.VTM_GU ?? '')),
+			observationStartTime: toHtmlTimeValue(times.start),
+			observationEndTime: toHtmlTimeValue(times.end),
+			originalVtmGu: String(observation.VTM_GU ?? ''),
 			urine: isCheckedFlag(observation.URINE),
 			stool: isCheckedFlag(observation.STOOL),
 			diaperChange: isCheckedFlag(observation.DIAPER),
@@ -303,9 +380,26 @@ export default function IntensiveExcretionObservation() {
 		});
 	};
 
+	const handleNew = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+
+		const today = formatDateYmd(new Date().toISOString());
+		const selectedDate = selectedDateIndex !== null ? observationDates[selectedDateIndex] : '';
+		setSelectedObservationIndex(null);
+		setIsNewMode(true);
+		setFormData({
+			...emptyIntensiveForm(selectedMember.P_NM || '', defaultObserver),
+			observationDate: selectedDate || today,
+		});
+	};
+
 	const formatDateDisplay = formatDateYmd;
 
-	const formatTimeDisplay = (timeStr: string) => vtmGuToLabel(timeStr);
+	const formatTimeDisplay = (observation: ObservationData) =>
+		observation.OBSTM || resolveObservationTimes(observation).label || '-';
 
 	// 저장 함수
 	const handleSave = async () => {
@@ -319,8 +413,19 @@ export default function IntensiveExcretionObservation() {
 			return;
 		}
 
-		if (!formData.observationTime) {
-			alert('관찰시간을 입력해주세요.');
+		if (!formData.observationStartTime) {
+			alert('시작시간을 입력해주세요.');
+			return;
+		}
+
+		if (!formData.observationEndTime) {
+			alert('종료시간을 입력해주세요.');
+			return;
+		}
+
+		const vtmGu = timeToVtmGu(formData.observationStartTime);
+		if (!vtmGu) {
+			alert('시작시간 형식이 올바르지 않습니다.');
 			return;
 		}
 
@@ -329,7 +434,10 @@ export default function IntensiveExcretionObservation() {
 			const payload = {
 				PNUM: selectedMember.PNUM,
 				VDT: formData.observationDate,
-				VTM_GU: labelToVtmGu(formData.observationTime),
+				VTM_GU: vtmGu,
+				MATCH_VTM_GU: formData.originalVtmGu || vtmGu,
+				VTM_ST: formData.observationStartTime,
+				VTM_EN: formData.observationEndTime,
 				ANNT_STAT_GU: '1',
 				ANNT_STAT_DESC: '',
 				PSS_NPPY_VAL_GU: '0',
@@ -354,8 +462,10 @@ export default function IntensiveExcretionObservation() {
 
 			alert(selectedObservationIndex !== null ? '관찰 데이터가 수정되었습니다.' : '관찰 데이터가 저장되었습니다.');
 			
-			await fetchObservationDates(selectedMember.ANCD, selectedMember.PNUM);
-			if (selectedMember && formData.observationDate) {
+			const dates = await fetchObservationDates(selectedMember.ANCD, selectedMember.PNUM);
+			if (formData.observationDate) {
+				const dateIdx = dates.indexOf(formData.observationDate);
+				setSelectedDateIndex(dateIdx >= 0 ? dateIdx : null);
 				await fetchObservations(selectedMember.ANCD, selectedMember.PNUM, formData.observationDate);
 			}
 
@@ -364,6 +474,7 @@ export default function IntensiveExcretionObservation() {
 				observationDate: formData.observationDate,
 			});
 			setSelectedObservationIndex(null);
+			setIsNewMode(false);
 		} catch (err) {
 			console.error('관찰 데이터 저장 오류:', err);
 			alert('관찰 데이터 저장 중 오류가 발생했습니다.');
@@ -392,7 +503,7 @@ export default function IntensiveExcretionObservation() {
 		try {
 			const observationToDelete = observationList[selectedObservationIndex];
 			const vdt = formatDateDisplay(observationToDelete.OBSDT || formData.observationDate || '');
-			const vtmGu = String(observationToDelete.VTM_GU ?? labelToVtmGu(formData.observationTime));
+			const vtmGu = String(observationToDelete.VTM_GU ?? timeToVtmGu(formData.observationStartTime));
 			const url = `/api/f33021?ancd=${encodeURIComponent(selectedMember.ANCD)}&pnum=${encodeURIComponent(
 				selectedMember.PNUM
 			)}&vdt=${encodeURIComponent(vdt)}&vtmGu=${encodeURIComponent(vtmGu)}`;
@@ -414,6 +525,7 @@ export default function IntensiveExcretionObservation() {
 				observationDate: formData.observationDate,
 			});
 			setSelectedObservationIndex(null);
+			setIsNewMode(false);
 		} catch (err) {
 			console.error('관찰 데이터 삭제 오류:', err);
 			alert('관찰 데이터 삭제 중 오류가 발생했습니다.');
@@ -603,16 +715,23 @@ export default function IntensiveExcretionObservation() {
 				</div>
 
 				{/* 중간-왼쪽 패널: 관찰일자 목록 */}
-				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 px-4 py-3 border-r border-blue-200 bg-blue-50 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
+				<div className="flex flex-col w-full xl:w-[10rem] min-w-0 shrink-0 px-2 py-3 border-r border-blue-200 bg-blue-50 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
 					<div className="mb-2">
 						<label className="text-sm font-medium text-blue-900">관찰일자</label>
+						<button
+							type="button"
+							onClick={handleNew}
+							className="w-full mt-1 px-2 py-1 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+						>
+							신규
+						</button>
 					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto">
 							{loadingObservations ? (
-								<div className="px-2 py-1 text-sm text-blue-900/60">로딩 중...</div>
+								<div className="px-1 py-1 text-sm text-blue-900/60">로딩 중...</div>
 							) : observationDates.length === 0 ? (
-								<div className="px-2 py-1 text-sm text-blue-900/60">
+								<div className="px-1 py-1 text-sm text-blue-900/60">
 									{selectedMember ? '관찰일자가 없습니다' : '수급자를 선택해주세요'}
 								</div>
 							) : (
@@ -622,7 +741,7 @@ export default function IntensiveExcretionObservation() {
 										<div
 											key={globalIndex}
 											onClick={() => handleSelectDate(globalIndex)}
-											className={`px-2 py-1.5 text-base cursor-pointer hover:bg-blue-100 rounded ${
+											className={`px-1 py-1.5 text-base text-left whitespace-nowrap cursor-pointer hover:bg-blue-100 rounded ${
 												selectedDateIndex === globalIndex ? 'bg-blue-200 font-semibold' : ''
 											}`}
 										>
@@ -634,8 +753,8 @@ export default function IntensiveExcretionObservation() {
 						</div>
 						{/* 관찰일자 페이지네이션 */}
 						{observationDateTotalPages > 1 && (
-							<div className="p-2 mt-2">
-								<div className="flex items-center justify-center gap-1">
+							<div className="p-1 mt-2">
+								<div className="flex flex-wrap items-center justify-center gap-1">
 									<button
 										onClick={() => setObservationDatePage(1)}
 										disabled={observationDatePage === 1}
@@ -691,29 +810,30 @@ export default function IntensiveExcretionObservation() {
 
 				{/* 중간-오른쪽 패널: 관찰 데이터 테이블 */}
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
-					<div className="overflow-hidden border-b border-blue-200 bg-blue-50">
-						<table className="w-full text-xs border-collapse">
-							<thead>
+					<div className="flex-1 min-h-0 overflow-y-auto">
+						<table className="w-full text-sm border-collapse table-fixed">
+							<colgroup>
+								<col className="w-[8rem]" />
+								<col />
+								<col />
+								<col />
+							</colgroup>
+							<thead className="sticky top-0 z-10 bg-blue-50">
 								<tr>
-									<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">관찰일자</th>
-									<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">관찰시간</th>
-									<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">소변</th>
-									<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">대변</th>
-									<th className="px-2 py-1.5 font-semibold text-center text-blue-900">기저귀</th>
+									<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-b border-r border-blue-200 whitespace-nowrap">관찰시간</th>
+									<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-b border-r border-blue-200 whitespace-nowrap">소변</th>
+									<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-b border-r border-blue-200 whitespace-nowrap">대변</th>
+									<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-b border-blue-200 whitespace-nowrap">기저귀</th>
 								</tr>
 							</thead>
-						</table>
-					</div>
-					<div className="flex-1 overflow-y-auto">
-						<table className="w-full text-xs border-collapse">
 							<tbody>
 								{loadingObservations ? (
 									<tr>
-										<td colSpan={5} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
+										<td colSpan={4} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
 									</tr>
 								) : observationList.length === 0 ? (
 									<tr>
-										<td colSpan={5} className="px-2 py-4 text-center text-blue-900/60">
+										<td colSpan={4} className="px-2 py-4 text-center text-blue-900/60">
 											{selectedDateIndex !== null ? '관찰 데이터가 없습니다' : '관찰일자를 선택해주세요'}
 										</td>
 									</tr>
@@ -728,15 +848,16 @@ export default function IntensiveExcretionObservation() {
 													selectedObservationIndex === globalIndex ? 'bg-blue-100' : ''
 												}`}
 											>
-												<td className="px-2 py-1.5 text-center text-blue-900 border-r border-blue-100">{formatDateDisplay(observation.OBSDT || '')}</td>
-												<td className="px-2 py-1.5 text-center text-blue-900 border-r border-blue-100">{observation.OBSTM || formatTimeDisplay(observation.VTM_GU || '')}</td>
-												<td className="px-2 py-1.5 text-center text-blue-900 border-r border-blue-100">
+												<td className="px-1 py-1.5 text-center text-blue-900 border-r border-blue-100 whitespace-nowrap">
+													{formatTimeDisplay(observation)}
+												</td>
+												<td className="px-1 py-1.5 text-center text-blue-900 border-r border-blue-100">
 													{observation.URINE === '1' || observation.URINE === 'Y' ? '✓' : '-'}
 												</td>
-												<td className="px-2 py-1.5 text-center text-blue-900 border-r border-blue-100">
+												<td className="px-1 py-1.5 text-center text-blue-900 border-r border-blue-100">
 													{observation.STOOL === '1' || observation.STOOL === 'Y' ? '✓' : '-'}
 												</td>
-												<td className="px-2 py-1.5 text-center text-blue-900">
+												<td className="px-1 py-1.5 text-center text-blue-900">
 													{observation.DIAPER === '1' || observation.DIAPER === 'Y' ? '✓' : '-'}
 												</td>
 											</tr>
@@ -803,105 +924,119 @@ export default function IntensiveExcretionObservation() {
 				</div>
 
 				{/* 우측 패널: 입력 폼 */}
-				<div className="flex-1 p-4 overflow-y-auto bg-white">
-					<div className="space-y-4">
-						{/* 수급자 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">수급자</label>
-							<input
-								type="text"
-								value={formData.beneficiary}
-								readOnly
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50"
-							/>
+				<div className="relative flex-1 min-w-0 min-h-0 overflow-hidden bg-white">
+					<div
+						className={`h-full p-4 overflow-y-auto ${
+							selectedObservationIndex === null && !isNewMode ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+						}`}
+					>
+						<div className="space-y-4">
+							{/* 수급자 */}
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">수급자</label>
+								<input
+									type="text"
+									value={formData.beneficiary}
+									readOnly
+									className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50"
+								/>
+							</div>
+
+							{/* 관찰일자 */}
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">관찰일자</label>
+								<input
+									type="date"
+									value={formData.observationDate}
+									onChange={(e) => setFormData(prev => ({ ...prev, observationDate: e.target.value }))}
+									className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								/>
+							</div>
+
+							{/* 관찰시간 */}
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">관찰시간</label>
+								<Time24Select
+									value={formData.observationStartTime}
+									onChange={(next) => setFormData((prev) => ({ ...prev, observationStartTime: next }))}
+								/>
+								<span className="text-sm text-blue-900/70">~</span>
+								<Time24Select
+									value={formData.observationEndTime}
+									onChange={(next) => setFormData((prev) => ({ ...prev, observationEndTime: next }))}
+								/>
+							</div>
+
+							{/* 소변 */}
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">소변</label>
+								<input
+									type="checkbox"
+									checked={formData.urine}
+									onChange={(e) => setFormData(prev => ({ ...prev, urine: e.target.checked }))}
+									className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
+								/>
+							</div>
+
+							{/* 대변 */}
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">대변</label>
+								<input
+									type="checkbox"
+									checked={formData.stool}
+									onChange={(e) => setFormData(prev => ({ ...prev, stool: e.target.checked }))}
+									className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
+								/>
+							</div>
+
+							{/* 기저귀교환 */}
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">기저귀교환</label>
+								<input
+									type="checkbox"
+									checked={formData.diaperChange}
+									onChange={(e) => setFormData(prev => ({ ...prev, diaperChange: e.target.checked }))}
+									className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
+								/>
+							</div>
+
+							{/* 관찰자 */}
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">관찰자</label>
+								<input
+									type="text"
+									value={formData.observer}
+									onChange={(e) => setFormData(prev => ({ ...prev, observer: e.target.value }))}
+									className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									placeholder="관찰자를 입력하세요"
+								/>
+							</div>
 						</div>
 
-						{/* 관찰일자 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">관찰일자</label>
-							<input
-								type="date"
-								value={formData.observationDate}
-								onChange={(e) => setFormData(prev => ({ ...prev, observationDate: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-							/>
-						</div>
-
-						{/* 관찰시간 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">관찰시간</label>
-							<select
-								value={formData.observationTime}
-								onChange={(e) => setFormData(prev => ({ ...prev, observationTime: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+						{/* 하단 버튼 영역 */}
+						<div className="flex justify-end gap-2 mt-6">
+							<button
+								onClick={handleSave}
+								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 							>
-								{EXCRETION_TIME_SLOTS.map((slot) => (
-									<option key={slot.vtmGu} value={slot.label}>{slot.label}</option>
-								))}
-							</select>
-						</div>
-
-						{/* 소변 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">소변</label>
-							<input
-								type="checkbox"
-								checked={formData.urine}
-								onChange={(e) => setFormData(prev => ({ ...prev, urine: e.target.checked }))}
-								className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-							/>
-						</div>
-
-						{/* 대변 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">대변</label>
-							<input
-								type="checkbox"
-								checked={formData.stool}
-								onChange={(e) => setFormData(prev => ({ ...prev, stool: e.target.checked }))}
-								className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-							/>
-						</div>
-
-						{/* 기저귀교환 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">기저귀교환</label>
-							<input
-								type="checkbox"
-								checked={formData.diaperChange}
-								onChange={(e) => setFormData(prev => ({ ...prev, diaperChange: e.target.checked }))}
-								className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-							/>
-						</div>
-
-						{/* 관찰자 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap">관찰자</label>
-							<input
-								type="text"
-								value={formData.observer}
-								onChange={(e) => setFormData(prev => ({ ...prev, observer: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-								placeholder="관찰자를 입력하세요"
-							/>
+								저장
+							</button>
+							<button
+								onClick={handleDelete}
+								className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+							>
+								삭제
+							</button>
 						</div>
 					</div>
 
-					{/* 하단 버튼 영역 */}
-					<div className="flex justify-end gap-2 mt-6">
-						<button
-							onClick={handleSave}
-							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							저장
-						</button>
-						<button
-							onClick={handleDelete}
-							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							삭제
-						</button>
-					</div>
+					{selectedObservationIndex === null && !isNewMode && (
+						<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
+							<p className="px-6 py-3 text-lg font-semibold text-blue-900 bg-white/90 border border-blue-200 rounded-lg shadow-sm">
+								관찰시간을 선택해주세요
+							</p>
+						</div>
+					)}
 				</div>
 			</div>
 		</div>

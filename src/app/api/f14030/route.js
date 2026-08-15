@@ -71,9 +71,13 @@ function inputDate(request, name, ymd) {
   const n = normalizeYmd(ymd);
   if (n === null) {
     request.input(name, sql.Date, null);
-  } else {
-    request.input(name, sql.Date, new Date(`${n}T00:00:00`));
+    return;
   }
+  const y = parseInt(n.slice(0, 4), 10);
+  const m = parseInt(n.slice(5, 7), 10);
+  const d = parseInt(n.slice(8, 10), 10);
+  // 로컬 자정(KST 등)을 sql.Date에 넣으면 UTC 기준으로 전날로 저장됨 → UTC 자정 사용
+  request.input(name, sql.Date, new Date(Date.UTC(y, m - 1, d)));
 }
 
 const SELECT_COLS = `
@@ -174,6 +178,12 @@ export async function POST(req) {
       } catch (_) {
         /* ignore */
       }
+
+      await pool
+        .request()
+        .input('ANCD', gate.sessionAncd)
+        .input('DSEQ', dseq)
+        .query(`DELETE FROM [돌봄시설DB].[dbo].[F14031] WHERE [ANCD] = @ANCD AND [DSEQ] = @DSEQ`);
 
       const del = await pool
         .request()

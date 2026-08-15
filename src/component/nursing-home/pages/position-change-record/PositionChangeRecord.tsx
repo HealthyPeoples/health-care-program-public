@@ -15,16 +15,17 @@ import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
 import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
 	CHNG_POSI_OPTIONS,
-	POSITION_CHANGE_TIME_SLOTS,
-	chngGuToLabel,
 	chngPosiToLabel,
 	createEmptyPositionChangeForm,
 	formatDateYmd,
 	positionChangeFormToPayload,
+	resolveChangeTimeHm,
 	rowToPositionChangeForm,
 	type F33040Row,
 	type PositionChangeFormData,
 } from '../../utils/positionChangeFields';
+import { buildPositionChangePrintHtml } from '../../utils/positionChangePrint';
+import { openPrintWindow } from '../../utils/v30030rPrint';
 
 interface MemberData {
 	ANCD: string;
@@ -44,6 +45,72 @@ interface PositionChangeData extends F33040Row {
 	CHGPOS: string;
 	REMARKS: string;
 	CHGER: string;
+	NIGHT_CHGER: string;
+}
+
+interface EmployeeOption {
+	EMPNO: string;
+	EMPNM: string;
+}
+
+const HOURS_24 = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES_60 = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
+const timeSelectClass =
+	'px-2 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500';
+
+function splitHm(value: string): { hour: string; minute: string } {
+	const hm = String(value ?? '').trim();
+	if (/^\d{2}:\d{2}$/.test(hm)) return { hour: hm.slice(0, 2), minute: hm.slice(3, 5) };
+	return { hour: '', minute: '' };
+}
+
+function Time24Select({
+	value,
+	onChange,
+}: {
+	value: string;
+	onChange: (next: string) => void;
+}) {
+	const { hour, minute } = splitHm(value);
+	const update = (nextHour: string, nextMinute: string) => {
+		if (!nextHour && !nextMinute) {
+			onChange('');
+			return;
+		}
+		onChange(`${nextHour || '00'}:${nextMinute || '00'}`);
+	};
+
+	return (
+		<div className="flex items-center flex-1 gap-1 min-w-0">
+			<select
+				value={hour}
+				onChange={(e) => update(e.target.value, minute)}
+				className={timeSelectClass}
+				aria-label="시"
+			>
+				<option value="">시</option>
+				{HOURS_24.map((h) => (
+					<option key={h} value={h}>
+						{h}
+					</option>
+				))}
+			</select>
+			<span className="text-sm text-blue-900">:</span>
+			<select
+				value={minute}
+				onChange={(e) => update(hour, e.target.value)}
+				className={timeSelectClass}
+				aria-label="분"
+			>
+				<option value="">분</option>
+				{MINUTES_60.map((m) => (
+					<option key={m} value={m}>
+						{m}
+					</option>
+				))}
+			</select>
+		</div>
+	);
 }
 
 export default function PositionChangeRecord() {
@@ -60,6 +127,30 @@ export default function PositionChangeRecord() {
 
 	const [formData, setFormData] = useState<PositionChangeFormData>(createEmptyPositionChangeForm());
 	const [defaultChanger, setDefaultChanger] = useState('');
+	const [defaultChangerEmpno, setDefaultChangerEmpno] = useState('');
+	const [dayEmpSuggestions, setDayEmpSuggestions] = useState<EmployeeOption[]>([]);
+	const [nightEmpSuggestions, setNightEmpSuggestions] = useState<EmployeeOption[]>([]);
+	const [showDayEmpDropdown, setShowDayEmpDropdown] = useState(false);
+	const [showNightEmpDropdown, setShowNightEmpDropdown] = useState(false);
+	const [isNewMode, setIsNewMode] = useState(false);
+	const [checkedMemberKeys, setCheckedMemberKeys] = useState<Set<string>>(new Set());
+	const [printing, setPrinting] = useState(false);
+
+	const getCurrentMonthRange = () => {
+		const now = new Date();
+		const y = now.getFullYear();
+		const m = now.getMonth();
+		const start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+		const lastDay = new Date(y, m + 1, 0).getDate();
+		const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+		return { start, end };
+	};
+
+	const currentMonth = getCurrentMonthRange();
+	const [printStartDate, setPrintStartDate] = useState(currentMonth.start);
+	const [printEndDate, setPrintEndDate] = useState(currentMonth.end);
+
+	const memberKey = (member: MemberData) => `${member.ANCD}-${member.PNUM}`;
 
 	// 수급자 목록 데이터
 	const [memberList, setMemberList] = useState<MemberData[]>([]);
@@ -162,10 +253,14 @@ export default function PositionChangeRecord() {
 				const result = await res.json().catch(() => ({}));
 				if (res.ok && result?.success) {
 					const name = String(result?.data?.empnm ?? result?.data?.EMPNM ?? '').trim();
-					if (name) {
-						setDefaultChanger(name);
-						setFormData((prev) => (prev.changer ? prev : { ...prev, changer: name }));
-					}
+					const empno = String(result?.data?.empno ?? result?.data?.EMPNO ?? '').trim();
+					if (name) setDefaultChanger(name);
+					if (empno) setDefaultChangerEmpno(empno);
+					setFormData((prev) =>
+						prev.changer
+							? prev
+							: { ...prev, changer: name, changerEmpno: empno || prev.changerEmpno }
+					);
 				}
 			} catch {
 				/* ignore */
@@ -192,7 +287,7 @@ export default function PositionChangeRecord() {
 	const fetchPositionChangeDates = async (ancd: string, pnum: string) => {
 		if (!ancd || !pnum) {
 			setPositionChangeDates([]);
-			return;
+			return [] as string[];
 		}
 
 		setLoadingChanges(true);
@@ -208,9 +303,11 @@ export default function PositionChangeRecord() {
 				.map((r: { CHNG_DT?: string; VDT?: string }) => formatDateYmd(r?.CHNG_DT ?? r?.VDT ?? ''))
 				.filter((d: string) => d && /^\d{4}-\d{2}-\d{2}$/.test(d));
 			setPositionChangeDates(dates);
+			return dates;
 		} catch (err) {
 			console.error('체위변경일자 조회 오류:', err);
 			setPositionChangeDates([]);
+			return [] as string[];
 		} finally {
 			setLoadingChanges(false);
 		}
@@ -235,10 +332,11 @@ export default function PositionChangeRecord() {
 			const mapped: PositionChangeData[] = list.map((r: F33040Row) => ({
 				...r,
 				CHGDT: formatDateYmd(r.CHNG_DT ?? r.VDT),
-				CHGTM: chngGuToLabel(String(r.CHNG_GU ?? '')),
+				CHGTM: resolveChangeTimeHm(r),
 				CHGPOS: chngPosiToLabel(String(r.CHNG_POSI ?? '')),
 				REMARKS: String(r.CHNG_ETC ?? ''),
 				CHGER: String(r.CHNG_EMPNM ?? ''),
+				NIGHT_CHGER: String(r.CHNG_NIGHT_EMPNM ?? ''),
 			}));
 			setPositionChangeList(mapped);
 		} catch (err) {
@@ -253,20 +351,26 @@ export default function PositionChangeRecord() {
 		setSelectedMember(member);
 		setSelectedDateIndex(null);
 		setSelectedChangeIndex(null);
+		setIsNewMode(false);
 		setPositionChangeList([]);
-		setFormData(createEmptyPositionChangeForm(member.P_NM || '', defaultChanger));
+		setFormData(createEmptyPositionChangeForm(member.P_NM || '', defaultChanger, defaultChangerEmpno));
 		fetchPositionChangeDates(member.ANCD, member.PNUM);
 	};
 
 	// 체위변경일자 선택 함수
 	const handleSelectDate = (index: number) => {
 		setSelectedDateIndex(index);
+		setIsNewMode(false);
 		const selectedDate = positionChangeDates[index];
 		if (selectedMember && selectedDate) {
 			fetchPositionChanges(selectedMember.ANCD, selectedMember.PNUM, selectedDate);
 		}
 		setFormData((prev) => ({
-			...createEmptyPositionChangeForm(selectedMember?.P_NM || prev.beneficiary, defaultChanger || prev.changer),
+			...createEmptyPositionChangeForm(
+				selectedMember?.P_NM || prev.beneficiary,
+				defaultChanger || prev.changer,
+				defaultChangerEmpno || prev.changerEmpno
+			),
 			changeDate: selectedDate || '',
 		}));
 		setSelectedChangeIndex(null);
@@ -275,12 +379,126 @@ export default function PositionChangeRecord() {
 	// 체위변경 선택 함수
 	const handleSelectChange = (index: number, change: PositionChangeData) => {
 		setSelectedChangeIndex(index);
+		setIsNewMode(false);
 		setFormData(rowToPositionChangeForm(change, selectedMember?.P_NM || ''));
+	};
+
+	const handleNew = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		const today = formatDateYmd(new Date());
+		const selectedDate = selectedDateIndex !== null ? positionChangeDates[selectedDateIndex] : '';
+		setSelectedChangeIndex(null);
+		setIsNewMode(true);
+		setFormData({
+			...createEmptyPositionChangeForm(selectedMember.P_NM || '', defaultChanger, defaultChangerEmpno),
+			changeDate: selectedDate || today,
+		});
+	};
+
+	const toggleMemberCheck = (member: MemberData) => {
+		const key = memberKey(member);
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			return next;
+		});
+	};
+
+	const allFilteredSelected =
+		filteredMembers.length > 0 && filteredMembers.every((m) => checkedMemberKeys.has(memberKey(m)));
+
+	const toggleSelectAll = () => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			if (allFilteredSelected) {
+				filteredMembers.forEach((m) => next.delete(memberKey(m)));
+			} else {
+				filteredMembers.forEach((m) => next.add(memberKey(m)));
+			}
+			return next;
+		});
+	};
+
+	const handlePrint = async () => {
+		const selected = filteredMembers.filter((m) => checkedMemberKeys.has(memberKey(m)));
+		if (selected.length === 0) {
+			alert('출력할 수급자를 선택해주세요.');
+			return;
+		}
+		if (!printStartDate || !printEndDate) {
+			alert('기간을 선택해주세요.');
+			return;
+		}
+		if (printStartDate > printEndDate) {
+			alert('시작일이 종료일보다 늦을 수 없습니다.');
+			return;
+		}
+
+		setPrinting(true);
+		try {
+			const groups = await Promise.all(
+				selected.map(async (member) => {
+					const params = new URLSearchParams({
+						ancd: String(member.ANCD ?? ''),
+						pnum: String(member.PNUM ?? ''),
+						startDate: printStartDate,
+						endDate: printEndDate,
+					});
+					const response = await fetch(`/api/f33040?${params.toString()}`);
+					const result = await response.json().catch(() => ({}));
+					const rows = result?.success && Array.isArray(result.data) ? result.data : [];
+					return {
+						name: member.P_NM || '',
+						pnum: String(member.PNUM ?? ''),
+						rows,
+					};
+				})
+			);
+			openPrintWindow(buildPositionChangePrintHtml(groups, { startDate: printStartDate, endDate: printEndDate }));
+		} catch (err) {
+			console.error('체위변경 출력 오류:', err);
+			alert('출력 중 오류가 발생했습니다.');
+		} finally {
+			setPrinting(false);
+		}
 	};
 
 	const formatDateDisplay = formatDateYmd;
 
-	const formatTimeDisplay = (timeStr: string) => chngGuToLabel(timeStr);
+	const searchEmployee = async (
+		term: string,
+		setSuggestions: (data: EmployeeOption[]) => void,
+		setShowDropdown: (show: boolean) => void
+	) => {
+		if (!term || term.trim() === '') {
+			setSuggestions([]);
+			setShowDropdown(false);
+			return;
+		}
+		try {
+			const response = await fetch(`/api/f00120/search?q=${encodeURIComponent(term.trim())}`);
+			const result = await response.json().catch(() => ({}));
+			if (result?.success && Array.isArray(result.data)) {
+				const list = result.data.map((emp: { EMPNO?: string | number; EMPNM?: string }) => ({
+					EMPNO: String(emp.EMPNO ?? ''),
+					EMPNM: String(emp.EMPNM ?? ''),
+				}));
+				setSuggestions(list);
+				setShowDropdown(list.length > 0);
+			} else {
+				setSuggestions([]);
+				setShowDropdown(false);
+			}
+		} catch (err) {
+			console.error('직원 검색 오류:', err);
+			setSuggestions([]);
+			setShowDropdown(false);
+		}
+	};
 
 	// 저장 함수
 	const handleSave = async () => {
@@ -291,6 +509,11 @@ export default function PositionChangeRecord() {
 
 		if (!formData.changeDate) {
 			alert('변경일자를 입력해주세요.');
+			return;
+		}
+
+		if (!formData.changeTime) {
+			alert('변경시간을 입력해주세요.');
 			return;
 		}
 
@@ -309,10 +532,14 @@ export default function PositionChangeRecord() {
 
 			alert(selectedChangeIndex !== null ? '체위변경이 수정되었습니다.' : '체위변경이 저장되었습니다.');
 
-			await fetchPositionChangeDates(selectedMember.ANCD, selectedMember.PNUM);
-			if (selectedMember && formData.changeDate) {
+			const dates = await fetchPositionChangeDates(selectedMember.ANCD, selectedMember.PNUM);
+			if (formData.changeDate) {
+				const dateIdx = dates.indexOf(formData.changeDate);
+				setSelectedDateIndex(dateIdx >= 0 ? dateIdx : null);
 				await fetchPositionChanges(selectedMember.ANCD, selectedMember.PNUM, formData.changeDate);
 			}
+			setSelectedChangeIndex(null);
+			setIsNewMode(false);
 		} catch (err) {
 			console.error('체위변경 저장 오류:', err);
 			alert(err instanceof Error ? err.message : '체위변경 저장 중 오류가 발생했습니다.');
@@ -342,9 +569,15 @@ export default function PositionChangeRecord() {
 			const changeToDelete = positionChangeList[selectedChangeIndex];
 			const vdt = formatDateDisplay(changeToDelete.CHGDT || formData.changeDate || '');
 			const chngGu = String(changeToDelete.CHNG_GU ?? '');
-			const url = `/api/f33040?ancd=${encodeURIComponent(selectedMember.ANCD)}&pnum=${encodeURIComponent(
-				selectedMember.PNUM
-			)}&vdt=${encodeURIComponent(vdt)}&chngGu=${encodeURIComponent(chngGu)}`;
+			const chngTm = resolveChangeTimeHm(changeToDelete);
+			const params = new URLSearchParams({
+				ancd: String(selectedMember.ANCD ?? ''),
+				pnum: String(selectedMember.PNUM ?? ''),
+				vdt,
+			});
+			if (chngTm) params.set('chngTm', chngTm);
+			if (chngGu) params.set('chngGu', chngGu);
+			const url = `/api/f33040?${params.toString()}`;
 			const res = await fetch(url, { method: 'DELETE' });
 			const result = await res.json().catch(() => ({}));
 			if (!res.ok || !result?.success) {
@@ -359,7 +592,7 @@ export default function PositionChangeRecord() {
 			}
 
 			setFormData({
-				...createEmptyPositionChangeForm(selectedMember.P_NM || '', defaultChanger),
+				...createEmptyPositionChangeForm(selectedMember.P_NM || '', defaultChanger, defaultChangerEmpno),
 				changeDate: formData.changeDate,
 			});
 			setSelectedChangeIndex(null);
@@ -391,6 +624,32 @@ export default function PositionChangeRecord() {
 					{/* 필터 헤더 */}
 					<div className="mb-3">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
+						<button
+							type="button"
+							onClick={handlePrint}
+							disabled={printing}
+							className="w-full mb-2 px-3 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{printing ? '출력 중...' : '출력'}
+						</button>
+						<div className="mb-2">
+							<div className="mb-1 text-xs text-blue-900/80">출력기간</div>
+							<div className="flex items-center gap-1">
+								<input
+									type="date"
+									value={printStartDate}
+									onChange={(e) => setPrintStartDate(e.target.value)}
+									className="w-full min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+								/>
+								<span className="text-xs text-blue-900">~</span>
+								<input
+									type="date"
+									value={printEndDate}
+									onChange={(e) => setPrintEndDate(e.target.value)}
+									className="w-full min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+								/>
+							</div>
+						</div>
 						<div className="space-y-2">
 							{/* 이름 검색 */}
 							<div className="space-y-1">
@@ -451,6 +710,15 @@ export default function PositionChangeRecord() {
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200 w-8">
+											<input
+												type="checkbox"
+												checked={allFilteredSelected}
+												onChange={toggleSelectAll}
+												title="전체선택"
+												aria-label="전체선택"
+											/>
+										</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">현황</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
@@ -462,11 +730,11 @@ export default function PositionChangeRecord() {
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
 										</tr>
 									) : filteredMembers.length === 0 ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
 										</tr>
 									) : (
 										currentMembers.map((member, index) => (
@@ -477,6 +745,17 @@ export default function PositionChangeRecord() {
 													selectedMember?.ANCD === member.ANCD && selectedMember?.PNUM === member.PNUM ? 'bg-blue-100' : ''
 												}`}
 											>
+												<td
+													className="px-1 py-1.5 text-center border-r border-blue-100"
+													onClick={(e) => e.stopPropagation()}
+												>
+													<input
+														type="checkbox"
+														checked={checkedMemberKeys.has(memberKey(member))}
+														onChange={() => toggleMemberCheck(member)}
+														aria-label={`${member.P_NM || '수급자'} 선택`}
+													/>
+												</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">{startIndex + index + 1}</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">
 													{member.P_ST === '1' ? '입소' : member.P_ST === '9' ? '퇴소' : '-'}
@@ -552,21 +831,17 @@ export default function PositionChangeRecord() {
 				</div>
 
 				<div className="relative flex flex-col xl:flex-row flex-1 min-w-0 min-h-0">
-					<div
-						className={`flex flex-col xl:flex-row flex-1 min-w-0 min-h-0 ${
-							!selectedMember ? 'blur-sm select-none pointer-events-none opacity-70' : ''
-						}`}
-					>
 				{/* 중간-왼쪽 패널: 체위변경일자 목록 */}
-				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
-					<div className="overflow-hidden border-b border-blue-200 bg-blue-50">
-						<table className="w-full text-xs border-collapse">
-							<thead>
-								<tr>
-									<th className="px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">체위변경일자</th>
-								</tr>
-							</thead>
-						</table>
+				<div className="flex flex-col w-full xl:w-[10rem] min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
+					<div className="px-2 py-2 border-b border-blue-200 bg-blue-50">
+						<div className="mb-1 text-xs font-semibold text-center text-blue-900">체위변경일자</div>
+						<button
+							type="button"
+							onClick={handleNew}
+							className="w-full px-2 py-1 text-xs font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+						>
+							신규
+						</button>
 					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto">
@@ -658,30 +933,34 @@ export default function PositionChangeRecord() {
 					</div>
 				</div>
 
+				<div className="relative flex flex-col xl:flex-row flex-1 min-w-0 min-h-0">
+				{!selectedMember ? (
+					<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white">
+						<p className="px-6 py-3 text-lg font-semibold text-blue-900 bg-white border border-blue-200 rounded-lg shadow-sm">
+							수급자를 선택해주세요
+						</p>
+					</div>
+				) : (
+					<>
 				{/* 중간-오른쪽 패널: 체위변경 목록 테이블 */}
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
-					<div className="overflow-hidden border-b border-blue-200 bg-blue-50">
-						<table className="w-full text-xs border-collapse">
-							<thead>
-								<tr>
-									<th className="px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">변경일자</th>
-									<th className="px-3 py-2 font-semibold text-center text-blue-900 border-r border-blue-200">변경시간</th>
-									<th className="px-3 py-2 font-semibold text-center text-blue-900">체위변경</th>
-								</tr>
-							</thead>
-						</table>
-					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto">
-							<table className="w-full text-xs border-collapse">
+							<table className="w-full text-xs border-collapse table-fixed">
+								<thead className="sticky top-0 bg-blue-50">
+									<tr>
+										<th className="w-1/2 px-3 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200">변경시간</th>
+										<th className="w-1/2 px-3 py-2 font-semibold text-center text-blue-900 border-b border-blue-200">체위변경</th>
+									</tr>
+								</thead>
 								<tbody>
 									{loadingChanges ? (
 										<tr>
-											<td colSpan={3} className="px-3 py-4 text-center text-blue-900/60">로딩 중...</td>
+											<td colSpan={2} className="px-3 py-4 text-center text-blue-900/60">로딩 중...</td>
 										</tr>
 									) : positionChangeList.length === 0 ? (
 										<tr>
-											<td colSpan={3} className="px-3 py-4 text-center text-blue-900/60">
+											<td colSpan={2} className="px-3 py-4 text-center text-blue-900/60">
 												{selectedDateIndex !== null ? '체위변경 데이터가 없습니다' : '체위변경일자를 선택해주세요'}
 											</td>
 										</tr>
@@ -696,8 +975,7 @@ export default function PositionChangeRecord() {
 														selectedChangeIndex === globalIndex ? 'bg-blue-100' : ''
 													}`}
 												>
-													<td className="px-3 py-2 text-center text-blue-900 border-r border-blue-100">{formatDateDisplay(change.CHGDT || '')}</td>
-													<td className="px-3 py-2 text-center text-blue-900 border-r border-blue-100">{change.CHGTM || formatTimeDisplay(change.CHNG_GU || '')}</td>
+													<td className="px-3 py-2 text-center text-blue-900 border-r border-blue-100">{change.CHGTM || '-'}</td>
 													<td className="px-3 py-2 text-center text-blue-900">{change.CHGPOS || '-'}</td>
 												</tr>
 											);
@@ -764,7 +1042,12 @@ export default function PositionChangeRecord() {
 				</div>
 
 				{/* 우측 패널: 입력 폼 */}
-				<div className="flex-1 p-4 overflow-y-auto bg-white">
+				<div className="relative flex-1 min-w-0 min-h-0 overflow-hidden bg-white">
+					<div
+						className={`h-full p-4 overflow-y-auto ${
+							selectedChangeIndex === null && !isNewMode ? 'blur-sm select-none pointer-events-none opacity-70' : ''
+						}`}
+					>
 					<div className="space-y-4">
 						{/* 수급자 */}
 						<div className="flex items-center gap-2">
@@ -781,25 +1064,20 @@ export default function PositionChangeRecord() {
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">변경일자</label>
 							<input
-								type="text"
+								type="date"
 								value={formData.changeDate}
-								readOnly
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50"
+								onChange={(e) => setFormData((prev) => ({ ...prev, changeDate: e.target.value }))}
+								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
 							/>
 						</div>
 
 						{/* 변경시간 */}
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">변경시간</label>
-							<select
+							<Time24Select
 								value={formData.changeTime}
-								onChange={(e) => setFormData(prev => ({ ...prev, changeTime: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-							>
-								{POSITION_CHANGE_TIME_SLOTS.map((slot) => (
-									<option key={slot.vtmGu} value={slot.label}>{slot.label}</option>
-								))}
-							</select>
+								onChange={(next) => setFormData((prev) => ({ ...prev, changeTime: next }))}
+							/>
 						</div>
 
 						{/* 변경자세 */}
@@ -828,16 +1106,90 @@ export default function PositionChangeRecord() {
 							/>
 						</div>
 
-						{/* 변경자 */}
+						{/* 주간 변경자 */}
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">변경자</label>
-							<input
-								type="text"
-								value={formData.changer}
-								onChange={(e) => setFormData(prev => ({ ...prev, changer: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-								placeholder="변경자를 입력하세요"
-							/>
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">주간 변경자</label>
+							<div className="relative flex-1">
+								<input
+									type="text"
+									value={formData.changer}
+									onChange={(e) => {
+										const value = e.target.value;
+										setFormData((prev) => ({ ...prev, changer: value, changerEmpno: '' }));
+										void searchEmployee(value, setDayEmpSuggestions, setShowDayEmpDropdown);
+									}}
+									onFocus={() => {
+										if (formData.changer.trim()) {
+											void searchEmployee(formData.changer, setDayEmpSuggestions, setShowDayEmpDropdown);
+										}
+									}}
+									className="w-full px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									placeholder="직원명 검색"
+								/>
+								{showDayEmpDropdown && dayEmpSuggestions.length > 0 && (
+									<div className="absolute z-20 w-full mt-1 overflow-y-auto bg-white border border-blue-300 rounded shadow-lg max-h-40">
+										{dayEmpSuggestions.map((employee, index) => (
+											<div
+												key={`${employee.EMPNO}-${index}`}
+												onClick={() => {
+													setFormData((prev) => ({
+														...prev,
+														changer: employee.EMPNM,
+														changerEmpno: employee.EMPNO,
+													}));
+													setShowDayEmpDropdown(false);
+												}}
+												className="px-3 py-2 text-sm border-b border-blue-100 cursor-pointer hover:bg-blue-50 last:border-b-0"
+											>
+												{employee.EMPNM}
+											</div>
+										))}
+									</div>
+								)}
+							</div>
+						</div>
+
+						{/* 야간 변경자 */}
+						<div className="flex items-center gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">야간 변경자</label>
+							<div className="relative flex-1">
+								<input
+									type="text"
+									value={formData.nightChanger}
+									onChange={(e) => {
+										const value = e.target.value;
+										setFormData((prev) => ({ ...prev, nightChanger: value, nightChangerEmpno: '' }));
+										void searchEmployee(value, setNightEmpSuggestions, setShowNightEmpDropdown);
+									}}
+									onFocus={() => {
+										if (formData.nightChanger.trim()) {
+											void searchEmployee(formData.nightChanger, setNightEmpSuggestions, setShowNightEmpDropdown);
+										}
+									}}
+									className="w-full px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									placeholder="직원명 검색"
+								/>
+								{showNightEmpDropdown && nightEmpSuggestions.length > 0 && (
+									<div className="absolute z-20 w-full mt-1 overflow-y-auto bg-white border border-blue-300 rounded shadow-lg max-h-40">
+										{nightEmpSuggestions.map((employee, index) => (
+											<div
+												key={`${employee.EMPNO}-${index}`}
+												onClick={() => {
+													setFormData((prev) => ({
+														...prev,
+														nightChanger: employee.EMPNM,
+														nightChangerEmpno: employee.EMPNO,
+													}));
+													setShowNightEmpDropdown(false);
+												}}
+												className="px-3 py-2 text-sm border-b border-blue-100 cursor-pointer hover:bg-blue-50 last:border-b-0"
+											>
+												{employee.EMPNM}
+											</div>
+										))}
+									</div>
+								)}
+							</div>
 						</div>
 					</div>
 
@@ -856,15 +1208,18 @@ export default function PositionChangeRecord() {
 							삭제
 						</button>
 					</div>
-				</div>
 					</div>
-					{!selectedMember && (
+					{selectedChangeIndex === null && !isNewMode && (
 						<div className="absolute inset-0 z-10 flex items-center justify-center p-6 bg-white/30 backdrop-blur-[1px]">
 							<p className="px-6 py-3 text-lg font-semibold text-blue-900 bg-white/90 border border-blue-200 rounded-lg shadow-sm">
-								수급자를 선택해주세요
+								변경 시간을 선택해주세요
 							</p>
 						</div>
 					)}
+				</div>
+					</>
+				)}
+				</div>
 				</div>
 			</div>
 		</div>

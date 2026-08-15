@@ -67,7 +67,7 @@ function mapRow(r) {
 		INDT: toYmd(r.INDT),
 		ETC: r.ETC != null ? String(r.ETC) : '',
 		INEMPNO: r.INEMPNO,
-		INEPNM: r.INEPNM != null ? String(r.INEPNM) : r.INEMPNM != null ? String(r.INEMPNM) : '',
+		INEMPNM: r.INEMPNM != null ? String(r.INEMPNM) : r.INEPNM != null ? String(r.INEPNM) : '',
 	};
 }
 
@@ -161,13 +161,13 @@ export async function POST(req) {
 		request.input('DEL', sql.Char(1), null);
 		request.input('INDT', sql.Date, indt);
 		request.input('ETC', sql.VarChar(100), pick(body, 'ETC', null));
-		request.input('INEPNM', sql.VarChar(100), pick(body, 'INEPNM', pick(body, 'INEMPNM', null)));
+		request.input('INEMPNM', sql.VarChar(100), pick(body, 'INEMPNM', pick(body, 'INEPNM', null)));
 
 		await request.query(`
       INSERT INTO ${TABLE_NAME}
-        ([ANCD],[PNUM],[SEQ],[RSDT],[MENM],[SDT],[EDT],[INQNT],[INCNT],[METM],[CAPDES],[DEL],[INDT],[ETC],[INEPNM])
+        ([ANCD],[PNUM],[SEQ],[RSDT],[MENM],[SDT],[EDT],[INQNT],[INCNT],[METM],[CAPDES],[DEL],[INDT],[ETC],[INEMPNM])
       VALUES
-        (@ANCD,@PNUM,@SEQ,@RSDT,@MENM,@SDT,@EDT,@INQNT,@INCNT,@METM,@CAPDES,@DEL,@INDT,@ETC,@INEPNM)
+        (@ANCD,@PNUM,@SEQ,@RSDT,@MENM,@SDT,@EDT,@INQNT,@INCNT,@METM,@CAPDES,@DEL,@INDT,@ETC,@INEMPNM)
     `);
 
 		return jsonOk({ success: true, data: { SEQ: nextSeq } });
@@ -216,7 +216,7 @@ export async function PUT(req) {
 		request.input('METM', sql.VarChar(40), String(pick(body, 'METM', '') ?? '').slice(0, 40) || null);
 		request.input('CAPDES', sql.VarChar(100), String(pick(body, 'CAPDES', '') ?? '').slice(0, 100) || null);
 		request.input('ETC', sql.VarChar(100), pick(body, 'ETC', null));
-		request.input('INEPNM', sql.VarChar(100), pick(body, 'INEPNM', pick(body, 'INEMPNM', null)));
+		request.input('INEMPNM', sql.VarChar(100), pick(body, 'INEMPNM', pick(body, 'INEPNM', null)));
 
 		const result = await request.query(`
       UPDATE ${TABLE_NAME}
@@ -229,7 +229,7 @@ export async function PUT(req) {
           [METM] = @METM,
           [CAPDES] = @CAPDES,
           [ETC] = @ETC,
-          [INEPNM] = COALESCE(@INEPNM, [INEPNM])
+          [INEMPNM] = COALESCE(@INEMPNM, [INEMPNM])
       WHERE [ANCD] = @ANCD
         AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
         AND [SEQ] = @SEQ

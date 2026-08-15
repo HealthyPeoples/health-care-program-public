@@ -27,7 +27,7 @@ import {
 	fetchRoomNoMapFromF30112,
 	normalizePnumKey,
 } from '../../utils/roomNoFloor';
-import { buildHealthRecordHtml, openPrintWindow } from '../../utils/v30030rPrint';
+import { buildHealthRecordAllHtml, buildHealthRecordHtml, openPrintWindow } from '../../utils/v30030rPrint';
 
 interface VitalSignsPeriodicData {
 	id: number;
@@ -72,6 +72,7 @@ export default function VitalSignsPeriodic() {
 
 	// 출력 모달 관련 상태
 	const [showPrintModal, setShowPrintModal] = useState(false);
+	const [printMode, setPrintMode] = useState<'individual' | 'all'>('individual');
 	const [memberSearchTerm, setMemberSearchTerm] = useState('');
 	const [memberSearchResults, setMemberSearchResults] = useState<any[]>([]);
 	const [showMemberSearchResults, setShowMemberSearchResults] = useState(false);
@@ -374,9 +375,36 @@ export default function VitalSignsPeriodic() {
 		setMemberSearchResults([]);
 	};
 
+	const getCurrentMonthRange = () => {
+		const now = new Date();
+		const y = now.getFullYear();
+		const m = now.getMonth();
+		const start = `${y}-${String(m + 1).padStart(2, '0')}-01`;
+		const lastDay = new Date(y, m + 1, 0).getDate();
+		const end = `${y}-${String(m + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+		return { start, end };
+	};
+
+	const openPrintModal = (mode: 'individual' | 'all') => {
+		setPrintMode(mode);
+		setPrintData([]);
+		setSelectedMemberForPrint(null);
+		setMemberSearchTerm('');
+		setMemberSearchResults([]);
+		setShowMemberSearchResults(false);
+		const { start, end } = getCurrentMonthRange();
+		setStartDate(start);
+		setEndDate(end);
+		setShowPrintModal(true);
+	};
+
 	const handleLoadPrintData = async () => {
-		if (!selectedMemberForPrint || !startDate || !endDate) {
-			alert('수급자와 기간을 선택해주세요.');
+		if (!startDate || !endDate) {
+			alert('기간을 선택해주세요.');
+			return;
+		}
+		if (printMode === 'individual' && !selectedMemberForPrint) {
+			alert('수급자를 선택해주세요.');
 			return;
 		}
 		if (startDate > endDate) {
@@ -385,8 +413,15 @@ export default function VitalSignsPeriodic() {
 		}
 		setLoadingPrintData(true);
 		try {
-			const url = `/api/v30030r?pnum=${encodeURIComponent(selectedMemberForPrint.PNUM)}&ancd=${encodeURIComponent(selectedMemberForPrint.ANCD || '')}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
-			const response = await fetch(url);
+			const params = new URLSearchParams({
+				startDate,
+				endDate,
+			});
+			if (printMode === 'individual' && selectedMemberForPrint) {
+				params.set('pnum', String(selectedMemberForPrint.PNUM ?? ''));
+				params.set('ancd', String(selectedMemberForPrint.ANCD ?? ''));
+			}
+			const response = await fetch(`/api/v30030r?${params.toString()}`);
 			const result = await response.json();
 			if (result.success && Array.isArray(result.data)) {
 				setPrintData(result.data);
@@ -416,20 +451,24 @@ export default function VitalSignsPeriodic() {
 			typeof rrnRaw === 'string' && rrnRaw.length >= 7
 				? rrnRaw.replace(/(\d{6})[-]?(\d).*/, '$1-$2******')
 				: String(rrnRaw || '');
-		const html = buildHealthRecordHtml(printData, {
-			startDate,
-			endDate,
-			fallback: {
-				facilityCode: selectedMemberForPrint?.ANCD != null ? String(selectedMemberForPrint.ANCD) : '',
-				name: selectedMemberForPrint?.P_NM || '',
-				rrn: rrnMasked,
-			},
-		});
+		const html =
+			printMode === 'all'
+				? buildHealthRecordAllHtml(printData, { startDate, endDate })
+				: buildHealthRecordHtml(printData, {
+						startDate,
+						endDate,
+						fallback: {
+							facilityCode: selectedMemberForPrint?.ANCD != null ? String(selectedMemberForPrint.ANCD) : '',
+							name: selectedMemberForPrint?.P_NM || '',
+							rrn: rrnMasked,
+						},
+					});
 		openPrintWindow(html);
 	};
 
 	const handleClosePrintModal = () => {
 		setShowPrintModal(false);
+		setPrintMode('individual');
 		setSelectedMemberForPrint(null);
 		setMemberSearchTerm('');
 		setStartDate('');
@@ -470,12 +509,18 @@ export default function VitalSignsPeriodic() {
 						</button>
 					</div>
 					{/* 오른쪽: 출력 버튼 */}
-					<div className="ml-auto flex flex-col items-end gap-1">
+					<div className="ml-auto flex items-end gap-2">
 						<button
-							onClick={() => setShowPrintModal(true)}
+							onClick={() => openPrintModal('individual')}
 							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 						>
-							출력
+							개별출력
+						</button>
+						<button
+							onClick={() => openPrintModal('all')}
+							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+						>
+							전체출력
 						</button>
 					</div>
 				</div>
@@ -912,8 +957,11 @@ export default function VitalSignsPeriodic() {
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
 					<div className="bg-white rounded-lg border border-blue-400 w-full max-w-[600px] max-h-[90vh] overflow-y-auto p-6 shadow-xl">
 						<div className="mb-4">
-							<h2 className="text-xl font-semibold text-blue-900 mb-4">건강 관리 기록부 출력</h2>
+							<h2 className="text-xl font-semibold text-blue-900 mb-4">
+								{printMode === 'all' ? '건강 관리 기록부 전체출력' : '건강 관리 기록부 개별출력'}
+							</h2>
 
+							{printMode === 'individual' && (
 							<div className="mb-4">
 								<label className="block text-sm font-semibold text-blue-900 mb-2">수급자 검색</label>
 								<div className="relative">
@@ -952,6 +1000,7 @@ export default function VitalSignsPeriodic() {
 									</div>
 								)}
 							</div>
+							)}
 
 							<div className="mb-4">
 								<label className="block text-sm font-semibold text-blue-900 mb-2">조사기간</label>
@@ -975,13 +1024,21 @@ export default function VitalSignsPeriodic() {
 							{printData.length > 0 && (
 								<div className="mb-4 p-3 bg-blue-50 rounded text-sm text-blue-900">
 									조회된 데이터: {printData.length}건
+									{printMode === 'all'
+										? ` / 수급자 ${new Set(printData.map((r) => String(r.PNUM ?? r['수급자성명'] ?? ''))).size}명`
+										: ''}
 								</div>
 							)}
 
 							<div className="flex gap-2 justify-end">
 								<button
 									onClick={handleLoadPrintData}
-									disabled={!selectedMemberForPrint || !startDate || !endDate || loadingPrintData}
+									disabled={
+										!startDate ||
+										!endDate ||
+										loadingPrintData ||
+										(printMode === 'individual' && !selectedMemberForPrint)
+									}
 									className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 								>
 									{loadingPrintData ? '조회 중...' : '조회'}

@@ -620,7 +620,7 @@ export default function LongtermCareRegistration() {
 				checked={formData[field] === '1'}
 				onChange={() => toggleYn(field)}
 				disabled={!isEditMode}
-				className="w-4 h-4 accent-blue-600"
+				className="w-4 h-4 accent-blue-600 disabled-checked-blue"
 			/>
 			<span className="text-sm text-blue-900">{label}</span>
 		</div>

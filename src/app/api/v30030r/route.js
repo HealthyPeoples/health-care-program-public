@@ -28,7 +28,8 @@ function validateDate(dateStr) {
 
 /**
  * V30030R 간호일지/건강관리기록부 출력용 조회
- * GET /api/v30030r?pnum=&startDate=&endDate=&ancd=
+ * GET /api/v30030r?startDate=&endDate=&ancd=&pnum=
+ * pnum이 없으면 기관 전체 수급자를 조회합니다.
  */
 export async function GET(req) {
 	try {
@@ -41,9 +42,6 @@ export async function GET(req) {
 		const gate = assertAnCdMatchesSession(req, ancd || null);
 		if (!gate.ok) return gate.response;
 
-		if (pnum == null || String(pnum).trim() === '') {
-			return jsonError({ success: false, error: 'pnum이 필요합니다' }, 400);
-		}
 		if (!validateDate(startDate) || !validateDate(endDate)) {
 			return jsonError(
 				{ success: false, error: 'startDate, endDate는 yyyy-mm-dd 형식이어야 합니다' },
@@ -58,21 +56,27 @@ export async function GET(req) {
 
 		const start = formatDateForDB(startDate);
 		const end = formatDateForDB(endDate);
+		const pnumVal = pnum == null ? '' : String(pnum).trim();
 
 		const request = pool.request();
 		request.input('sessionAncd', sql.Int, Number(gate.sessionAncd));
-		request.input('pnum', sql.Int, Number(pnum));
 		request.input('startDate', sql.VarChar(10), start);
 		request.input('endDate', sql.VarChar(10), end);
+
+		let pnumFilter = '';
+		if (pnumVal !== '') {
+			request.input('pnum', sql.Int, Number(pnumVal));
+			pnumFilter = `AND CAST([PNUM] AS VARCHAR) = CAST(@pnum AS VARCHAR)`;
+		}
 
 		const result = await request.query(`
       SELECT *
       FROM ${VIEW}
       WHERE [ANCD] = @sessionAncd
-        AND CAST([PNUM] AS VARCHAR) = CAST(@pnum AS VARCHAR)
+        ${pnumFilter}
         AND LEFT(REPLACE(LTRIM(RTRIM(CAST([조사일자] AS VARCHAR(20)))), '-', ''), 8)
             BETWEEN REPLACE(@startDate, '-', '') AND REPLACE(@endDate, '-', '')
-      ORDER BY [조사일자] DESC
+      ORDER BY [수급자성명] ASC, CAST([PNUM] AS VARCHAR) ASC, [조사일자] ASC
     `);
 
 		return jsonOk({

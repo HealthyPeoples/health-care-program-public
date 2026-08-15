@@ -135,10 +135,36 @@ export type PrintMeta = {
 	};
 };
 
-/** 일상 출력: 간호일지 */
-export function buildNursingLogHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
+function maskRrn(v: unknown): string {
+	const s = String(v ?? '').trim();
+	if (s.length >= 7) return s.replace(/(\d{6})[-]?(\d).*/, '$1-$2******');
+	return s;
+}
+
+function groupRowsByPerson(rows: Record<string, unknown>[]): Record<string, unknown>[][] {
+	const map = new Map<string, Record<string, unknown>[]>();
+	for (const row of rows) {
+		const key = String(row.PNUM ?? row['수급자성명'] ?? '');
+		if (!map.has(key)) map.set(key, []);
+		map.get(key)!.push(row);
+	}
+	return [...map.values()].sort((a, b) => {
+		const na = String(a[0]?.['수급자성명'] ?? '');
+		const nb = String(b[0]?.['수급자성명'] ?? '');
+		return na.localeCompare(nb, 'ko');
+	});
+}
+
+function renderNursingLogPage(
+	rows: Record<string, unknown>[],
+	meta: PrintMeta,
+	pageLabel: string
+): string {
 	const info = headerInfo(rows, meta.fallback);
-	const bodyRows = rows
+	const sortedRows = [...rows].sort((a, b) =>
+		formatSurveyDate(a['조사일자']).localeCompare(formatSurveyDate(b['조사일자']))
+	);
+	const bodyRows = sortedRows
 		.map(
 			(item) => `
     <tr>
@@ -151,22 +177,64 @@ export function buildNursingLogHtml(rows: Record<string, unknown>[], meta: Print
       <td>${cell(item, '맥박수')}</td>
       <td>${cell(item, '호흡수')}</td>
       <td>${cell(item, '체중')}</td>
-      <td>${cell(item, '부종유무')}</td>
-      <td>${cell(item, '부종정도')}</td>
-      <td>${cell(item, '부종부위')}</td>
       <td class="notes">${cell(item, '간호내역')}</td>
     </tr>`
 		)
 		.join('');
 
-	return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>간호일지</title>
-<style>
+	return `
+  <div class="page">
+  <div class="title">간호일지</div>
+  <div class="top-wrap">
+    <table class="signature-table">
+      <tr><th>담당</th><th>검토</th><th>결재</th></tr>
+      <tr><td></td><td></td><td></td></tr>
+    </table>
+    <table class="info-table">
+      <tr>
+        <td class="label">장기요양기관기호</td><td>${info.facilityCode}</td>
+        <td class="label">장기요양기관명</td><td>${info.facilityName}</td>
+        <td class="label">장기요양등급</td><td>${info.grade}</td>
+      </tr>
+      <tr>
+        <td class="label">수급자성명</td><td>${info.name}</td>
+        <td class="label">주민등록번호</td><td>${info.rrn ? maskRrn(info.rrn) : info.rrn}</td>
+        <td class="label">장기요양인정번호</td><td>${info.recogNo}</td>
+      </tr>
+    </table>
+  </div>
+  <div class="period">조사기간 : ${esc(meta.startDate)} ~ ${esc(meta.endDate)}</div>
+  <table class="main-table">
+    <thead>
+      <tr>
+        <th style="width:8%">조사일자</th>
+        <th style="width:6%">공복혈당</th>
+        <th style="width:6%">식후혈당</th>
+        <th style="width:6%">수축혈압</th>
+        <th style="width:6%">이완혈압</th>
+        <th style="width:5%">체온</th>
+        <th style="width:5%">맥박수</th>
+        <th style="width:5%">호흡수</th>
+        <th style="width:5%">체중</th>
+        <th style="width:48%">간호내역</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${bodyRows || `<tr><td colspan="10" style="padding:20px;">데이터가 없습니다</td></tr>`}
+    </tbody>
+  </table>
+  <div class="footer">
+    <span>R30030</span>
+    <span>${esc(pageLabel)}</span>
+  </div>
+  </div>`;
+}
+
+const NURSING_LOG_CSS = `
 @page { size: A4 landscape; margin: 8mm; }
 ${COMMON_CSS}
+.page { page-break-after: always; }
+.page:last-child { page-break-after: auto; }
 .main-table {
   width: 100%;
   border-collapse: collapse;
@@ -193,102 +261,52 @@ ${COMMON_CSS}
   padding-left: 4px;
   word-break: break-all;
 }
+`;
+
+/** 일상 출력: 간호일지 */
+export function buildNursingLogHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
+	return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>간호일지</title>
+<style>
+${NURSING_LOG_CSS}
 </style>
 </head>
 <body>
-  <div class="title">간호일지</div>
-  <div class="top-wrap">
-    <table class="signature-table">
-      <tr><th>담당</th><th>검토</th><th>결재</th></tr>
-      <tr><td></td><td></td><td></td></tr>
-    </table>
-    <table class="info-table">
-      <tr>
-        <td class="label">장기요양기관기호</td><td>${info.facilityCode}</td>
-        <td class="label">장기요양기관명</td><td>${info.facilityName}</td>
-        <td class="label">장기요양등급</td><td>${info.grade}</td>
-      </tr>
-      <tr>
-        <td class="label">수급자성명</td><td>${info.name}</td>
-        <td class="label">주민등록번호</td><td>${info.rrn}</td>
-        <td class="label">장기요양인정번호</td><td>${info.recogNo}</td>
-      </tr>
-    </table>
-  </div>
-  <div class="period">조사기간 : ${esc(meta.startDate)} ~ ${esc(meta.endDate)}</div>
-  <table class="main-table">
-    <thead>
-      <tr>
-        <th style="width:8%">조사일자</th>
-        <th style="width:6%">공복혈당</th>
-        <th style="width:6%">식후혈당</th>
-        <th style="width:6%">수축혈압</th>
-        <th style="width:6%">이완혈압</th>
-        <th style="width:5%">체온</th>
-        <th style="width:5%">맥박수</th>
-        <th style="width:5%">호흡수</th>
-        <th style="width:5%">체중</th>
-        <th style="width:5%">부종유무</th>
-        <th style="width:5%">부종정도</th>
-        <th style="width:7%">부종부위</th>
-        <th style="width:31%">간호내역</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${bodyRows || `<tr><td colspan="13" style="padding:20px;">데이터가 없습니다</td></tr>`}
-    </tbody>
-  </table>
-  <div class="footer">
-    <span>R30030</span>
-    <span>페이지: 1</span>
-  </div>
+  ${renderNursingLogPage(rows, meta, '페이지: 1')}
 </body>
 </html>`;
 }
 
-/** 주기 출력: 건강 관리 기록부 (2줄/일자) */
-export function buildHealthRecordHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
-	const info = headerInfo(rows, meta.fallback);
-	const totalPages = 1;
-	const bodyRows = rows
-		.map(
-			(item) => `
-    <tr class="data-top">
-      <td class="date-cell" rowspan="2">${esc(formatSurveyDate(item['조사일자']))}</td>
-      <td>${cell(item, '공복혈당')}</td>
-      <td>${cell(item, '식후혈당')}</td>
-      <td>${cell(item, '수축혈압')}</td>
-      <td>${cell(item, '이완혈압')}</td>
-      <td>${cell(item, '체온')}</td>
-      <td>${cell(item, '맥박수')}</td>
-      <td>${cell(item, '호흡수')}</td>
-      <td>${cell(item, '체중')}</td>
-      <td>${cell(item, 'NS_SORE_DESC') || cell(item, '욕창')}</td>
-      <td class="notes">${cell(item, '간호내역')}</td>
-    </tr>
-    <tr class="data-bottom">
-      <td>${cell(item, '투약관리')}</td>
-      <td>${cell(item, '주사제관리')}</td>
-      <td>${cell(item, '문제행동')}</td>
-      <td>${cell(item, '낙상')}</td>
-      <td>${cell(item, '탈수')}</td>
-      <td>${cell(item, '대소변실금')}</td>
-      <td>${cell(item, '통증')}</td>
-      <td>${cell(item, '섬망')}</td>
-      <td>${cell(item, 'WATER_INTAKE')}</td>
-      <td>${cell(item, '드레싱')}</td>
-    </tr>`
-		)
+/** 일상 전체출력: 수급자별 간호일지 */
+export function buildNursingLogAllHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
+	const groups = groupRowsByPerson(rows);
+	const pages = groups
+		.map((group, idx) => renderNursingLogPage(group, meta, `페이지: ${idx + 1}/${groups.length}`))
 		.join('');
 
 	return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>건강 관리 기록부</title>
+<title>간호일지 전체출력</title>
 <style>
+${NURSING_LOG_CSS}
+</style>
+</head>
+<body>
+  ${pages || renderNursingLogPage([], meta, '페이지: 1')}
+</body>
+</html>`;
+}
+
+const HEALTH_RECORD_CSS = `
 @page { size: A4 landscape; margin: 8mm; }
 ${COMMON_CSS}
+.page { page-break-after: always; }
+.page:last-child { page-break-after: auto; }
 .main-table {
   width: 100%;
   border-collapse: collapse;
@@ -332,12 +350,54 @@ ${COMMON_CSS}
   width: 18%;
 }
 .sub-label {
-  color: #333;
-  font-size: 7.5pt;
+  color: inherit;
+  font-size: inherit;
+  font-weight: bold;
 }
-</style>
-</head>
-<body>
+`;
+
+function renderHealthRecordPage(
+	rows: Record<string, unknown>[],
+	meta: PrintMeta,
+	pageLabel: string
+): string {
+	const info = headerInfo(rows, meta.fallback);
+	const sortedRows = [...rows].sort((a, b) =>
+		formatSurveyDate(a['조사일자']).localeCompare(formatSurveyDate(b['조사일자']))
+	);
+	const bodyRows = sortedRows
+		.map(
+			(item) => `
+    <tr class="data-top">
+      <td class="date-cell" rowspan="2">${esc(formatSurveyDate(item['조사일자']))}</td>
+      <td>${cell(item, '공복혈당')}</td>
+      <td>${cell(item, '식후혈당')}</td>
+      <td>${cell(item, '수축혈압')}</td>
+      <td>${cell(item, '이완혈압')}</td>
+      <td>${cell(item, '체온')}</td>
+      <td>${cell(item, '맥박수')}</td>
+      <td>${cell(item, '호흡수')}</td>
+      <td>${cell(item, '체중')}</td>
+      <td>${cell(item, 'NS_SORE_DESC') || cell(item, '욕창')}</td>
+      <td rowspan="2">${cell(item, '드레싱')}</td>
+      <td class="notes" rowspan="2">${cell(item, '간호내역')}</td>
+    </tr>
+    <tr class="data-bottom">
+      <td>${cell(item, '투약관리')}</td>
+      <td>${cell(item, '주사제관리')}</td>
+      <td>${cell(item, '문제행동')}</td>
+      <td>${cell(item, '낙상')}</td>
+      <td>${cell(item, '탈수')}</td>
+      <td>${cell(item, '대소변실금')}</td>
+      <td>${cell(item, '통증')}</td>
+      <td>${cell(item, '섬망')}</td>
+      <td>${cell(item, 'WATER_INTAKE')}</td>
+    </tr>`
+		)
+		.join('');
+
+	return `
+  <div class="page">
   <div class="title">건강 관리 기록부</div>
   <div class="top-wrap">
     <table class="signature-table">
@@ -352,7 +412,7 @@ ${COMMON_CSS}
       </tr>
       <tr>
         <td class="label">수급자</td><td>${info.name}</td>
-        <td class="label">주민등록번호</td><td>${info.rrn}</td>
+        <td class="label">주민등록번호</td><td>${info.rrn ? maskRrn(info.rrn) : info.rrn}</td>
         <td class="label">장기요양인정번호</td><td>${info.recogNo}</td>
       </tr>
     </table>
@@ -371,6 +431,7 @@ ${COMMON_CSS}
         <th>호흡수</th>
         <th>체중</th>
         <th>욕창 부위</th>
+        <th rowspan="2">드레싱</th>
         <th rowspan="2">제공내역</th>
       </tr>
       <tr class="head-bottom">
@@ -383,17 +444,54 @@ ${COMMON_CSS}
         <th class="sub-label">통증(VAS)</th>
         <th class="sub-label">섬망</th>
         <th class="sub-label">수분섭취(ml)</th>
-        <th class="sub-label">드레싱</th>
       </tr>
     </thead>
     <tbody>
-      ${bodyRows || `<tr><td colspan="11" style="padding:20px;border-bottom:1px solid #000;">데이터가 없습니다</td></tr>`}
+      ${bodyRows || `<tr><td colspan="12" style="padding:20px;border-bottom:1px solid #000;">데이터가 없습니다</td></tr>`}
     </tbody>
   </table>
   <div class="footer">
     <span></span>
-    <span>1/${totalPages} 페이지</span>
+    <span>${esc(pageLabel)}</span>
   </div>
+  </div>`;
+}
+
+/** 주기 출력: 건강 관리 기록부 (2줄/일자) */
+export function buildHealthRecordHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
+	return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>건강 관리 기록부</title>
+<style>
+${HEALTH_RECORD_CSS}
+</style>
+</head>
+<body>
+  ${renderHealthRecordPage(rows, meta, '1/1 페이지')}
+</body>
+</html>`;
+}
+
+/** 주기 전체출력: 수급자별 건강 관리 기록부 */
+export function buildHealthRecordAllHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
+	const groups = groupRowsByPerson(rows);
+	const pages = groups
+		.map((group, idx) => renderHealthRecordPage(group, meta, `${idx + 1}/${groups.length} 페이지`))
+		.join('');
+
+	return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>건강 관리 기록부 전체출력</title>
+<style>
+${HEALTH_RECORD_CSS}
+</style>
+</head>
+<body>
+  ${pages || renderHealthRecordPage([], meta, '1/1 페이지')}
 </body>
 </html>`;
 }
