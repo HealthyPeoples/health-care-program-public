@@ -39,10 +39,8 @@ export const ANNT_STAT_OPTIONS = [
 ] as const;
 
 export function vtmGuToLabel(vtmGu: string): string {
-	const code = String(vtmGu ?? '').trim().padStart(2, '0').slice(-2);
-	const slot = EXCRETION_TIME_SLOTS.find((s) => s.vtmGu === code);
-	if (slot) return slot.label;
-	if (/^\d{2}$/.test(code)) return `${code}:00`;
+	const { start, end } = vtmGuToStartEnd(vtmGu);
+	if (start && end) return `${start} - ${end}`;
 	return String(vtmGu ?? '');
 }
 
@@ -53,6 +51,82 @@ export function labelToVtmGu(label: string): string {
 	const hour = trimmed.slice(0, 2);
 	if (/^\d{2}$/.test(hour)) return hour;
 	return trimmed.slice(0, 2);
+}
+
+/** HH:mm / HHmm / Date / 24:00 등을 HH:mm 으로 정규화 */
+export function normalizeTimeHm(v: unknown): string {
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		const iso = v.toISOString();
+		if (/^(1970|1900)-01-01T/.test(iso)) return iso.slice(11, 16);
+		const h = String(v.getHours()).padStart(2, '0');
+		const m = String(v.getMinutes()).padStart(2, '0');
+		return `${h}:${m}`;
+	}
+	const s = String(v).trim();
+	if (/^\d{2}:\d{2}/.test(s)) return s.slice(0, 5);
+	if (/^\d{4}$/.test(s)) return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+	if (/^24:00$/.test(s) || s === '2400') return '24:00';
+	const parsed = new Date(s);
+	if (!Number.isNaN(parsed.getTime()) && /\d{4}/.test(s)) {
+		const h = String(parsed.getHours()).padStart(2, '0');
+		const m = String(parsed.getMinutes()).padStart(2, '0');
+		return `${h}:${m}`;
+	}
+	return '';
+}
+
+export function vtmGuToStartEnd(vtmGu: string): { start: string; end: string } {
+	const raw = String(vtmGu ?? '').trim();
+	if (!raw) return { start: '', end: '' };
+	const code = raw.padStart(2, '0').slice(-2);
+	const slot = EXCRETION_TIME_SLOTS.find((s) => s.vtmGu === code);
+	if (slot) {
+		const [start, end] = slot.label.split(' - ');
+		return { start: start || '', end: end || '' };
+	}
+	if (/^\d{2}$/.test(code)) {
+		const hour = Number(code);
+		const endHour = hour + 1;
+		return {
+			start: `${code}:00`,
+			end: endHour >= 24 ? '24:00' : `${String(endHour).padStart(2, '0')}:00`,
+		};
+	}
+	return { start: '', end: '' };
+}
+
+export function timeToVtmGu(time: string): string {
+	const hm = normalizeTimeHm(time);
+	if (/^\d{2}:\d{2}$/.test(hm)) return hm.slice(0, 2);
+	return '';
+}
+
+export function toHtmlTimeValue(time: string): string {
+	const hm = normalizeTimeHm(time);
+	if (hm === '24:00') return '23:59';
+	return /^\d{2}:\d{2}$/.test(hm) ? hm : '';
+}
+
+export function formatTimeRangeLabel(start: string, end: string): string {
+	const s = normalizeTimeHm(start);
+	const e = normalizeTimeHm(end);
+	if (s && e) return `${s} - ${e}`;
+	if (s) return s;
+	if (e) return e;
+	return '';
+}
+
+export function resolveObservationTimes(row: {
+	VTM_GU?: unknown;
+	VTM_ST?: unknown;
+	VTM_EN?: unknown;
+}): { start: string; end: string; label: string } {
+	const fromGu = vtmGuToStartEnd(String(row?.VTM_GU ?? ''));
+	const start = normalizeTimeHm(row?.VTM_ST) || fromGu.start;
+	const end = normalizeTimeHm(row?.VTM_EN) || fromGu.end;
+	const label = formatTimeRangeLabel(start, end) || vtmGuToLabel(String(row?.VTM_GU ?? '')) || '-';
+	return { start, end, label };
 }
 
 export function anntStatToLabel(code: string): string {
@@ -84,6 +158,8 @@ export interface F33021Row {
 	PNUM?: string | number;
 	VDT?: string;
 	VTM_GU?: string;
+	VTM_ST?: string;
+	VTM_EN?: string;
 	ANNT_STAT_GU?: string;
 	ANNT_STAT_DESC?: string;
 	PSS_NPPY_VAL_GU?: string;
