@@ -629,7 +629,7 @@ ${pageHtml}
 									{!searched ? (
 										<tr>
 											<td colSpan={3} className="px-3 py-10 text-center text-blue-900/60">
-												프로그램과 구분을 선택한 뒤 검색해주세요.
+												프로그램과 구분을 선택해 주세요.
 											</td>
 										</tr>
 									) : loading ? (
