@@ -64,8 +64,14 @@ export function normalizeTimeHm(v: unknown): string {
 		return `${h}:${m}`;
 	}
 	const s = String(v).trim();
-	if (/^\d{2}:\d{2}/.test(s)) return s.slice(0, 5);
-	if (/^\d{4}$/.test(s)) return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+	if (/^\d{1,2}:\d{2}/.test(s)) {
+		const [h, m] = s.split(':');
+		return `${String(h).padStart(2, '0')}:${String(m).slice(0, 2)}`;
+	}
+	if (/^\d{3,4}$/.test(s)) {
+		const p = s.padStart(4, '0');
+		return `${p.slice(0, 2)}:${p.slice(2, 4)}`;
+	}
 	if (/^24:00$/.test(s) || s === '2400') return '24:00';
 	const parsed = new Date(s);
 	if (!Number.isNaN(parsed.getTime()) && /\d{4}/.test(s)) {
