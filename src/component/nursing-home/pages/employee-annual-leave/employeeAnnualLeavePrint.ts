@@ -8,13 +8,6 @@
  */
 import { openPrintPreviewWindow } from "../employee-attendance/employeeAttendancePrint";
 import {
-	buildAnnualLeaveSummary,
-	buildLeavePeriods,
-	formatDateField,
-	getGlobalAttendanceRangeForEmployees,
-	getWorkStatusLabel,
-	type EmployeeForAnnualLeavePrint,
-	type F02010LeaveRow,
 	type BaseYearAnnualLeavePrintRow,
 	type DetailAnnualLeavePrintSection,
 	type FullAnnualLeavePrintRow,
@@ -65,12 +58,12 @@ export function buildFullAnnualLeavePrintHtml(referenceDate: string, rows: FullA
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>?ъ썝 ?꾩감 蹂닿퀬???꾩껜)</title>
+  <title>사원 년차 보고서(전체)</title>
   <style>
     @page { size: A4 landscape; margin: 12mm 10mm 16mm 10mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Malgun Gothic', '留묒? 怨좊뵓', Batang, serif;
+      font-family: 'Malgun Gothic', '맑은 고딕', Batang, serif;
       font-size: 9.5pt;
       color: #000;
       background: #fff;
@@ -145,43 +138,43 @@ export function buildFullAnnualLeavePrintHtml(referenceDate: string, rows: FullA
     <div class="head">
       <table class="approve">
         <tr>
-          <th>?대떦</th>
-          <th>寃??/th>
-          <th>寃곗옱</th>
+          <th>담당</th>
+          <th>검토</th>
+          <th>결재</th>
         </tr>
         <tr><td></td><td></td><td></td></tr>
       </table>
-      <h1 class="title">?ъ썝 ?꾩감 蹂닿퀬???꾩껜)</h1>
+      <h1 class="title">사원 년차 보고서(전체)</h1>
     </div>
-    <div class="ref-date">湲곗??쇱옄: ${escapeHtml(referenceDate)}</div>
+    <div class="ref-date">기준일자: ${escapeHtml(referenceDate)}</div>
     <table class="main">
       <thead>
         <tr>
-          <th>吏곸썝紐?/th>
-          <th>吏곸콉</th>
-          <th>?곹깭</th>
-          <th>?낆궗?쇱옄</th>
-          <th>?댁궗?쇱옄</th>
-          <th>?꾩감湲곗???/th>
-          <th>?쒖옉?쇱옄</th>
-          <th>醫낅즺?쇱옄</th>
-          <th>?꾩닔</th>
-          <th>?꾩감?쇱닔</th>
-          <th>?ъ슜?쇱닔</th>
-          <th>鍮꾧퀬</th>
+          <th>직원명</th>
+          <th>직책</th>
+          <th>상태</th>
+          <th>입사일자</th>
+          <th>퇴사일자</th>
+          <th>년차기준일</th>
+          <th>시작일자</th>
+          <th>종료일자</th>
+          <th>년수</th>
+          <th>년차일수</th>
+          <th>사용일수</th>
+          <th>비고</th>
         </tr>
       </thead>
       <tbody>
         ${bodyRows || `<tr><td colspan="12" style="padding:12px;">&nbsp;</td></tr>`}
       </tbody>
     </table>
-    <div class="foot-line">?섏씠吏: 1</div>
+    <div class="foot-line">페이지: 1</div>
   </div>
 </body>
 </html>`;
 }
 
-/** ?꾩감 ?곸꽭 蹂닿퀬??{湲곗??꾨룄}?????ъ썝蹂??붿빟??+ ?ъ슜?쇱옄 紐⑸줉 */
+/** 년차 상세 보고서 {기준년도} — 사원별 요약행 + 사용일자 목록 */
 export function buildDetailAnnualLeavePrintHtml(
 	referenceDate: string,
 	baseYear: number,
@@ -223,12 +216,12 @@ export function buildDetailAnnualLeavePrintHtml(
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>?꾩감 ?곸꽭 蹂닿퀬??${baseYear}??/title>
+  <title>년차 상세 보고서 ${baseYear}년</title>
   <style>
     @page { size: A4 portrait; margin: 14mm 12mm 18mm 12mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Malgun Gothic', '留묒? 怨좊뵓', Batang, serif;
+      font-family: 'Malgun Gothic', '맑은 고딕', Batang, serif;
       font-size: 10pt;
       color: #000;
       background: #fff;
@@ -324,41 +317,41 @@ export function buildDetailAnnualLeavePrintHtml(
     <div class="head">
       <table class="approve">
         <tr>
-          <th>?대떦</th>
-          <th>寃??/th>
-          <th>寃곗옱</th>
+          <th>담당</th>
+          <th>검토</th>
+          <th>결재</th>
         </tr>
         <tr><td></td><td></td><td></td></tr>
       </table>
-      <h1 class="title">?꾩감 ?곸꽭 蹂닿퀬??${baseYear}??/h1>
+      <h1 class="title">년차 상세 보고서 ${baseYear}년</h1>
     </div>
-    <div class="ref-date">湲곗??쇱옄: ${escapeHtml(referenceDate)}</div>
+    <div class="ref-date">기준일자: ${escapeHtml(referenceDate)}</div>
     <table class="main">
       <thead>
         <tr>
-          <th>吏곸썝紐?/th>
-          <th>吏곸콉</th>
-          <th>?곹깭</th>
-          <th>?낆궗?쇱옄</th>
-          <th>?댁궗?쇱옄</th>
-          <th>?쒖옉?쇱옄</th>
-          <th>醫낅즺?쇱옄</th>
-          <th>?꾩닔</th>
-          <th>?꾩감?쇱닔</th>
-          <th>?ъ슜?쇱닔</th>
+          <th>직원명</th>
+          <th>직책</th>
+          <th>상태</th>
+          <th>입사일자</th>
+          <th>퇴사일자</th>
+          <th>시작일자</th>
+          <th>종료일자</th>
+          <th>년수</th>
+          <th>년차일수</th>
+          <th>사용일수</th>
         </tr>
       </thead>
       <tbody>
         ${bodyBlocks || `<tr><td colspan="10" style="padding:12px;">&nbsp;</td></tr>`}
       </tbody>
     </table>
-    <div class="foot-line">?섏씠吏: 1</div>
+    <div class="foot-line">페이지: 1</div>
   </div>
 </body>
 </html>`;
 }
 
-/** ?ъ썝 ?곗감 蹂닿퀬??{湲곗??꾨룄}?????ъ썝??1??*/
+/** 사원 년차 보고서 {기준년도} — 사원당 1행 */
 export function buildBaseYearAnnualLeavePrintHtml(
 	referenceDate: string,
 	baseYear: number,
@@ -385,12 +378,12 @@ export function buildBaseYearAnnualLeavePrintHtml(
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>?ъ썝 ?곗감 蹂닿퀬??${baseYear}??/title>
+  <title>사원 년차 보고서 ${baseYear}년</title>
   <style>
     @page { size: A4 landscape; margin: 12mm 10mm 16mm 10mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: 'Malgun Gothic', '留묒? 怨좊뵓', Batang, serif;
+      font-family: 'Malgun Gothic', '맑은 고딕', Batang, serif;
       font-size: 10pt;
       color: #000;
       background: #fff;
@@ -463,35 +456,35 @@ export function buildBaseYearAnnualLeavePrintHtml(
     <div class="head">
       <table class="approve">
         <tr>
-          <th>?대떦</th>
-          <th>寃??/th>
-          <th>寃곗옱</th>
+          <th>담당</th>
+          <th>검토</th>
+          <th>결재</th>
         </tr>
         <tr><td></td><td></td><td></td></tr>
       </table>
-      <h1 class="title">?ъ썝 ?곗감 蹂닿퀬??${baseYear}??/h1>
+      <h1 class="title">사원 년차 보고서 ${baseYear}년</h1>
     </div>
-    <div class="ref-date">湲곗??쇱옄: ${escapeHtml(referenceDate)}</div>
+    <div class="ref-date">기준일자: ${escapeHtml(referenceDate)}</div>
     <table class="main">
       <thead>
         <tr>
-          <th>吏곸썝紐?/th>
-          <th>吏곸콉</th>
-          <th>?곹깭</th>
-          <th>?낆궗?쇱옄</th>
-          <th>?댁궗?쇱옄</th>
-          <th>?쒖옉?쇱옄</th>
-          <th>醫낅즺?쇱옄</th>
-          <th>?꾩닔</th>
-          <th>?곗감?쇱닔</th>
-          <th>?ъ슜?쇱닔</th>
+          <th>직원명</th>
+          <th>직책</th>
+          <th>상태</th>
+          <th>입사일자</th>
+          <th>퇴사일자</th>
+          <th>시작일자</th>
+          <th>종료일자</th>
+          <th>년수</th>
+          <th>년차일수</th>
+          <th>사용일수</th>
         </tr>
       </thead>
       <tbody>
         ${bodyRows || `<tr><td colspan="10" style="padding:12px;">&nbsp;</td></tr>`}
       </tbody>
     </table>
-    <div class="foot-line">?섏씠吏: 1</div>
+    <div class="foot-line">페이지: 1</div>
   </div>
 </body>
 </html>`;

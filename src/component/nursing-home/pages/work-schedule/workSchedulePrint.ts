@@ -6,9 +6,7 @@
  *
  * @module component/nursing-home/pages/work-schedule/workSchedulePrint
  */
-/** 근무일정 현황표 인쇄 헬퍼 (F02010 기반)
- * WGU: 1=근무, 2=연차, 3=월차, 4=정기, 5=대휴, 6=병가, 7=경조사, 9=결근
- */
+import { workStatusFromEmployee } from "../../utils/employeeWorkStatus";
 
 export type WorkSchedulePrintRow = {
 	EMPNM?: string;
@@ -165,7 +163,7 @@ export function buildWorkScheduleStatusPrintHtml(opts: {
 	year: number;
 	month: number;
 	dates: Date[];
-	employees: { EMPNO: number; EMPNM: string; JOB?: string }[];
+	employees: { EMPNO: number; EMPNM: string; JOB?: string; EDT?: unknown; HSDT?: unknown; HEDT?: unknown }[];
 	scheduleMap: Record<string, WorkSchedulePrintRow>;
 }): string {
 	const { year, month, dates, employees, scheduleMap } = opts;
@@ -191,7 +189,14 @@ export function buildWorkScheduleStatusPrintHtml(opts: {
 					const isSun = d.getDay() === 0;
 					const isSat = d.getDay() === 6;
 					const cls = isSun ? "sun" : isSat ? "sat" : "";
-					const content = row ? wguPrintMarkHtml(row) : "&nbsp;";
+					const daySt = workStatusFromEmployee(emp, formatYmd(d));
+					const content = row
+						? wguPrintMarkHtml(row)
+						: daySt === "9"
+							? "퇴직"
+							: daySt === "2"
+								? "휴직"
+								: "&nbsp;";
 					return `<td class="c-cell ${cls}">${content}</td>`;
 				})
 				.join("");

@@ -17,6 +17,11 @@ import {
 	scheduleCellLabel,
 	type WorkSchedulePrintRow,
 } from "./workSchedulePrint";
+import {
+	hasWorkStatusInRange,
+	workStatusFromEmployee,
+	workStatusText,
+} from "../../utils/employeeWorkStatus";
 
 interface Employee {
 	ANCD: number;
@@ -27,6 +32,9 @@ interface Employee {
 	JOBST?: string;
 	JOBADD?: string;
 	JOBSH?: string;
+	EDT?: string;
+	HSDT?: string;
+	HEDT?: string;
 	[key: string]: unknown;
 }
 
@@ -94,20 +102,6 @@ function getMonthDates(year: number, month: number): Date[] {
 		dates.push(new Date(year, month - 1, d));
 	}
 	return dates;
-}
-
-function getWorkStatusText(jobst?: string): string {
-	if (!jobst) return "-";
-	switch (String(jobst).trim()) {
-		case "1":
-			return "근무";
-		case "2":
-			return "휴직";
-		case "9":
-			return "퇴직";
-		default:
-			return "-";
-	}
 }
 
 function leaveKindFromRow(wgu?: string, hodes?: string): string {
@@ -262,8 +256,11 @@ export default function WorkSchedule() {
 		if (selectedJob) {
 			if (String(employee.JOB || "").trim() !== selectedJob) return false;
 		}
-		if (selectedWorkStatus) {
-			if (String(employee.JOBST || "").trim() !== selectedWorkStatus) return false;
+		if (selectedWorkStatus === "1") {
+			// 기본(근무): 해당 월 시작 전에 이미 퇴직한 직원만 제외. 월중 휴직·퇴직은 칸에 표시
+			if (workStatusFromEmployee(employee, startDate) === "9") return false;
+		} else if (selectedWorkStatus) {
+			if (!hasWorkStatusInRange(employee, selectedWorkStatus, startDate, endDate)) return false;
 		}
 		return true;
 	});
@@ -302,6 +299,15 @@ export default function WorkSchedule() {
 		}
 		const dateStr = wdt || selectedCell?.wdt || formatDate(today);
 		const existing = scheduleMap[`${target.EMPNO}|${dateStr}`];
+		const daySt = workStatusFromEmployee(target, dateStr);
+		if (!existing && daySt === "9") {
+			alert("퇴직일 이후에는 근무일정을 등록할 수 없습니다.");
+			return;
+		}
+		if (!existing && daySt === "2") {
+			alert("휴직 기간에는 근무일정을 등록할 수 없습니다.");
+			return;
+		}
 		if (existing) {
 			const leaveKind = leaveKindFromRow(existing.WGU, existing.HODES);
 			setForm({
@@ -332,6 +338,15 @@ export default function WorkSchedule() {
 		}
 		if (!form.WDT) {
 			alert("근무일자를 입력하세요.");
+			return;
+		}
+		const daySt = workStatusFromEmployee(selectedEmployee, form.WDT);
+		if (daySt === "9") {
+			alert("퇴직일 이후에는 근무일정을 등록할 수 없습니다.");
+			return;
+		}
+		if (daySt === "2") {
+			alert("휴직 기간에는 근무일정을 등록할 수 없습니다.");
 			return;
 		}
 
@@ -431,6 +446,9 @@ export default function WorkSchedule() {
 				EMPNO: e.EMPNO,
 				EMPNM: e.EMPNM,
 				JOB: e.JOB,
+				EDT: e.EDT,
+				HSDT: e.HSDT,
+				HEDT: e.HEDT,
 			})),
 			scheduleMap: printMap,
 		});
@@ -527,7 +545,7 @@ export default function WorkSchedule() {
 									>
 										<td className="px-2 py-2">{employee.EMPNM || "-"}</td>
 										<td className="px-2 py-2">{employee.JOB || "-"}</td>
-										<td className="px-2 py-2">{getWorkStatusText(employee.JOBST)}</td>
+										<td className="px-2 py-2">{workStatusText(workStatusFromEmployee(employee))}</td>
 									</tr>
 								))
 							)}
@@ -697,6 +715,8 @@ export default function WorkSchedule() {
 												const wdt = formatDate(d);
 												const key = `${emp.EMPNO}|${wdt}`;
 												const row = scheduleMap[key];
+												const daySt = workStatusFromEmployee(emp, wdt);
+												const offDuty = daySt === "9" || daySt === "2";
 												const selected =
 													selectedCell?.empno === emp.EMPNO && selectedCell?.wdt === wdt;
 												const dow = d.getDay();
@@ -720,16 +740,26 @@ export default function WorkSchedule() {
 																			? ` (${leaveDisplayLabel(row.WGU, row.HODES)})`
 																			: ""
 																	}${row.JOBADD ? ` / ${row.JOBADD}` : ""}`
-																: "더블클릭하여 등록"
+																: daySt === "9"
+																	? "퇴직"
+																	: daySt === "2"
+																		? "휴직"
+																		: "더블클릭하여 등록"
 														}
 														className={`border border-blue-100 px-0.5 py-1 text-center cursor-pointer align-middle ${
 															selected ? "ring-2 ring-inset ring-blue-500 bg-blue-100" : ""
-														} ${dow === 0 ? "bg-red-50/40" : dow === 6 ? "bg-blue-50/50" : ""}`}
+														} ${dow === 0 ? "bg-red-50/40" : dow === 6 ? "bg-blue-50/50" : ""} ${
+															!row && offDuty ? "bg-slate-50" : ""
+														}`}
 													>
 														{row ? (
 															<span className={`inline-block leading-tight text-[10px] ${cellToneClass(row)}`}>
 																{scheduleCellLabel(row)}
 															</span>
+														) : daySt === "9" ? (
+															<span className="text-[10px] text-slate-400">퇴직</span>
+														) : daySt === "2" ? (
+															<span className="text-[10px] text-amber-700">휴직</span>
 														) : (
 															<span className="text-blue-200">·</span>
 														)}

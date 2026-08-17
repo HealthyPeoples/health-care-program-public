@@ -9,6 +9,12 @@
  * @module component/nursing-home/pages/employee-basic-info/EmployeeBasicInfo
  */
 import React, { useState, useEffect } from 'react';
+import {
+	resolveWorkStatus,
+	todayYmd,
+	workStatusFromEmployee,
+	workStatusText,
+} from '../../utils/employeeWorkStatus';
 
 interface Employee {
 	ANCD: number;
@@ -75,6 +81,7 @@ interface EmployeeCreateForm {
 	workStatus: string;
 	hireDate: string;
 	leaveStartDate: string;
+	leaveEndDate: string;
 	retirementDate: string;
 	attendanceManagement: boolean;
 	annualLeaveStandardDate: string;
@@ -89,11 +96,6 @@ interface EmployeeCreateForm {
 	notes: string;
 }
 
-function todayYmd(): string {
-	const d = new Date();
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
 function parseIntOrZero(v: string): number {
 	const n = parseInt(String(v).replace(/,/g, ""), 10);
 	return Number.isFinite(n) ? n : 0;
@@ -106,6 +108,7 @@ const initialCreateForm = (): EmployeeCreateForm => ({
 	workStatus: "1",
 	hireDate: todayYmd(),
 	leaveStartDate: "",
+	leaveEndDate: "",
 	retirementDate: "",
 	attendanceManagement: true,
 	annualLeaveStandardDate: "",
@@ -181,19 +184,15 @@ export default function EmployeeBasicInfo() {
 	};
 
 	// 근무상태 변환 함수
-	const getWorkStatusText = (jobst?: string): string => {
-		if (!jobst) return "-";
-		switch (jobst.trim()) {
-			case "1":
-				return "근무";
-			case "2":
-				return "휴직";
-			case "9":
-				return "퇴직";
-			default:
-				return "-";
-		}
-	};
+	const getEmployeeWorkStatus = (employee: Employee): "1" | "2" | "9" =>
+		workStatusFromEmployee(employee);
+
+	const getFormWorkStatus = (form: { retirementDate?: string; leaveStartDate?: string; leaveEndDate?: string }) =>
+		resolveWorkStatus({
+			retirementDate: form.retirementDate,
+			leaveStartDate: form.leaveStartDate,
+			leaveEndDate: form.leaveEndDate,
+		});
 
 	const employeeToForm = (employee: Employee): EmployeeForm => ({
 		name: employee.EMPNM || "",
@@ -242,8 +241,7 @@ export default function EmployeeBasicInfo() {
 		}
 		// 근무상태 필터
 		if (selectedWorkStatus && selectedWorkStatus !== "") {
-			const employeeStatus = String(employee.JOBST || "").trim();
-			if (employeeStatus !== selectedWorkStatus) {
+			if (getEmployeeWorkStatus(employee) !== selectedWorkStatus) {
 				return false;
 			}
 		}
@@ -333,7 +331,7 @@ export default function EmployeeBasicInfo() {
 					EMPNM: createForm.name.trim(),
 					YRNT: createForm.yearsOfService,
 					JOB: createForm.job,
-					JOBST: createForm.workStatus,
+					JOBST: getFormWorkStatus(createForm),
 					JOBADD: createForm.workLocation,
 					JOBSH: createForm.workType,
 					BK: createForm.salaryBank,
@@ -341,6 +339,7 @@ export default function EmployeeBasicInfo() {
 					SDT: createForm.hireDate,
 					EDT: createForm.retirementDate,
 					HSDT: createForm.leaveStartDate,
+					HEDT: createForm.leaveEndDate,
 					EMPHP: createForm.mobilePhone,
 					EMPTEL: createForm.homePhone,
 					EMPZIP: createForm.zipCode,
@@ -363,13 +362,14 @@ export default function EmployeeBasicInfo() {
 				EMPNO: json.empno,
 				EMPNM: json.EMPNM || createForm.name.trim(),
 				JOB: createForm.job,
-				JOBST: createForm.workStatus,
+				JOBST: getFormWorkStatus(createForm),
 				JOBADD: createForm.workLocation,
 				JOBSH: createForm.workType,
 				YRNT: parseIntOrZero(createForm.yearsOfService),
 				SDT: createForm.hireDate,
 				EDT: createForm.retirementDate,
 				HSDT: createForm.leaveStartDate,
+				HEDT: createForm.leaveEndDate,
 				EMPHP: createForm.mobilePhone,
 				EMPTEL: createForm.homePhone,
 				EMPADD: createForm.homeAddress,
@@ -472,6 +472,7 @@ export default function EmployeeBasicInfo() {
 		EMPNM: formData.name.trim(),
 		YRNT: formData.yearsOfService,
 		JOB: formData.job,
+		JOBST: getFormWorkStatus(formData),
 		JOBADD: formData.workLocation,
 		JOBSH: formData.workType,
 		SDT: formData.hireDate,
@@ -510,6 +511,7 @@ export default function EmployeeBasicInfo() {
 				EMPNM: formData.name.trim(),
 				YRNT: parseIntOrZero(formData.yearsOfService),
 				JOB: formData.job,
+				JOBST: getFormWorkStatus(formData),
 				JOBADD: formData.workLocation,
 				JOBSH: formData.workType,
 				SDT: formData.hireDate,
@@ -619,7 +621,7 @@ export default function EmployeeBasicInfo() {
 													<td className="px-2 py-2">{employee.EMPNM || "-"}</td>
 													<td className="px-2 py-2">{employee.EMPHP || "-"}</td>
 													<td className="px-2 py-2">{employee.JOB || "-"}</td>
-													<td className="px-2 py-2">{getWorkStatusText(employee.JOBST)}</td>
+													<td className="px-2 py-2">{workStatusText(getEmployeeWorkStatus(employee))}</td>
 												</tr>
 											))
 										)}
@@ -829,10 +831,10 @@ export default function EmployeeBasicInfo() {
 									/>
 								</div>
 
-								{/* Row 2: 직위/직책 */}
+								{/* Row 2: 직책 */}
 								<div className="flex items-center gap-2">
 									<label className="w-24 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900">
-										직위/직책
+										직책
 									</label>
 									<input
 										type="text"
@@ -844,10 +846,10 @@ export default function EmployeeBasicInfo() {
 									/>
 								</div>
 
-								{/* Row 3: 근무형태 + 취업일자 + 퇴직일자 */}
+								{/* Row 3: 직위 + 취업일자 + 퇴직일자 */}
 								<div className="flex items-center gap-2">
 									<label className="w-24 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900">
-										근무형태
+										직위
 									</label>
 									<input
 										type="text"
@@ -913,6 +915,15 @@ export default function EmployeeBasicInfo() {
 											}))
 										}
 										className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+									/>
+									<label className="w-20 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900 ml-4">
+										근무상태
+									</label>
+									<input
+										type="text"
+										readOnly
+										value={workStatusText(getFormWorkStatus(formData))}
+										className="w-24 rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-sm text-blue-900"
 									/>
 								</div>
 
@@ -1034,7 +1045,7 @@ export default function EmployeeBasicInfo() {
 							</div>
 
 							<div className="flex items-center gap-2">
-								<label className={modalLabelCls}>직위/직책</label>
+								<label className={modalLabelCls}>직책</label>
 								<input
 									type="text"
 									value={createForm.job}
@@ -1045,25 +1056,12 @@ export default function EmployeeBasicInfo() {
 
 							<div className="flex items-center gap-2">
 								<label className={modalLabelCls}>근무상태</label>
-								<div className="flex flex-wrap items-center gap-4 px-2 py-1.5">
-									{[
-										{ value: "1", label: "근무" },
-										{ value: "2", label: "휴직" },
-										{ value: "9", label: "퇴직" },
-									].map((opt) => (
-										<label key={opt.value} className="flex items-center gap-1.5 text-sm text-blue-900">
-											<input
-												type="radio"
-												name="createWorkStatus"
-												value={opt.value}
-												checked={createForm.workStatus === opt.value}
-												onChange={() => setCreateForm((f) => ({ ...f, workStatus: opt.value }))}
-												className="text-blue-600"
-											/>
-											{opt.label}
-										</label>
-									))}
-								</div>
+								<input
+									type="text"
+									readOnly
+									value={workStatusText(getFormWorkStatus(createForm))}
+									className="w-28 rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-sm text-blue-900"
+								/>
 							</div>
 
 							<div className="flex flex-wrap items-center gap-2">
@@ -1079,6 +1077,13 @@ export default function EmployeeBasicInfo() {
 									type="date"
 									value={createForm.leaveStartDate}
 									onChange={(e) => setCreateForm((f) => ({ ...f, leaveStartDate: e.target.value }))}
+									className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+								/>
+								<label className={`${modalLabelCls} w-24`}>휴직종료일</label>
+								<input
+									type="date"
+									value={createForm.leaveEndDate}
+									onChange={(e) => setCreateForm((f) => ({ ...f, leaveEndDate: e.target.value }))}
 									className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
 								/>
 								<label className={`${modalLabelCls} w-24`}>퇴직일자</label>
@@ -1125,7 +1130,7 @@ export default function EmployeeBasicInfo() {
 							</div>
 
 							<div className="flex items-center gap-2">
-								<label className={modalLabelCls}>근무형태</label>
+								<label className={modalLabelCls}>직위</label>
 								<input
 									type="text"
 									value={createForm.workType}

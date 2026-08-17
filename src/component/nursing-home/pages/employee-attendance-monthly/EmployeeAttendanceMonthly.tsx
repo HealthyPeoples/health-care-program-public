@@ -16,6 +16,12 @@ import {
 	openPrintPreviewWindow,
 	type AttendancePrintRow,
 } from "../employee-attendance/employeeAttendancePrint";
+import {
+	eachYmd,
+	hasWorkStatusInRange,
+	workStatusFromEmployee,
+	workStatusText,
+} from "../../utils/employeeWorkStatus";
 
 interface Employee {
 	ANCD: number;
@@ -24,6 +30,9 @@ interface Employee {
 	EMPHP?: string;
 	JOB?: string;
 	JOBST?: string;
+	EDT?: string;
+	HSDT?: string;
+	HEDT?: string;
 	[key: string]: unknown;
 }
 
@@ -41,6 +50,42 @@ interface F02010ApiRow extends AttendanceRow {
 	ANCD?: number;
 	EMPNO?: number;
 	EMPNM?: string;
+}
+
+function mergeAttendanceWithWorkStatus(
+	employee: Employee,
+	rows: Array<{
+		WDT?: string;
+		WGU?: string;
+		HODES?: string;
+		STM?: string;
+		ETM?: string;
+		JOBADD?: string;
+		JOBSH?: string;
+	}>,
+	start: string,
+	end: string,
+): AttendanceRow[] {
+	const byDate = new Map<string, AttendanceRow>();
+	for (const row of rows) {
+		const ymd = String(row.WDT ?? "").slice(0, 10);
+		if (ymd) byDate.set(ymd, { ...row, WDT: ymd });
+	}
+	const merged: AttendanceRow[] = [];
+	for (const ymd of eachYmd(start, end)) {
+		const existing = byDate.get(ymd);
+		if (existing) {
+			merged.push(existing);
+			continue;
+		}
+		const daySt = workStatusFromEmployee(employee, ymd);
+		if (daySt === "9") {
+			merged.push({ WDT: ymd, WGU: "", HODES: "퇴직" });
+		} else if (daySt === "2") {
+			merged.push({ WDT: ymd, WGU: "", HODES: "휴직" });
+		}
+	}
+	return merged;
 }
 
 export default function EmployeeAttendanceMonthly() {
@@ -102,21 +147,6 @@ export default function EmployeeAttendanceMonthly() {
 		}
 	};
 
-	// 근무상태 텍스트 (EmployeeBasicInfo와 동일)
-	const getWorkStatusText = (jobst?: string): string => {
-		if (!jobst) return "-";
-		switch (String(jobst).trim()) {
-			case "1":
-				return "근무";
-			case "2":
-				return "휴직";
-			case "9":
-				return "퇴직";
-			default:
-				return "-";
-		}
-	};
-
 	const getWorkClassificationText = (row: AttendanceRow): string =>
 		classifyAttendanceDisplay(row);
 
@@ -129,8 +159,7 @@ export default function EmployeeAttendanceMonthly() {
 			if (employeeJob !== selectedJob) return false;
 		}
 		if (selectedWorkStatus && selectedWorkStatus !== "") {
-			const employeeStatus = String(employee.JOBST || "").trim();
-			if (employeeStatus !== selectedWorkStatus) return false;
+			if (!hasWorkStatusInRange(employee, selectedWorkStatus, startDateStr, endDateStr)) return false;
 		}
 		return true;
 	});
@@ -178,7 +207,8 @@ export default function EmployeeAttendanceMonthly() {
 			const response = await fetch(url);
 			const result = await response.json();
 			if (!result.success || !Array.isArray(result.data)) return [];
-			return (result.data as F02010ApiRow[]).map(mapApiRowToAttendance);
+			const mapped = (result.data as F02010ApiRow[]).map(mapApiRowToAttendance);
+			return mergeAttendanceWithWorkStatus(employee, mapped, start, end);
 		},
 		[],
 	);
@@ -282,10 +312,16 @@ export default function EmployeeAttendanceMonthly() {
 				.map((emp) => {
 					const key = employeeKey(emp);
 					const bucket = byEmployee.get(key);
-					if (!bucket || bucket.rows.length === 0) return null;
+					const rows = mergeAttendanceWithWorkStatus(
+						emp,
+						bucket?.rows ?? [],
+						startDateStr,
+						endDateStr,
+					);
+					if (rows.length === 0) return null;
 					return {
-						empnm: String(emp.EMPNM ?? bucket.empnm).trim() || "-",
-						rows: bucket.rows,
+						empnm: String(emp.EMPNM ?? bucket?.empnm).trim() || "-",
+						rows,
 					};
 				})
 				.filter((s): s is NonNullable<typeof s> => s != null);
@@ -533,7 +569,7 @@ export default function EmployeeAttendanceMonthly() {
 													{employee.EMPNM || "-"}
 												</td>
 												<td className="border-r border-blue-100 px-2 py-2 text-center">
-													{getWorkStatusText(employee.JOBST)}
+													{workStatusText(workStatusFromEmployee(employee))}
 												</td>
 												<td className="px-2 py-2 text-center">
 													{employee.EMPHP || "-"}
@@ -658,10 +694,15 @@ export default function EmployeeAttendanceMonthly() {
 								) : (
 									[...attendanceList]
 										.sort((a, b) => String(a.WDT).localeCompare(String(b.WDT)))
-										.map((row, idx) => (
+										.map((row, idx) => {
+										const cls = getWorkClassificationText(row);
+										const offDuty = cls === "휴직" || cls === "퇴직";
+										return (
 										<tr
 											key={`${row.WDT ?? ""}-${idx}`}
-											className="border-b border-blue-50 hover:bg-blue-50/50"
+											className={`border-b border-blue-50 hover:bg-blue-50/50 ${
+												offDuty ? "bg-slate-50 text-slate-500" : ""
+											}`}
 										>
 											<td className="border-r border-blue-100 px-3 py-2 text-center">
 												{row.WDT ?? "-"}
@@ -669,8 +710,10 @@ export default function EmployeeAttendanceMonthly() {
 											<td className="border-r border-blue-100 px-3 py-2 text-center">
 												{getDayOfWeekKo(row.WDT) || "-"}
 											</td>
-											<td className="border-r border-blue-100 px-3 py-2 text-center">
-												{getWorkClassificationText(row)}
+											<td className={`border-r border-blue-100 px-3 py-2 text-center ${
+												cls === "휴직" ? "text-amber-700 font-medium" : cls === "퇴직" ? "text-slate-500 font-medium" : ""
+											}`}>
+												{cls}
 											</td>
 											<td className="border-r border-blue-100 px-3 py-2 text-center">
 												{row.STM?.trim() || "-"}
@@ -685,7 +728,8 @@ export default function EmployeeAttendanceMonthly() {
 												{row.HODES?.trim() || "-"}
 											</td>
 										</tr>
-									))
+										);
+										})
 								)}
 							</tbody>
 						</table>
