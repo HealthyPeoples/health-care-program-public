@@ -90,9 +90,9 @@ function mapDbToSalaryRow(r: Record<string, unknown>): SalaryRow {
 	const b9 = num(r.BSAL9);
 	const esal = num(r.ESAL);
 	const sumBs = b1 + b2 + b3 + b4 + b6 + b7 + b8 + b9;
-	const benefitTotal = sal1 + sal2 + sumBs + esal;
+	/** 급여합계 = 공단부담금 + 수급자부담금 (V40100). 비급여는 수급자부담금합에만 포함 */
+	const benefitTotal = sal1 + sal2;
 	const recipientTotal = sal2 + sumBs + esal;
-	const half = Math.floor(b9 / 2);
 	return {
 		pnum: String(r.PNUM ?? ""),
 		recipient: String(r.P_NM ?? ""),
@@ -101,11 +101,11 @@ function mapDbToSalaryRow(r: Record<string, unknown>): SalaryRow {
 		benefitTotal: fmtAmt(benefitTotal),
 		nhaContribution: fmtAmt(sal1),
 		recipientContribution: fmtAmt(sal2),
-		nonBenefitMeal: fmtAmt(b1),
+		nonBenefitMeal: fmtAmt(b1 + b2),
 		roomUpgradeFee: fmtAmt(b6),
 		outpatientFee: fmtAmt(b3),
-		contractedMedical: fmtAmt(half),
-		contractedPrescription: fmtAmt(b9 - half),
+		contractedMedical: fmtAmt(b8),
+		contractedPrescription: fmtAmt(b9),
 		otherCosts: fmtAmt(esal),
 		recipientContributionTotal: fmtAmt(recipientTotal),
 	};
@@ -114,7 +114,6 @@ function mapDbToSalaryRow(r: Record<string, unknown>): SalaryRow {
 /** F40100 → 하단 상세 */
 function mapDbToDetailForm(r: Record<string, unknown>): SalaryDetailForm {
 	const b9 = num(r.BSAL9);
-	const half = Math.floor(b9 / 2);
 	return {
 		recipient: String(r.P_NM ?? ""),
 		birthday: displayBirth(formatBirthFromDb(r.P_BRDT)),
@@ -133,8 +132,8 @@ function mapDbToDetailForm(r: Record<string, unknown>): SalaryDetailForm {
 		roomAdjustFee: "",
 		bathFee: fmtAmt(num(r.BSAL7)),
 		dementiaFee: fmtAmt(num(r.BSAL8)),
-		contractedMedicalFee: fmtAmt(half),
-		prescriptionFee: fmtAmt(b9 - half),
+		contractedMedicalFee: fmtAmt(0),
+		prescriptionFee: fmtAmt(b9),
 	};
 }
 
@@ -1020,36 +1019,7 @@ export default function MonthlySalaryData() {
 									placeholder="BSAL8"
 								/>
 							</div>
-							<div className="flex items-center gap-2">
-								<label className={fieldLabelClass}>
-									기타비용
-								</label>
-								<input
-									type="text"
-									value={detailForm.otherCosts}
-									onChange={(e) =>
-										setDetailForm((prev) => ({
-											...prev,
-											otherCosts: formatAmountInput(e.target.value),
-										}))
-									}
-									className={amountEditableClass}
-								/>
-							</div>
-							<div className="col-span-2 flex items-start gap-2 md:col-span-4">
-								<label className={`${fieldLabelClass} pt-1.5`}>
-									기타내역
-								</label>
-								<textarea
-									value={detailForm.otherCostDesc}
-									onChange={(e) =>
-										setDetailForm((prev) => ({ ...prev, otherCostDesc: e.target.value }))
-									}
-									rows={2}
-									className={editableTextareaClass}
-									placeholder="ESALDES"
-								/>
-							</div>
+
 							<div className="flex items-center gap-2">
 								<label className={fieldLabelClass}>
 									상급병실료
@@ -1094,20 +1064,42 @@ export default function MonthlySalaryData() {
 								</label>
 								<input
 									type="text"
-									value={detailForm.contractedMedicalFee}
+									value={fmtAmt(
+										parseAmt(detailForm.contractedMedicalFee) +
+											parseAmt(detailForm.prescriptionFee)
+									)}
 									readOnly
 									className={amountReadOnlyClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
 								<label className={fieldLabelClass}>
-									처방비
+									기타비용
 								</label>
 								<input
 									type="text"
-									value={detailForm.prescriptionFee}
-									readOnly
-									className={amountReadOnlyClass}
+									value={detailForm.otherCosts}
+									onChange={(e) =>
+										setDetailForm((prev) => ({
+											...prev,
+											otherCosts: formatAmountInput(e.target.value),
+										}))
+									}
+									className={amountEditableClass}
+								/>
+							</div>
+							<div className="col-span-2 flex items-start gap-2 md:col-span-4">
+								<label className={`${fieldLabelClass} pt-1.5`}>
+									기타내역
+								</label>
+								<textarea
+									value={detailForm.otherCostDesc}
+									onChange={(e) =>
+										setDetailForm((prev) => ({ ...prev, otherCostDesc: e.target.value }))
+									}
+									rows={2}
+									className={editableTextareaClass}
+									placeholder="기타내역을 입력해주세요"
 								/>
 							</div>
 						</div>
