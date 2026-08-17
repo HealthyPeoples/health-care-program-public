@@ -245,3 +245,10 @@ export const pathToTitleMap: Record<string, string> = (() => {
   });
   return acc;
 })();
+
+/** 메뉴 검색 — 띄어쓰기 무시, 글자만 비교 */
+export function menuNameMatchesQuery(name: string, query: string): boolean {
+  const q = query.replace(/\s+/g, "").toLowerCase();
+  if (!q) return true;
+  return name.replace(/\s+/g, "").toLowerCase().includes(q);
+}
