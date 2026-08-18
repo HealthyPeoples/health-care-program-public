@@ -10,16 +10,17 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-	buildAllBaseYearAnnualLeavePrintRows,
-	buildAllDetailAnnualLeavePrintSections,
-	buildAllEmployeesAnnualLeavePrintRows,
-	buildAnnualLeaveSummary,
-	buildLeavePeriods,
+	buildAllBaseYearAnnualLeavePrintRowsFromGrants,
+	buildAllDetailAnnualLeavePrintSectionsFromGrants,
+	buildAllEmployeesAnnualLeavePrintRowsFromGrants,
+	buildPeriodForYear,
 	buildWorkDetailListForDateRange,
 	calcYearsOfService,
-	getAttendanceFetchRange,
-	getBaseYearAttendanceRangeForEmployees,
-	getGlobalAttendanceRangeForEmployees,
+	getAttendanceFetchRangeFromGrants,
+	getAttendanceRangeFromGrantMap,
+	grantsToSummary,
+	groupGrantsByEmpno,
+	type AnnualLeaveGrantRow,
 	type AnnualLeaveSummaryRow,
 	type EmployeeForAnnualLeavePrint,
 	type F02010LeaveRow,
@@ -73,6 +74,10 @@ export default function EmployeeAnnualLeave() {
 	const [printingAll, setPrintingAll] = useState(false);
 	const [printingBaseYear, setPrintingBaseYear] = useState(false);
 	const [printingDetail, setPrintingDetail] = useState(false);
+	const [isGrantModalOpen, setIsGrantModalOpen] = useState(false);
+	const [grantModalMode, setGrantModalMode] = useState<"create" | "edit">("create");
+	const [grantForm, setGrantForm] = useState({ accrualDate: "", endDate: "", days: "" });
+	const [generating, setGenerating] = useState(false);
 
 	const workDetailTotalPages = Math.max(1, Math.ceil(workDetailList.length / WORK_DETAIL_ITEMS_PER_PAGE));
 	const workDetailMaxPageWindowStart = useMemo(() => {
@@ -165,46 +170,35 @@ export default function EmployeeAnnualLeave() {
 	};
 
 	const loadEmployeeAnnualLeave = useCallback(async (employee: Employee, year: number) => {
-		const anchor = formatDate(employee.BASE_DT) || formatDate(employee.SDT);
-		if (!anchor) {
-			setAnnualLeaveList([]);
-			setWorkDetailList([]);
-			setDetailError("년차기준일 또는 입사일자가 없어 조회할 수 없습니다.");
-			return;
-		}
-
-		const periods = buildLeavePeriods(employee.BASE_DT, employee.SDT, year);
-		if (periods.length === 0) {
-			setAnnualLeaveList([]);
-			setWorkDetailList([]);
-			setDetailError("생성된 연차 구간이 없습니다.");
-			return;
-		}
-
-		const range = getAttendanceFetchRange(periods);
-		if (!range) {
-			setAnnualLeaveList([]);
-			setWorkDetailList([]);
-			return;
-		}
-
 		setLoadingDetail(true);
 		setDetailError(null);
 		try {
-			const url = `/api/f02010?startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}&empno=${employee.EMPNO}`;
-			const response = await fetch(url);
-			const result = await response.json();
-			if (!result.success || !Array.isArray(result.data)) {
+			const grantRes = await fetch(`/api/f01020?empno=${employee.EMPNO}`, { credentials: "include" });
+			const grantJson = await grantRes.json();
+			if (!grantJson.success || !Array.isArray(grantJson.data)) {
 				setAnnualLeaveList([]);
 				setWorkDetailList([]);
-				setDetailError(result.error || "근태 데이터를 불러오지 못했습니다.");
+				setDetailError(grantJson.error || "년차 자료를 불러오지 못했습니다.");
 				return;
 			}
 
-			const attendanceRows = result.data as F02010LeaveRow[];
-			const grantedDays = typeof employee.YRNT === "number" ? employee.YRNT : Number(employee.YRNT) || 0;
-			const summary = buildAnnualLeaveSummary(periods, attendanceRows, grantedDays);
+			const grants = grantJson.data as AnnualLeaveGrantRow[];
+			const range = getAttendanceFetchRangeFromGrants(grants);
+			let attendanceRows: F02010LeaveRow[] = [];
+			if (range) {
+				const url = `/api/f02010?startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}&empno=${employee.EMPNO}`;
+				const response = await fetch(url, { credentials: "include" });
+				const result = await response.json();
+				if (!result.success || !Array.isArray(result.data)) {
+					setAnnualLeaveList([]);
+					setWorkDetailList([]);
+					setDetailError(result.error || "근태 데이터를 불러오지 못했습니다.");
+					return;
+				}
+				attendanceRows = result.data as F02010LeaveRow[];
+			}
 
+			const summary = grantsToSummary(grants, attendanceRows);
 			setAttendanceCache(attendanceRows);
 			setAnnualLeaveList(summary);
 			const defaultRow = summary.find((r) => r.accrualYear === year) ?? summary[0];
@@ -229,6 +223,124 @@ export default function EmployeeAnnualLeave() {
 
 	const handleSelectEmployee = (employee: Employee) => {
 		setSelectedEmployee(employee);
+		setIsGrantModalOpen(false);
+	};
+
+	const endDateFromStart = (startYmd: string): string => {
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(startYmd)) return "";
+		const d = new Date(`${startYmd}T12:00:00`);
+		if (Number.isNaN(d.getTime())) return "";
+		d.setFullYear(d.getFullYear() + 1);
+		d.setDate(d.getDate() - 1);
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, "0");
+		const day = String(d.getDate()).padStart(2, "0");
+		return `${y}-${m}-${day}`;
+	};
+
+	const saveAnnualLeaveGrant = async (employee: Employee, accrualDate: string, endDate: string, days: number) => {
+		const response = await fetch("/api/f01020", {
+			method: "POST",
+			credentials: "include",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				EMPNO: employee.EMPNO,
+				YDT: accrualDate,
+				YEDT: endDate,
+				YCNT: days,
+			}),
+		});
+		const result = await response.json();
+		if (!response.ok || !result.success) {
+			throw new Error(result.error || "년차 저장에 실패했습니다.");
+		}
+	};
+
+	const openGrantModalForCreate = () => {
+		if (!selectedEmployee) {
+			alert("사원을 선택하세요.");
+			return;
+		}
+		const period = buildPeriodForYear(selectedEmployee.BASE_DT, selectedEmployee.SDT, baseYear);
+		const existing = period
+			? annualLeaveList.find((r) => r.accrualDate === period.accrualDate)
+			: undefined;
+		if (existing) {
+			openGrantModalForEdit(existing);
+			return;
+		}
+		setGrantModalMode("create");
+		setGrantForm({
+			accrualDate: period?.accrualDate ?? "",
+			endDate: period?.endDate ?? "",
+			days: "",
+		});
+		setIsGrantModalOpen(true);
+	};
+
+	const openGrantModalForEdit = (row?: AnnualLeaveSummaryRow) => {
+		const target =
+			row ??
+			annualLeaveList.find((r) => r.accrualDate === selectedSummaryAccrualDate) ??
+			null;
+		if (!selectedEmployee) {
+			alert("사원을 선택하세요.");
+			return;
+		}
+		if (!target) {
+			alert("수정할 년차 구간을 목록에서 선택하세요.");
+			return;
+		}
+		setGrantModalMode("edit");
+		setGrantForm({
+			accrualDate: target.accrualDate,
+			endDate: target.endDate,
+			days: String(target.annualLeaveDays),
+		});
+		setIsGrantModalOpen(true);
+	};
+
+	const handleSaveGrantModal = async () => {
+		if (!selectedEmployee) {
+			alert("사원을 선택하세요.");
+			return;
+		}
+		const accrualDate = grantForm.accrualDate.trim();
+		const endDate = grantForm.endDate.trim();
+		const days = parseInt(String(grantForm.days).trim(), 10);
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(accrualDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+			alert("발생일자와 종료일자를 입력하세요.");
+			return;
+		}
+		if (endDate < accrualDate) {
+			alert("종료일자는 발생일자 이후여야 합니다.");
+			return;
+		}
+		if (!Number.isFinite(days) || days < 0) {
+			alert("년차일수를 숫자로 입력하세요.");
+			return;
+		}
+
+		setGenerating(true);
+		try {
+			await saveAnnualLeaveGrant(selectedEmployee, accrualDate, endDate, days);
+			setIsGrantModalOpen(false);
+			await loadEmployeeAnnualLeave(selectedEmployee, baseYear);
+			alert(grantModalMode === "edit" ? "년차가 수정되었습니다." : "년차가 생성되었습니다.");
+		} catch (err) {
+			alert(err instanceof Error ? err.message : "년차 저장 중 오류가 발생했습니다.");
+		} finally {
+			setGenerating(false);
+		}
+	};
+
+	const fetchAllGrants = async (): Promise<AnnualLeaveGrantRow[]> => {
+		const response = await fetch("/api/f01020", { credentials: "include" });
+		const result = await response.json();
+		if (!result.success || !Array.isArray(result.data)) {
+			throw new Error(result.error || "년차 자료를 불러오지 못했습니다.");
+		}
+		return result.data as AnnualLeaveGrantRow[];
 	};
 
 	const handleSearch = () => {
@@ -278,15 +390,18 @@ export default function EmployeeAnnualLeave() {
 			return;
 		}
 
-		const printThroughYear = new Date().getFullYear();
-		const range = getGlobalAttendanceRangeForEmployees(targets, printThroughYear);
-		if (!range) {
-			alert("년차기준일 또는 입사일자가 있는 사원이 없어 출력할 수 없습니다.");
-			return;
-		}
-
 		setPrintingAll(true);
 		try {
+			const grants = await fetchAllGrants();
+			const grantsByEmpno = groupGrantsByEmpno(grants);
+			const range = getAttendanceRangeFromGrantMap(
+				grantsByEmpno,
+				targets.map((t) => t.EMPNO),
+			);
+			if (!range) {
+				alert("생성된 년차가 없습니다. 먼저 년차 생성을 해 주세요.");
+				return;
+			}
 			const url = `/api/f02010?startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`;
 			const response = await fetch(url);
 			const result = await response.json();
@@ -297,7 +412,11 @@ export default function EmployeeAnnualLeave() {
 
 			const attendanceByEmpno = groupAttendanceByEmpno(result.data);
 
-			const printRows = buildAllEmployeesAnnualLeavePrintRows(targets, attendanceByEmpno, printThroughYear);
+			const printRows = buildAllEmployeesAnnualLeavePrintRowsFromGrants(
+				targets,
+				attendanceByEmpno,
+				grantsByEmpno,
+			);
 			if (printRows.length === 0) {
 				alert("출력할 년차 데이터가 없습니다.");
 				return;
@@ -344,14 +463,25 @@ export default function EmployeeAnnualLeave() {
 			return;
 		}
 
-		const range = getBaseYearAttendanceRangeForEmployees(targets, baseYear);
-		if (!range) {
-			alert(`${baseYear}년에 해당하는 연차 구간이 있는 사원이 없습니다.`);
-			return;
-		}
-
 		setPrintingBaseYear(true);
 		try {
+			const grants = await fetchAllGrants();
+			const grantsByEmpno = groupGrantsByEmpno(grants);
+			const yearGrants: AnnualLeaveGrantRow[] = [];
+			for (const emp of targets) {
+				for (const g of grantsByEmpno.get(emp.EMPNO) ?? []) {
+					const ydt = String(g.YDT ?? "").slice(0, 4);
+					const yedt = String(g.YEDT ?? "").slice(0, 4);
+					if (ydt === String(baseYear) || (ydt <= String(baseYear) && yedt >= String(baseYear))) {
+						yearGrants.push(g);
+					}
+				}
+			}
+			const range = getAttendanceFetchRangeFromGrants(yearGrants);
+			if (!range) {
+				alert(`${baseYear}년에 생성된 년차가 없습니다.`);
+				return;
+			}
 			const url = `/api/f02010?startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`;
 			const response = await fetch(url);
 			const result = await response.json();
@@ -361,7 +491,12 @@ export default function EmployeeAnnualLeave() {
 			}
 
 			const attendanceByEmpno = groupAttendanceByEmpno(result.data);
-			const printRows = buildAllBaseYearAnnualLeavePrintRows(targets, attendanceByEmpno, baseYear);
+			const printRows = buildAllBaseYearAnnualLeavePrintRowsFromGrants(
+				targets,
+				attendanceByEmpno,
+				grantsByEmpno,
+				baseYear,
+			);
 			if (printRows.length === 0) {
 				alert(`${baseYear}년 출력할 연차 데이터가 없습니다.`);
 				return;
@@ -383,14 +518,25 @@ export default function EmployeeAnnualLeave() {
 			return;
 		}
 
-		const range = getBaseYearAttendanceRangeForEmployees(targets, baseYear);
-		if (!range) {
-			alert(`${baseYear}년에 해당하는 연차 구간이 있는 사원이 없습니다.`);
-			return;
-		}
-
 		setPrintingDetail(true);
 		try {
+			const grants = await fetchAllGrants();
+			const grantsByEmpno = groupGrantsByEmpno(grants);
+			const yearGrants: AnnualLeaveGrantRow[] = [];
+			for (const emp of targets) {
+				for (const g of grantsByEmpno.get(emp.EMPNO) ?? []) {
+					const ydt = String(g.YDT ?? "").slice(0, 4);
+					const yedt = String(g.YEDT ?? "").slice(0, 4);
+					if (ydt === String(baseYear) || (ydt <= String(baseYear) && yedt >= String(baseYear))) {
+						yearGrants.push(g);
+					}
+				}
+			}
+			const range = getAttendanceFetchRangeFromGrants(yearGrants);
+			if (!range) {
+				alert(`${baseYear}년에 생성된 년차가 없습니다.`);
+				return;
+			}
 			const url = `/api/f02010?startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`;
 			const response = await fetch(url);
 			const result = await response.json();
@@ -400,7 +546,12 @@ export default function EmployeeAnnualLeave() {
 			}
 
 			const attendanceByEmpno = groupAttendanceByEmpno(result.data);
-			const sections = buildAllDetailAnnualLeavePrintSections(targets, attendanceByEmpno, baseYear);
+			const sections = buildAllDetailAnnualLeavePrintSectionsFromGrants(
+				targets,
+				attendanceByEmpno,
+				grantsByEmpno,
+				baseYear,
+			);
 			if (sections.length === 0) {
 				alert(`${baseYear}년 출력할 연차 상세 데이터가 없습니다.`);
 				return;
@@ -419,10 +570,6 @@ export default function EmployeeAnnualLeave() {
 		annualLeaveList.find((r) => r.accrualDate === selectedSummaryAccrualDate) ??
 		annualLeaveList.find((r) => r.accrualYear === baseYear);
 	const yearsOfService = selectedEmployee ? calcYearsOfService(formatDate(selectedEmployee.SDT)) : "";
-	const annualLeaveDaysDisplay =
-		selectedEmployee?.YRNT != null && !Number.isNaN(Number(selectedEmployee.YRNT))
-			? String(selectedEmployee.YRNT)
-			: "-";
 
 	useEffect(() => {
 		fetchEmployees();
@@ -447,6 +594,7 @@ export default function EmployeeAnnualLeave() {
 			setAttendanceCache([]);
 			setSelectedSummaryAccrualDate(null);
 			setDetailError(null);
+			setIsGrantModalOpen(false);
 			setWorkDetailPage(1);
 			setWorkDetailPageWindowStart(1);
 			return;
@@ -695,7 +843,11 @@ export default function EmployeeAnnualLeave() {
 									<input
 										type="text"
 										readOnly
-										value={annualLeaveDaysDisplay}
+										value={
+											selectedSummary != null && Number.isFinite(selectedSummary.annualLeaveDays)
+												? String(selectedSummary.annualLeaveDays)
+												: "-"
+										}
 										className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900"
 									/>
 								</div>
@@ -729,6 +881,7 @@ export default function EmployeeAnnualLeave() {
 					<div className="flex-1 flex flex-col rounded-lg border border-blue-300 bg-white min-w-0 overflow-hidden">
 						<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 font-semibold text-blue-900 shrink-0 flex flex-wrap items-center justify-between gap-2">
 							<span>년차 요약</span>
+							<span className="text-xs font-normal text-blue-800">더블클릭하여 수정</span>
 							{loadingDetail && <span className="text-xs font-normal text-blue-700">조회 중...</span>}
 						</div>
 						<div className="flex-1 overflow-auto min-h-0">
@@ -772,7 +925,7 @@ export default function EmployeeAnnualLeave() {
 									) : annualLeaveList.length === 0 ? (
 										<tr>
 											<td colSpan={5} className="px-3 py-8 text-center text-blue-900/60">
-												년차 요약 데이터가 없습니다
+												년차 요약 데이터가 없습니다. 「년차 생성」에서 부여 일수를 입력해 주세요.
 											</td>
 										</tr>
 									) : (
@@ -782,6 +935,8 @@ export default function EmployeeAnnualLeave() {
 												<tr
 													key={row.accrualDate}
 													onClick={() => handleSelectSummaryRow(row)}
+													onDoubleClick={() => openGrantModalForEdit(row)}
+													title="더블클릭하여 수정"
 													className={`border-b border-blue-50 cursor-pointer ${
 														isActive ? "bg-blue-100 font-medium" : "hover:bg-blue-50/50"
 													}`}
@@ -813,7 +968,7 @@ export default function EmployeeAnnualLeave() {
 							근무 상세
 							{selectedSummary && (
 								<span className="ml-2 text-xs font-normal text-blue-800">
-									({selectedSummary.accrualDate} ~ {selectedSummary.endDate}, WGU=2)
+									({selectedSummary.accrualDate} ~ {selectedSummary.endDate}, 휴무·연차)
 								</span>
 							)}
 						</div>
@@ -852,8 +1007,8 @@ export default function EmployeeAnnualLeave() {
 									) : workDetailList.length === 0 ? (
 										<tr>
 											<td colSpan={3} className="px-3 py-8 text-center text-blue-900/60">
-												{selectedSummary.accrualDate} ~ {selectedSummary.endDate} 구간에 연차(WGU=2) 사용
-												내역이 없습니다
+												{selectedSummary.accrualDate} ~ {selectedSummary.endDate} 구간에 휴무(연차)
+												사용 내역이 없습니다
 											</td>
 										</tr>
 									) : (
@@ -939,10 +1094,18 @@ export default function EmployeeAnnualLeave() {
 					<div className="flex gap-2">
 						<button
 							type="button"
-							onClick={() => alert("기능 준비중입니다.")}
+							onClick={openGrantModalForCreate}
 							className="rounded border border-blue-500 bg-blue-500 px-6 py-2 text-sm font-medium text-white hover:bg-blue-600"
 						>
 							년차 생성
+						</button>
+						<button
+							type="button"
+							onClick={() => openGrantModalForEdit()}
+							disabled={!selectedSummary}
+							className="rounded border border-blue-400 bg-blue-200 px-6 py-2 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:cursor-not-allowed disabled:opacity-60"
+						>
+							년차 수정
 						</button>
 						<button
 							type="button"
@@ -999,6 +1162,89 @@ export default function EmployeeAnnualLeave() {
 					</div>
 				</div>
 			</div>
+
+			{isGrantModalOpen && selectedEmployee && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+					<div className="w-full max-w-md rounded-lg border border-blue-300 bg-white shadow-xl">
+						<div className="border-b border-blue-200 bg-blue-100 px-4 py-3 font-semibold text-blue-900">
+							{grantModalMode === "edit" ? "년차 수정" : "년차 생성"}
+						</div>
+						<div className="space-y-3 p-4 text-sm">
+							<div>
+								<div className="mb-1 text-xs text-blue-900/80">사원</div>
+								<div className="rounded border border-blue-200 bg-blue-50 px-3 py-2 text-blue-900">
+									{selectedEmployee.EMPNM}
+									{selectedEmployee.JOB ? ` (${selectedEmployee.JOB})` : ""}
+								</div>
+							</div>
+							<div>
+								<label className="mb-1 block text-xs text-blue-900/80">발생일자</label>
+								<input
+									type="date"
+									value={grantForm.accrualDate}
+									onChange={(e) => {
+										const accrualDate = e.target.value;
+										setGrantForm((f) => ({
+											...f,
+											accrualDate,
+											endDate:
+												grantModalMode === "create" && (!f.endDate || f.endDate === endDateFromStart(f.accrualDate))
+													? endDateFromStart(accrualDate)
+													: f.endDate,
+										}));
+									}}
+									readOnly={grantModalMode === "edit"}
+									className={`w-full rounded border border-blue-300 px-3 py-2 text-blue-900 ${
+										grantModalMode === "edit" ? "bg-blue-50" : "bg-white"
+									}`}
+								/>
+							</div>
+							<div>
+								<label className="mb-1 block text-xs text-blue-900/80">종료일자</label>
+								<input
+									type="date"
+									value={grantForm.endDate}
+									onChange={(e) => setGrantForm((f) => ({ ...f, endDate: e.target.value }))}
+									className="w-full rounded border border-blue-300 bg-white px-3 py-2 text-blue-900"
+								/>
+							</div>
+							<div>
+								<label className="mb-1 block text-xs text-blue-900/80">년차일수</label>
+								<input
+									type="number"
+									min={0}
+									step={1}
+									value={grantForm.days}
+									onChange={(e) => setGrantForm((f) => ({ ...f, days: e.target.value }))}
+									placeholder="부여할 일수"
+									className="w-full rounded border border-blue-300 bg-white px-3 py-2 text-blue-900 focus:border-blue-500 focus:outline-none"
+								/>
+							</div>
+							<p className="text-xs text-blue-900/70">
+								사용일수는 해당 구간의 근무표 휴무(연차)로 자동 집계됩니다.
+							</p>
+						</div>
+						<div className="flex justify-end gap-2 border-t border-blue-100 px-4 py-3">
+							<button
+								type="button"
+								onClick={() => setIsGrantModalOpen(false)}
+								disabled={generating}
+								className="rounded border border-blue-300 px-4 py-1.5 text-sm text-blue-900 hover:bg-blue-50 disabled:opacity-50"
+							>
+								취소
+							</button>
+							<button
+								type="button"
+								onClick={handleSaveGrantModal}
+								disabled={generating}
+								className="rounded border border-blue-500 bg-blue-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+							>
+								{generating ? "저장 중..." : grantModalMode === "edit" ? "수정" : "생성"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

@@ -938,8 +938,8 @@ export default function ProgramDailyLog() {
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
 	/** 「검색」으로 조회를 한 번이라도 성공한 뒤(빈 목록 포함) — 안내 문구 구분용 */
 	const [hasSearched, setHasSearched] = useState(false);
-	/** 기간설정 일지출력 모달 */
-	const [periodLogModalOpen, setPeriodLogModalOpen] = useState(false);
+	/** 기간설정 출력 모달 — 일지 / 참여실적 */
+	const [periodPrintKind, setPeriodPrintKind] = useState<"log" | "participation" | null>(null);
 	const [periodLogStart, setPeriodLogStart] = useState(initialRange.start);
 	const [periodLogEnd, setPeriodLogEnd] = useState(initialRange.end);
 
@@ -949,6 +949,10 @@ export default function ProgramDailyLog() {
 	const [attendeeEvals, setAttendeeEvals] = useState<AttendeeEval[]>([]);
 	const [attendeeModalOpen, setAttendeeModalOpen] = useState(false);
 	const [svdesSamples, setSvdesSamples] = useState<string[]>([]);
+	/** 신규생성 중 다른 일지·일자로 이동하기 전 확인 */
+	const [pendingLeaveNav, setPendingLeaveNav] = useState<
+		{ type: "date"; date: string } | { type: "program"; program: F14030Row } | null
+	>(null);
 
 	/** 목록 조회 세대 — 기간 변경·새 조회 시작 시 이전 비동기 결과 무시 */
 	const listFetchEpoch = useRef(0);
@@ -1242,16 +1246,7 @@ export default function ProgramDailyLog() {
 		void reloadFull();
 	};
 
-	const handleSelectDate = (svdDate: string) => {
-		setSelectedSvdDate(svdDate);
-		setEditingDseq(null);
-		setIsAddingNewProgram(false);
-		setFormFieldsUnlocked(false);
-		setFormData(emptyForm(svdDate));
-		setAttendeeEvals([]);
-	};
-
-	const handleSelectProgram = (program: F14030Row) => {
+	const applySelectProgram = (program: F14030Row) => {
 		if (program.DSEQ == null) return;
 		setIsAddingNewProgram(false);
 		setFormFieldsUnlocked(false);
@@ -1267,6 +1262,51 @@ export default function ProgramDailyLog() {
 		}
 		setFormData(fd);
 		void loadAttendeeEvals(program.DSEQ);
+	};
+
+	const applySelectDate = (svdDate: string) => {
+		setSelectedSvdDate(svdDate);
+		const firstProgram = rows
+			.filter((r) => formatYmd(r.SVDT) === svdDate)
+			.sort((a, b) => {
+				const ta = String(a.SVSTM ?? "");
+				const tb = String(b.SVSTM ?? "");
+				if (ta !== tb) return ta.localeCompare(tb);
+				return (a.DSEQ ?? 0) - (b.DSEQ ?? 0);
+			})[0];
+		if (firstProgram) {
+			applySelectProgram(firstProgram);
+			return;
+		}
+		setEditingDseq(null);
+		setIsAddingNewProgram(false);
+		setFormFieldsUnlocked(false);
+		setFormData(emptyForm(svdDate));
+		setAttendeeEvals([]);
+	};
+
+	const handleSelectProgram = (program: F14030Row) => {
+		if (isAddingNewProgram) {
+			setPendingLeaveNav({ type: "program", program });
+			return;
+		}
+		applySelectProgram(program);
+	};
+
+	const handleSelectDate = (svdDate: string) => {
+		if (isAddingNewProgram) {
+			setPendingLeaveNav({ type: "date", date: svdDate });
+			return;
+		}
+		applySelectDate(svdDate);
+	};
+
+	const confirmLeaveNewProgram = () => {
+		if (!pendingLeaveNav) return;
+		const nav = pendingLeaveNav;
+		setPendingLeaveNav(null);
+		if (nav.type === "date") applySelectDate(nav.date);
+		else applySelectProgram(nav.program);
 	};
 
 	const handleNew = () => {
@@ -1468,7 +1508,28 @@ export default function ProgramDailyLog() {
 	};
 
 	const handleCopyDate = () => {
-		alert("기능 개발 중입니다.");
+		if (editingDseq == null || !selectedSvdDate) {
+			alert("복사할 일지를 목록에서 선택해 주세요.");
+			return;
+		}
+		const editingNow = isAddingNewProgram || (editingDseq != null && formFieldsUnlocked);
+		if (editingNow && !confirm("작성 중인 내용이 저장되지 않습니다. 해당 일지를 복사할까요?")) {
+			return;
+		}
+		const today = formatYmd(new Date());
+		setSelectedSvdDate(today);
+		setIsAddingNewProgram(true);
+		setFormFieldsUnlocked(true);
+		setEditingDseq(null);
+		setFormData({
+			...formData,
+			SVDT: today,
+			SVSTM: "",
+			SVETM: "",
+			INDT: today,
+		});
+		setAttendeeEvals((prev) => prev.map((ev) => ({ ...ev })));
+		void fetchF14040Plans();
 	};
 	const handleCopyByCase = () => {
 		alert("기능 개발 중입니다.");
@@ -1482,10 +1543,10 @@ export default function ProgramDailyLog() {
 		[userInfo],
 	);
 
-	const handleOpenPeriodLogModal = () => {
+	const handleOpenPeriodPrintModal = (kind: "log" | "participation") => {
 		setPeriodLogStart(workPeriodStart);
 		setPeriodLogEnd(workPeriodEnd);
-		setPeriodLogModalOpen(true);
+		setPeriodPrintKind(kind);
 	};
 
 	const handlePrintSingleProgramLog = async () => {
@@ -1589,17 +1650,27 @@ export default function ProgramDailyLog() {
 				);
 			}
 			openProgramDailyLogPrintWindow(wrapProgramDailyLogPrintDocument(sheets.join("")));
-			setPeriodLogModalOpen(false);
+			setPeriodPrintKind(null);
 		} catch (e) {
 			alert(e instanceof Error ? e.message : "출력 중 오류가 발생했습니다.");
 		}
 	};
 
 	const handlePrintProgramParticipation = async () => {
+		const start = periodLogStart.trim();
+		const end = periodLogEnd.trim();
+		if (!start || !end) {
+			alert("시작일·종료일을 입력해 주세요.");
+			return;
+		}
+		if (start > end) {
+			alert("시작일이 종료일보다 늦을 수 없습니다.");
+			return;
+		}
 		try {
 			const [j30, j40] = await Promise.all([
 				fetch(
-					`/api/f14030?startDate=${encodeURIComponent(workPeriodStart)}&endDate=${encodeURIComponent(workPeriodEnd)}`,
+					`/api/f14030?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`,
 					{ cache: "no-store" },
 				).then((r) => r.json()),
 				fetch("/api/f14040", { cache: "no-store" }).then((r) => r.json()),
@@ -1619,7 +1690,7 @@ export default function ProgramDailyLog() {
 				);
 				return;
 			}
-			const html = buildProgramParticipationPrintHtml(workPeriodStart, workPeriodEnd, sections);
+			const html = buildProgramParticipationPrintHtml(start, end, sections);
 			const printWindow = window.open("", "_blank");
 			if (!printWindow) {
 				alert("팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.");
@@ -1632,6 +1703,7 @@ export default function ProgramDailyLog() {
 				printWindow.focus();
 				printWindow.print();
 			}, 250);
+			setPeriodPrintKind(null);
 		} catch (e) {
 			alert(e instanceof Error ? e.message : "출력 중 오류가 발생했습니다.");
 		}
@@ -1800,6 +1872,20 @@ export default function ProgramDailyLog() {
 							className="px-2 py-1 text-sm bg-white border border-blue-300 rounded"
 						/>
 					</div>
+					<button
+						type="button"
+						onClick={() => handleOpenPeriodPrintModal("log")}
+						className="px-3 py-1.5 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded hover:bg-blue-200"
+					>
+						기간설정 일지출력
+					</button>
+					<button
+						type="button"
+						onClick={() => handleOpenPeriodPrintModal("participation")}
+						className="px-3 py-1.5 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded hover:bg-blue-200"
+					>
+						프로그램 참여 실적 출력
+					</button>
 					{/* <div className="flex items-center gap-2">
 						<button
 							type="button"
@@ -2050,22 +2136,22 @@ export default function ProgramDailyLog() {
 
 						<div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-blue-200 bg-blue-50 print:hidden shrink-0">
 							<div className="flex flex-wrap items-center gap-1.5">
-								<button
+								{/* <button
 									type="button"
 									onClick={handleCopyToCenter}
 									disabled={isAddingNewProgram}
 									className={btnBlue}
 								>
 									센터로복사
-								</button>
-								<button
+								</button> */}
+								{/* <button
 									type="button"
 									onClick={handleNew}
 									disabled={isAddingNewProgram}
 									className={btnBlue}
 								>
 									추가
-								</button>
+								</button> */}
 								{showModifyButton ? (
 									<button
 										type="button"
@@ -2106,42 +2192,26 @@ export default function ProgramDailyLog() {
 								<button
 									type="button"
 									onClick={handleCopyDate}
-									disabled={isAddingNewProgram}
+									disabled={isAddingNewProgram || editingDseq == null}
 									className={btnBlue}
 								>
-									일자복사
+									해당일지 복사
 								</button>
-								<button
+								{/* <button
 									type="button"
 									onClick={handleCopyByCase}
 									disabled={isAddingNewProgram}
 									className={btnBlue}
 								>
 									건별복사
-								</button>
+								</button> */}
 								<button
 									type="button"
 									onClick={handlePrintSingleProgramLog}
-									disabled={isAddingNewProgram}
+									disabled={isAddingNewProgram || editingDseq == null}
 									className={btnBlue}
 								>
 									해당 일지 출력
-								</button>
-								<button
-									type="button"
-									onClick={handleOpenPeriodLogModal}
-									disabled={isAddingNewProgram}
-									className={btnBlue}
-								>
-									기간설정 일지출력
-								</button>
-								<button
-									type="button"
-									onClick={() => void handlePrintProgramParticipation()}
-									disabled={isAddingNewProgram}
-									className={btnBlue}
-								>
-									프로그램 참여 실적 출력
 								</button>
 							</div>
 						</div>
@@ -2511,22 +2581,62 @@ export default function ProgramDailyLog() {
 				onEvalsChange={applyAttendeeEvals}
 			/>
 
-			{periodLogModalOpen ? (
+			{pendingLeaveNav ? (
 				<div
-					className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 print:hidden p-4"
+					className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 print:hidden p-4"
 					role="dialog"
 					aria-modal="true"
-					aria-labelledby="period-log-print-title"
+					aria-labelledby="leave-new-program-title"
 					onClick={(e) => {
-						if (e.target === e.currentTarget) setPeriodLogModalOpen(false);
+						if (e.target === e.currentTarget) setPendingLeaveNav(null);
 					}}
 				>
 					<div
 						className="bg-white rounded-lg border border-blue-300 shadow-xl w-full max-w-md p-5"
 						onClick={(e) => e.stopPropagation()}
 					>
-						<h2 id="period-log-print-title" className="text-lg font-semibold text-blue-900 mb-4">
-							기간설정 일지출력
+						<h2 id="leave-new-program-title" className="text-lg font-semibold text-blue-900 mb-3">
+							작성 중인 일지
+						</h2>
+						<p className="text-sm text-blue-900/90 leading-relaxed mb-5">
+							저장하지 않으면 현재 생성한 일지는 저장되지 않습니다. 정말로 이동하시겠습니까?
+						</p>
+						<div className="flex justify-end gap-2 flex-wrap">
+							<button
+								type="button"
+								onClick={() => setPendingLeaveNav(null)}
+								className="px-4 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50"
+							>
+								취소
+							</button>
+							<button
+								type="button"
+								onClick={confirmLeaveNewProgram}
+								className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700"
+							>
+								이동하기
+							</button>
+						</div>
+					</div>
+				</div>
+			) : null}
+
+			{periodPrintKind ? (
+				<div
+					className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 print:hidden p-4"
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="period-print-title"
+					onClick={(e) => {
+						if (e.target === e.currentTarget) setPeriodPrintKind(null);
+					}}
+				>
+					<div
+						className="bg-white rounded-lg border border-blue-300 shadow-xl w-full max-w-md p-5"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<h2 id="period-print-title" className="text-lg font-semibold text-blue-900 mb-4">
+							{periodPrintKind === "log" ? "기간설정 일지출력" : "프로그램 참여 실적 출력"}
 						</h2>
 						<div className="flex flex-col gap-4 mb-5">
 							<div className="flex flex-col gap-1">
@@ -2554,20 +2664,26 @@ export default function ProgramDailyLog() {
 								/>
 							</div>
 							<p className="text-xs text-blue-900/75 leading-snug">
-								선택한 기간의 일지를 날짜·시간 순으로 모두 인쇄합니다. 각 일지는 한 페이지 양식으로 이어집니다.
+								{periodPrintKind === "log"
+									? "선택한 기간의 일지를 날짜·시간 순으로 모두 인쇄합니다. 각 일지는 한 페이지 양식으로 이어집니다."
+									: "선택한 기간의 프로그램 참여 실적을 출력합니다."}
 							</p>
 						</div>
 						<div className="flex justify-end gap-2 flex-wrap">
 							<button
 								type="button"
-								onClick={() => setPeriodLogModalOpen(false)}
+								onClick={() => setPeriodPrintKind(null)}
 								className="px-4 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50"
 							>
 								취소
 							</button>
 							<button
 								type="button"
-								onClick={() => void handlePrintProgramLogsInPeriod()}
+								onClick={() =>
+									void (periodPrintKind === "log"
+										? handlePrintProgramLogsInPeriod()
+										: handlePrintProgramParticipation())
+								}
 								className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-700 rounded hover:bg-green-700"
 							>
 								출력

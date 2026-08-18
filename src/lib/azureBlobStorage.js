@@ -145,6 +145,35 @@ async function uploadProgramDailyLogPhoto({ ancd, buffer, fileName, mimeType, si
 }
 
 /**
+ * 욕창관리(F33010.DCUB_IMG) 사진.
+ * @param {{ ancd: string|number, buffer: Buffer, fileName: string, mimeType: string, size?: number }} opts
+ */
+async function uploadBedsorePhoto({ ancd, buffer, fileName, mimeType, size }) {
+  const { mime, name } = assertAllowedImage(fileName, mimeType, size ?? buffer?.length);
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('업로드할 이미지 데이터가 없습니다.');
+  }
+
+  const container = await getContainerClient();
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 10);
+  const ext = extFromMime(mime);
+  const blobName = `f33010/${sanitizeBlobPathSegment(ancd)}/${stamp}-${rand}.${ext}`;
+
+  const blockBlob = container.getBlockBlobClient(blobName);
+  await blockBlob.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mime },
+  });
+
+  return {
+    blobName,
+    fileName: name.slice(0, 120),
+    contentType: mime,
+    size: buffer.length,
+  };
+}
+
+/**
  * 보호자간담회(F60040.MIMG nvarchar(100)) 사진.
  * 경로를 짧게 유지해 DB 길이 제한에 맞춥니다. 예: f60040/190000/m8k2ab12.jpg
  * @param {{ ancd: string|number, buffer: Buffer, fileName: string, mimeType: string, size?: number }} opts
@@ -163,6 +192,64 @@ async function uploadGuardianMeetingPhoto({ ancd, buffer, fileName, mimeType, si
   if (blobName.length > 100) {
     throw new Error('사진 경로가 너무 깁니다. 기관코드를 확인해 주세요.');
   }
+
+  const blockBlob = container.getBlockBlobClient(blobName);
+  await blockBlob.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mime },
+  });
+
+  return {
+    blobName,
+    fileName: name.slice(0, 120),
+    contentType: mime,
+    size: buffer.length,
+  };
+}
+
+/**
+ * 직원회의록(F60010.MIMG) 사진.
+ * @param {{ ancd: string|number, buffer: Buffer, fileName: string, mimeType: string, size?: number }} opts
+ */
+async function uploadEmployeeMeetingPhoto({ ancd, buffer, fileName, mimeType, size }) {
+  const { mime, name } = assertAllowedImage(fileName, mimeType, size ?? buffer?.length);
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('업로드할 이미지 데이터가 없습니다.');
+  }
+
+  const container = await getContainerClient();
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 10);
+  const ext = extFromMime(mime);
+  const blobName = `f60010/${sanitizeBlobPathSegment(ancd)}/${stamp}-${rand}.${ext}`;
+
+  const blockBlob = container.getBlockBlobClient(blobName);
+  await blockBlob.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mime },
+  });
+
+  return {
+    blobName,
+    fileName: name.slice(0, 120),
+    contentType: mime,
+    size: buffer.length,
+  };
+}
+
+/**
+ * 직원직무교육(F60060.MIMG) 사진.
+ * @param {{ ancd: string|number, buffer: Buffer, fileName: string, mimeType: string, size?: number }} opts
+ */
+async function uploadEmployeeJobTrainingPhoto({ ancd, buffer, fileName, mimeType, size }) {
+  const { mime, name } = assertAllowedImage(fileName, mimeType, size ?? buffer?.length);
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('업로드할 이미지 데이터가 없습니다.');
+  }
+
+  const container = await getContainerClient();
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 10);
+  const ext = extFromMime(mime);
+  const blobName = `f60060/${sanitizeBlobPathSegment(ancd)}/${stamp}-${rand}.${ext}`;
 
   const blockBlob = container.getBlockBlobClient(blobName);
   await blockBlob.uploadData(buffer, {
@@ -232,8 +319,26 @@ function isGuardianMeetingBlob(blobName) {
   return String(blobName || '').trim().startsWith('f60040/');
 }
 
+function isBedsorePhotoBlob(blobName) {
+  return String(blobName || '').trim().startsWith('f33010/');
+}
+
+function isEmployeeMeetingBlob(blobName) {
+  return String(blobName || '').trim().startsWith('f60010/');
+}
+
+function isEmployeeJobTrainingBlob(blobName) {
+  return String(blobName || '').trim().startsWith('f60060/');
+}
+
 function isSharedPhotoBlob(blobName) {
-  return isProgramDailyLogBlob(blobName) || isGuardianMeetingBlob(blobName);
+  return (
+    isProgramDailyLogBlob(blobName) ||
+    isGuardianMeetingBlob(blobName) ||
+    isBedsorePhotoBlob(blobName) ||
+    isEmployeeMeetingBlob(blobName) ||
+    isEmployeeJobTrainingBlob(blobName)
+  );
 }
 
 /** 자료실 blob 경로 형식 검증 (기관코드 폴더 하위) */
@@ -344,9 +449,14 @@ module.exports = {
   getContainerName,
   getDataRoomContainerName,
   uploadProgramDailyLogPhoto,
+  uploadBedsorePhoto,
   uploadGuardianMeetingPhoto,
+  uploadEmployeeMeetingPhoto,
+  uploadEmployeeJobTrainingPhoto,
   uploadDataRoomFile,
   isGuardianMeetingBlob,
+  isEmployeeMeetingBlob,
+  isEmployeeJobTrainingBlob,
   deleteBlobByName,
   downloadBlobByName,
   downloadDataRoomBlob,

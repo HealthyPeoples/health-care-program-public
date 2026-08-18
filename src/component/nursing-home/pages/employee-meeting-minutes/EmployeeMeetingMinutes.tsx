@@ -8,11 +8,8 @@
  *
  * @module component/nursing-home/pages/employee-meeting-minutes/EmployeeMeetingMinutes
  */
-import React, { useEffect, useMemo, useState } from "react";
-import {
-	buildMeetingMinutesPrintHtml,
-	openPrintPreviewWindow,
-} from "./employeeMeetingMinutesPrint";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { buildMeetingMinutesPrintHtml } from "./employeeMeetingMinutesPrint";
 
 interface MeetingMinutesRow {
 	ANCD?: string | number;
@@ -42,7 +39,70 @@ type UserInfo = {
 };
 
 const ITEMS_PER_PAGE = 10;
-const PROGRAM_ID = "F60010";
+const MAX_PHOTOS = 3;
+
+type MeetingPhoto = { blobName: string };
+
+function parseMimgPhotos(mimg: string | null | undefined): MeetingPhoto[] {
+	const s = String(mimg ?? "").trim();
+	if (!s) return [];
+	const fromToken = (raw: string): MeetingPhoto | null => {
+		const t = String(raw || "").trim();
+		if (!t) return null;
+		const q = t.match(/blobName=([^&]+)/i);
+		const blobName = q ? decodeURIComponent(q[1]) : t;
+		return blobName ? { blobName } : null;
+	};
+	if (s.startsWith("[")) {
+		try {
+			const parsed = JSON.parse(s);
+			if (Array.isArray(parsed)) {
+				return parsed
+					.map((p: unknown) => {
+						if (typeof p === "string") return fromToken(p);
+						if (p && typeof p === "object") {
+							return fromToken(String((p as { blobName?: unknown }).blobName ?? ""));
+						}
+						return null;
+					})
+					.filter((p): p is MeetingPhoto => Boolean(p?.blobName))
+					.slice(0, MAX_PHOTOS);
+			}
+		} catch {
+			/* fall through */
+		}
+	}
+	return s
+		.split(",")
+		.map(fromToken)
+		.filter((p): p is MeetingPhoto => Boolean(p?.blobName))
+		.slice(0, MAX_PHOTOS);
+}
+
+function serializeMimgPhotos(photos: MeetingPhoto[]): string {
+	if (!photos.length) return "";
+	return JSON.stringify(photos.slice(0, MAX_PHOTOS).map((p) => p.blobName));
+}
+
+function photoViewUrl(blobName: string) {
+	return `/api/f60010/photos?blobName=${encodeURIComponent(blobName)}`;
+}
+
+async function fetchPhotoAsDataUrl(blobName: string): Promise<string | null> {
+	try {
+		const res = await fetch(photoViewUrl(blobName), { credentials: "include", cache: "no-store" });
+		if (!res.ok) return null;
+		const blob = await res.blob();
+		return await new Promise<string | null>((resolve) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+			reader.onerror = () => resolve(null);
+			reader.readAsDataURL(blob);
+		});
+	} catch {
+		return null;
+	}
+}
 
 function formatDate(date: Date): string {
 	const y = date.getFullYear();
@@ -92,6 +152,7 @@ const emptyForm = {
 	attendees: "",
 	appliedDate: "",
 	appliedContent: "",
+	photoMimg: "",
 };
 
 const emptyModalForm = {
@@ -102,6 +163,7 @@ const emptyModalForm = {
 	endTime: "",
 	content: "",
 	attendees: "",
+	photoMimg: "",
 };
 
 const modalLabelCls =
@@ -132,47 +194,26 @@ export default function EmployeeMeetingMinutes() {
 	const [loading, setLoading] = useState(false);
 	const [currentPage, setCurrentPage] = useState(1);
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-	const [hasProgramAccess, setHasProgramAccess] = useState(true);
 	const [createModalOpen, setCreateModalOpen] = useState(false);
 	const [modalForm, setModalForm] = useState(emptyModalForm);
 	const [modalSaveLoading, setModalSaveLoading] = useState(false);
+	const [photoUploading, setPhotoUploading] = useState(false);
+	const modalPhotoInputRef = useRef<HTMLInputElement | null>(null);
+	const detailPhotoInputRef = useRef<HTMLInputElement | null>(null);
 
-	const fetchUserAndPermission = async () => {
+	const attachedPhotos = useMemo(() => parseMimgPhotos(form.photoMimg), [form.photoMimg]);
+	const modalPhotos = useMemo(() => parseMimgPhotos(modalForm.photoMimg), [modalForm.photoMimg]);
+
+	const fetchUserInfo = async () => {
 		try {
 			const res = await fetch("/api/auth/user-info", { method: "GET" });
 			const result = await res.json().catch(() => ({}));
 			if (!res.ok || !result?.success) {
 				throw new Error(result?.error || "사용자 정보 조회 실패");
 			}
-			const u = (result.data || {}) as UserInfo;
-			setUserInfo(u);
-
-			const ancd = u?.ancd;
-			const uid = u?.uid;
-			if (!ancd || !uid) {
-				setHasProgramAccess(true);
-				return;
-			}
-
-			const permRes = await fetch(
-				`/api/f00131?ancd=${encodeURIComponent(String(ancd))}&uid=${encodeURIComponent(
-					String(uid)
-				)}&pgmid=${encodeURIComponent(PROGRAM_ID)}`,
-				{ method: "GET" }
-			);
-			const perm = await permRes.json().catch(() => ({}));
-			if (!permRes.ok || !perm?.success) {
-				setHasProgramAccess(true);
-				return;
-			}
-			if (typeof perm.allowed === "boolean") {
-				setHasProgramAccess(perm.allowed !== false);
-				return;
-			}
-			setHasProgramAccess(true);
+			setUserInfo((result.data || {}) as UserInfo);
 		} catch (e) {
-			console.error("사용자/권한 조회 오류:", e);
-			setHasProgramAccess(true);
+			console.error("사용자 정보 조회 오류:", e);
 		}
 	};
 
@@ -206,6 +247,7 @@ export default function EmployeeMeetingMinutes() {
 					MDOC: toText(r?.MDOC),
 					MDES: toText(r?.MDES),
 					MNM: toText(r?.MNM),
+					MIMG: toText(r?.MIMG),
 					MODES: toText(r?.MODES),
 				};
 			});
@@ -221,7 +263,7 @@ export default function EmployeeMeetingMinutes() {
 	};
 
 	useEffect(() => {
-		fetchUserAndPermission();
+		fetchUserInfo();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
@@ -249,6 +291,7 @@ export default function EmployeeMeetingMinutes() {
 		attendees: toText(row.MNM),
 		appliedDate: formatDateYmd(row.MODT),
 		appliedContent: toText(row.MODES),
+		photoMimg: toText(row.MIMG),
 	});
 
 	const handleSelectMeeting = (row: MeetingMinutesRow) => {
@@ -262,10 +305,6 @@ export default function EmployeeMeetingMinutes() {
 	};
 
 	const handleModify = () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!selectedMeeting?.MDT) {
 			alert("수정할 회의록을 선택해주세요.");
 			return;
@@ -273,7 +312,27 @@ export default function EmployeeMeetingMinutes() {
 		setIsEditMode(true);
 	};
 
-	const handleCancelEdit = () => {
+	const deleteBlobQuietly = async (blobName: string) => {
+		try {
+			await fetch("/api/f60010/photos", {
+				method: "DELETE",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({ blobName }),
+			});
+		} catch {
+			/* ignore */
+		}
+	};
+
+	const discardUnsavedPhotos = async (currentMimg: string, originalMimg?: string) => {
+		const current = parseMimgPhotos(currentMimg);
+		const original = new Set(parseMimgPhotos(originalMimg).map((p) => p.blobName));
+		await Promise.all(current.filter((p) => !original.has(p.blobName)).map((p) => deleteBlobQuietly(p.blobName)));
+	};
+
+	const handleCancelEdit = async () => {
+		await discardUnsavedPhotos(form.photoMimg, selectedMeeting?.MIMG);
 		setIsEditMode(false);
 		if (selectedMeeting) {
 			setForm(mapRowToForm(selectedMeeting));
@@ -299,8 +358,9 @@ export default function EmployeeMeetingMinutes() {
 		setCreateModalOpen(true);
 	};
 
-	const closeCreateModal = () => {
+	const closeCreateModal = async () => {
 		if (modalSaveLoading) return;
+		await discardUnsavedPhotos(modalForm.photoMimg);
 		setCreateModalOpen(false);
 		setModalForm(emptyModalForm);
 	};
@@ -340,6 +400,7 @@ export default function EmployeeMeetingMinutes() {
 			MDOC: data.title || null,
 			MDES: data.content || null,
 			MNM: data.attendees || null,
+			MIMG: data.photoMimg || null,
 			MODT: data.appliedDate ? formatDateYmd(data.appliedDate) : null,
 			MODES: data.appliedContent || null,
 			INEMPNO: userInfo?.empno != null ? String(userInfo.empno) : null,
@@ -359,10 +420,6 @@ export default function EmployeeMeetingMinutes() {
 	};
 
 	const handleModalSave = async () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!modalForm.meetingDate) {
 			alert("회의일자를 입력해주세요.");
 			return;
@@ -375,7 +432,8 @@ export default function EmployeeMeetingMinutes() {
 				{ isNew: true }
 			);
 			alert("회의록이 등록되었습니다.");
-			closeCreateModal();
+			setCreateModalOpen(false);
+			setModalForm(emptyModalForm);
 			const refreshed = await fetchMeetings();
 			const saved = refreshed.find((m) => m.MDT === newMdt);
 			if (saved) {
@@ -391,16 +449,74 @@ export default function EmployeeMeetingMinutes() {
 		}
 	};
 
-	const handlePhotoRegister = (e: React.MouseEvent) => {
-		e.stopPropagation();
-		alert("기능개발중입니다");
+	const handleUploadPhotos = async (
+		files: FileList | null,
+		source: "modal" | "detail"
+	) => {
+		if (source === "detail" && !isEditMode) {
+			alert("수정 버튼을 누른 뒤 사진을 첨부할 수 있습니다.");
+			return;
+		}
+		if (!files || files.length === 0) return;
+		const current = source === "modal" ? modalPhotos : attachedPhotos;
+		const remain = MAX_PHOTOS - current.length;
+		if (remain <= 0) {
+			alert(`사진은 최대 ${MAX_PHOTOS}장까지 첨부할 수 있습니다.`);
+			return;
+		}
+		const picked = Array.from(files).slice(0, remain);
+		setPhotoUploading(true);
+		try {
+			const next = [...current];
+			for (const file of picked) {
+				const fd = new FormData();
+				fd.append("file", file);
+				const res = await fetch("/api/f60010/photos", {
+					method: "POST",
+					body: fd,
+					credentials: "include",
+				});
+				const json = await res.json().catch(() => ({}));
+				if (!res.ok || !json?.success || !json?.photo?.blobName) {
+					throw new Error(json?.error || `${file.name} 업로드에 실패했습니다.`);
+				}
+				next.push({ blobName: String(json.photo.blobName) });
+			}
+			const serialized = serializeMimgPhotos(next);
+			if (source === "modal") {
+				setModalForm((p) => ({ ...p, photoMimg: serialized }));
+			} else {
+				setForm((p) => ({ ...p, photoMimg: serialized }));
+			}
+			if (files.length > remain) {
+				alert(`사진은 최대 ${MAX_PHOTOS}장까지 첨부됩니다. 초과분은 제외되었습니다.`);
+			}
+		} catch (e) {
+			alert(e instanceof Error ? e.message : "사진 업로드 중 오류가 발생했습니다.");
+		} finally {
+			setPhotoUploading(false);
+			if (source === "modal" && modalPhotoInputRef.current) modalPhotoInputRef.current.value = "";
+			if (source === "detail" && detailPhotoInputRef.current) detailPhotoInputRef.current.value = "";
+		}
+	};
+
+	const handleRemovePhoto = (blobName: string, source: "modal" | "detail") => {
+		if (source === "detail" && !isEditMode) return;
+		const current = source === "modal" ? modalPhotos : attachedPhotos;
+		const next = serializeMimgPhotos(current.filter((p) => p.blobName !== blobName));
+		if (source === "modal") {
+			setModalForm((p) => ({ ...p, photoMimg: next }));
+			void deleteBlobQuietly(blobName);
+			return;
+		}
+		setForm((p) => ({ ...p, photoMimg: next }));
+		const original = new Set(parseMimgPhotos(selectedMeeting?.MIMG).map((p) => p.blobName));
+		if (!original.has(blobName)) {
+			void deleteBlobQuietly(blobName);
+		}
 	};
 
 	const handleSave = async () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!isEditMode) {
 			alert("수정 버튼을 눌러 편집 모드로 전환한 후 저장해주세요.");
 			return;
@@ -421,6 +537,11 @@ export default function EmployeeMeetingMinutes() {
 				isNew: false,
 			});
 
+			const savedMimg = serializeMimgPhotos(attachedPhotos);
+			const kept = new Set(parseMimgPhotos(savedMimg).map((p) => p.blobName));
+			const previous = parseMimgPhotos(selectedMeeting?.MIMG);
+			await Promise.all(previous.filter((p) => !kept.has(p.blobName)).map((p) => deleteBlobQuietly(p.blobName)));
+
 			alert("회의록이 수정되었습니다.");
 			setIsEditMode(false);
 			const refreshed = await fetchMeetings();
@@ -429,7 +550,7 @@ export default function EmployeeMeetingMinutes() {
 				setSelectedMeeting(saved);
 				setForm(mapRowToForm(saved));
 			} else {
-				setSelectedMeeting({ MDT: newMdt });
+				setSelectedMeeting({ MDT: newMdt, MIMG: savedMimg });
 				setForm({ ...form, meetingDate: newMdt });
 			}
 		} catch (err) {
@@ -441,10 +562,6 @@ export default function EmployeeMeetingMinutes() {
 	};
 
 	const handleDelete = async () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!selectedMeeting?.MDT) {
 			alert("삭제할 회의록을 선택해주세요.");
 			return;
@@ -468,6 +585,8 @@ export default function EmployeeMeetingMinutes() {
 				throw new Error(result?.error || "회의록 삭제에 실패했습니다.");
 			}
 
+			await Promise.all(parseMimgPhotos(selectedMeeting.MIMG).map((p) => deleteBlobQuietly(p.blobName)));
+
 			alert("회의록이 삭제되었습니다.");
 			setSelectedMeeting(null);
 			setIsEditMode(false);
@@ -485,10 +604,25 @@ export default function EmployeeMeetingMinutes() {
 		alert("기능개발중입니다");
 	};
 
-	const handlePrint = () => {
+	const handlePrint = async () => {
 		if (!form.meetingDate && !selectedMeeting?.MDT) {
 			alert("출력할 회의록을 선택해주세요.");
 			return;
+		}
+
+		const printWindow = window.open("", "_blank");
+		if (!printWindow) {
+			alert("팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.");
+			return;
+		}
+		printWindow.document.write(
+			"<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8' /><title>회의록</title></head><body>출력 준비 중...</body></html>"
+		);
+
+		const photoSrcs: string[] = [];
+		for (const p of attachedPhotos) {
+			const dataUrl = await fetchPhotoAsDataUrl(p.blobName);
+			if (dataUrl) photoSrcs.push(dataUrl);
 		}
 
 		const mdt = formatDateYmd(form.meetingDate || selectedMeeting?.MDT || "");
@@ -502,8 +636,15 @@ export default function EmployeeMeetingMinutes() {
 			attendees: form.attendees,
 			appliedDate: formatDateYmd(form.appliedDate),
 			appliedContent: form.appliedContent,
+			photoSrcs,
 		});
-		openPrintPreviewWindow(html);
+		printWindow.document.open();
+		printWindow.document.write(html);
+		printWindow.document.close();
+		setTimeout(() => {
+			printWindow.focus();
+			printWindow.print();
+		}, 250);
 	};
 
 
@@ -832,6 +973,64 @@ export default function EmployeeMeetingMinutes() {
 									</div>
 								)}
 							</div>
+
+							<div className="col-span-12">
+								<div className="flex items-center justify-between gap-2 mb-2">
+									<label className="w-24 shrink-0 rounded border border-blue-300 bg-blue-100 px-2 py-2 text-sm font-medium text-blue-900">
+										사진
+									</label>
+									{isEditMode ? (
+										<>
+											<input
+												ref={detailPhotoInputRef}
+												type="file"
+												accept="image/jpeg,image/png,image/webp,image/gif"
+												multiple
+												className="hidden"
+												onChange={(e) => void handleUploadPhotos(e.target.files, "detail")}
+											/>
+											<button
+												type="button"
+												disabled={photoUploading || attachedPhotos.length >= MAX_PHOTOS}
+												onClick={() => detailPhotoInputRef.current?.click()}
+												className="rounded border border-blue-400 bg-blue-200 px-3 py-1 text-xs font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
+											>
+												{photoUploading ? "업로드 중..." : `사진등록 (최대 ${MAX_PHOTOS}장)`}
+											</button>
+										</>
+									) : null}
+								</div>
+								{attachedPhotos.length === 0 ? (
+									<div className="px-3 py-6 text-sm text-center text-blue-900/50 border border-blue-200 rounded bg-gray-50">
+										등록된 사진이 없습니다
+									</div>
+								) : (
+									<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+										{attachedPhotos.map((p) => (
+											<div
+												key={p.blobName}
+												className="relative border border-blue-200 rounded overflow-hidden bg-gray-50"
+											>
+												{/* eslint-disable-next-line @next/next/no-img-element */}
+												<img
+													src={photoViewUrl(p.blobName)}
+													alt="회의록 사진"
+													className="w-full h-40 object-contain bg-white"
+												/>
+												{isEditMode ? (
+													<button
+														type="button"
+														onClick={() => handleRemovePhoto(p.blobName, "detail")}
+														className="absolute top-1 right-1 px-2 py-0.5 text-xs text-white bg-red-600 rounded hover:bg-red-700"
+													>
+														삭제
+													</button>
+												) : null}
+											</div>
+										))}
+									</div>
+								)}
+							</div>
 						</div>
 						)}
 					</div>
@@ -867,7 +1066,7 @@ export default function EmployeeMeetingMinutes() {
 									{/* <button
 										type="button"
 										onClick={handleRegisterApply}
-										disabled={!hasProgramAccess || loading || !selectedMeeting}
+										disabled={loading || !selectedMeeting}
 										className="min-w-40 rounded border border-blue-400 bg-blue-200 px-8 py-2 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
 									>
 										반영내용등록
@@ -894,7 +1093,7 @@ export default function EmployeeMeetingMinutes() {
 									<button
 										type="button"
 										onClick={() => void handleSave()}
-										disabled={!hasProgramAccess || loading}
+										disabled={loading}
 										className="min-w-28 rounded border border-blue-500 bg-blue-500 px-8 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
 									>
 										저장
@@ -1013,6 +1212,63 @@ export default function EmployeeMeetingMinutes() {
 									className={`${modalFieldCls} resize-y min-h-[96px]`}
 								/>
 							</div>
+
+							<div className="space-y-2">
+								<div className="flex items-center justify-between gap-2">
+									<div className="flex items-center gap-2">
+										<label className={modalLabelCls}>사진</label>
+										<button
+											type="button"
+											disabled={
+												modalSaveLoading ||
+												photoUploading ||
+												modalPhotos.length >= MAX_PHOTOS
+											}
+											onClick={() => modalPhotoInputRef.current?.click()}
+											className="px-3 py-1 text-xs font-semibold border border-blue-300 rounded bg-white text-blue-900 hover:bg-blue-50 disabled:opacity-50"
+										>
+											{photoUploading ? "업로드 중…" : "사진등록"}
+										</button>
+									</div>
+									<span className="text-xs text-blue-900/70">최대 {MAX_PHOTOS}장</span>
+								</div>
+								<input
+									ref={modalPhotoInputRef}
+									type="file"
+									accept="image/jpeg,image/png,image/webp,image/gif"
+									multiple
+									className="hidden"
+									onChange={(e) => void handleUploadPhotos(e.target.files, "modal")}
+								/>
+								{modalPhotos.length === 0 ? (
+									<div className="px-3 py-5 text-sm text-center text-blue-900/50 border border-blue-200 rounded bg-gray-50">
+										등록된 사진이 없습니다. 사진등록을 눌러 첨부하세요.
+									</div>
+								) : (
+									<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+										{modalPhotos.map((p) => (
+											<div
+												key={p.blobName}
+												className="relative border border-blue-200 rounded overflow-hidden bg-gray-50"
+											>
+												{/* eslint-disable-next-line @next/next/no-img-element */}
+												<img
+													src={photoViewUrl(p.blobName)}
+													alt="회의록 사진"
+													className="w-full h-32 object-contain bg-white"
+												/>
+												<button
+													type="button"
+													onClick={() => handleRemovePhoto(p.blobName, "modal")}
+													className="absolute top-1 right-1 px-2 py-0.5 text-xs text-white bg-red-600 rounded hover:bg-red-700"
+												>
+													삭제
+												</button>
+											</div>
+										))}
+									</div>
+								)}
+							</div>
 						</div>
 
 						<div className="flex border-t border-blue-200">
@@ -1023,14 +1279,6 @@ export default function EmployeeMeetingMinutes() {
 								className="flex-1 border-r border-blue-200 bg-blue-100 py-3 text-sm font-semibold text-blue-900 hover:bg-blue-200 disabled:opacity-50"
 							>
 								{modalSaveLoading ? "저장 중…" : "저장"}
-							</button>
-							<button
-								type="button"
-								disabled={modalSaveLoading}
-								onClick={(e) => handlePhotoRegister(e)}
-								className="w-32 border-r border-blue-200 bg-white py-3 text-sm font-medium text-blue-900 hover:bg-blue-50 disabled:opacity-50"
-							>
-								사진등록
 							</button>
 							<button
 								type="button"

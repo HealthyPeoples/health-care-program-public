@@ -96,13 +96,6 @@ function typeBadgeClass(type?: string): string {
 
 type WeekDay = { date: Date | null; dateStr: string | null };
 
-type EventSegment = {
-	schedule: ScheduleItem;
-	startCol: number;
-	span: number;
-	lane: number;
-};
-
 function buildCalendarWeeks(leadingBlanks: number, monthDates: Date[]): WeekDay[][] {
 	const cells: WeekDay[] = [];
 	for (let i = 0; i < leadingBlanks; i++) {
@@ -121,39 +114,11 @@ function buildCalendarWeeks(leadingBlanks: number, monthDates: Date[]): WeekDay[
 	return weeks;
 }
 
-/** 주 단위로 기간 일정을 연속 막대 세그먼트로 배치 */
-function buildWeekSegments(week: WeekDay[], schedules: ScheduleItem[]): EventSegment[] {
-	const raw: Omit<EventSegment, "lane">[] = [];
-	for (const schedule of schedules) {
-		const start = schedule.date.slice(0, 10);
-		const end = (schedule.endDate || schedule.date).slice(0, 10);
-		let startCol = -1;
-		let endCol = -1;
-		for (let c = 0; c < 7; c++) {
-			const ds = week[c]?.dateStr;
-			if (!ds) continue;
-			if (dateInRange(ds, start, end)) {
-				if (startCol < 0) startCol = c;
-				endCol = c;
-			}
-		}
-		if (startCol >= 0 && endCol >= startCol) {
-			raw.push({ schedule, startCol, span: endCol - startCol + 1 });
-		}
-	}
-
-	raw.sort((a, b) => a.startCol - b.startCol || b.span - a.span || a.schedule.id - b.schedule.id);
-
-	const laneEnds: number[] = [];
-	const result: EventSegment[] = [];
-	for (const seg of raw) {
-		let lane = 0;
-		while (lane < laneEnds.length && laneEnds[lane] > seg.startCol) lane += 1;
-		if (lane === laneEnds.length) laneEnds.push(0);
-		laneEnds[lane] = seg.startCol + seg.span;
-		result.push({ ...seg, lane });
-	}
-	return result;
+/** 해당 날짜에 겹치는 일정 (칸 안 배지용) */
+function schedulesOnDay(dateStr: string, schedules: ScheduleItem[]): ScheduleItem[] {
+	return schedules
+		.filter((s) => dateInRange(dateStr, s.date, s.endDate || s.date))
+		.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
 }
 
 export default function AnnualSchedule() {
@@ -219,11 +184,6 @@ export default function AnnualSchedule() {
 	const calendarWeeks = useMemo(
 		() => buildCalendarWeeks(leadingBlanks, monthDates),
 		[leadingBlanks, monthDates]
-	);
-
-	const weekSegments = useMemo(
-		() => calendarWeeks.map((week) => buildWeekSegments(week, filteredSchedules)),
-		[calendarWeeks, filteredSchedules]
 	);
 
 	const fetchSchedules = async () => {
@@ -659,126 +619,79 @@ export default function AnnualSchedule() {
 										</div>
 									))}
 								</div>
-								{calendarWeeks.map((week, wi) => {
-									const segments = weekSegments[wi] || [];
-									const laneCount =
-										segments.length > 0
-											? Math.max(...segments.map((s) => s.lane)) + 1
-											: 0;
-									const eventRows = Math.max(laneCount, 1);
-									return (
-										<div
-											key={`week-${wi}`}
-											className="relative min-h-[8.5rem] border-b border-blue-200 last:border-b-0"
-										>
-											{/* 칸 전체 높이 배경·클릭 영역 */}
-											<div className="absolute inset-0 grid grid-cols-7">
-												{week.map((cell, ci) => {
-													if (!cell.date || !cell.dateStr) {
-														return (
-															<div
-																key={`empty-bg-${wi}-${ci}`}
-																className="border-r border-blue-100 bg-slate-50/60 last:border-r-0"
-															/>
-														);
-													}
-													const dateStr = cell.dateStr;
-													const isToday = formatDate(new Date()) === dateStr;
-													const isSelected =
-														selectedSchedule != null &&
-														dateInRange(
-															dateStr,
-															selectedSchedule.date,
-															selectedSchedule.endDate || selectedSchedule.date
-														);
-													return (
-														<div
-															key={`bg-${dateStr}`}
-															onClick={() => handleDateClick(cell.date!)}
-															className={`border-r border-blue-100 last:border-r-0 cursor-pointer hover:bg-blue-50/80 ${
-																isToday ? "bg-blue-100/70" : "bg-white"
-															} ${isSelected ? "ring-2 ring-inset ring-blue-500" : ""}`}
-														/>
-													);
-												})}
-											</div>
-
-											{/* 날짜 숫자 + 일정 막대 (숫자 바로 아래부터) */}
-											<div
-												className="relative z-10 grid grid-cols-7 pointer-events-none"
-												style={{
-													gridTemplateRows: `1.75rem repeat(${eventRows}, 1.5rem)`,
-												}}
-											>
-												{week.map((cell, ci) => {
-													if (!cell.date || !cell.dateStr) {
-														return (
-															<div
-																key={`empty-${wi}-${ci}`}
-																style={{ gridColumn: ci + 1, gridRow: 1 }}
-															/>
-														);
-													}
-													const dow = cell.date.getDay();
-													const isToday = formatDate(new Date()) === cell.dateStr;
-													return (
-														<div
-															key={cell.dateStr}
-															className="flex items-start px-1.5 pt-1"
-															style={{ gridColumn: ci + 1, gridRow: 1 }}
-														>
-															<span
-																className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-sm font-medium ${
-																	isToday
-																		? "bg-blue-500 text-white"
-																		: dow === 0
-																			? "text-red-600"
-																			: dow === 6
-																				? "text-blue-600"
-																				: "text-blue-900"
-																}`}
+								{calendarWeeks.map((week, wi) => (
+									<div
+										key={`week-${wi}`}
+										className="grid grid-cols-7 border-b border-blue-200 last:border-b-0"
+									>
+										{week.map((cell, ci) => {
+											if (!cell.date || !cell.dateStr) {
+												return (
+													<div
+														key={`empty-${wi}-${ci}`}
+														className="min-h-[8.5rem] border-r border-blue-100 bg-slate-50/60 last:border-r-0"
+													/>
+												);
+											}
+											const dateStr = cell.dateStr;
+											const dow = cell.date.getDay();
+											const isToday = formatDate(new Date()) === dateStr;
+											const isSelected =
+												selectedSchedule != null &&
+												dateInRange(
+													dateStr,
+													selectedSchedule.date,
+													selectedSchedule.endDate || selectedSchedule.date
+												);
+											const daySchedules = schedulesOnDay(dateStr, filteredSchedules);
+											return (
+												<div
+													key={dateStr}
+													onClick={() => handleDateClick(cell.date!)}
+													className={`min-h-[8.5rem] border-r border-blue-100 last:border-r-0 cursor-pointer flex flex-col px-1 pt-1 pb-1 hover:bg-blue-50/80 ${
+														isToday ? "bg-blue-100/70" : "bg-white"
+													} ${isSelected ? "ring-2 ring-inset ring-blue-500" : ""}`}
+												>
+													<span
+														className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm font-medium ${
+															isToday
+																? "bg-blue-500 text-white"
+																: dow === 0
+																	? "text-red-600"
+																	: dow === 6
+																		? "text-blue-600"
+																		: "text-blue-900"
+														}`}
+													>
+														{cell.date.getDate()}
+													</span>
+													<div className="mt-0.5 flex min-h-0 flex-col gap-0.5">
+														{daySchedules.map((schedule) => (
+															<button
+																key={schedule.id}
+																type="button"
+																title={`${schedule.title} (${formatPeriod(schedule.date, schedule.endDate)})`}
+																onClick={(e) => {
+																	e.stopPropagation();
+																	handleSelectSchedule(schedule);
+																}}
+																className={`w-full truncate rounded-full px-2 py-0.5 text-left text-xs font-medium leading-tight ${typeBadgeClass(
+																	schedule.type
+																)} ${
+																	selectedSchedule?.id === schedule.id
+																		? "ring-2 ring-blue-600"
+																		: ""
+																} hover:brightness-95`}
 															>
-																{cell.date.getDate()}
-															</span>
-														</div>
-													);
-												})}
-												{segments.map((seg) => {
-													const { schedule, startCol, span, lane } = seg;
-													const eventStart = schedule.date.slice(0, 10);
-													const eventEnd = (schedule.endDate || schedule.date).slice(0, 10);
-													const segStart = week[startCol]?.dateStr ?? "";
-													const segEnd = week[startCol + span - 1]?.dateStr ?? "";
-													const isRangeStart = segStart === eventStart;
-													const isRangeEnd = segEnd === eventEnd;
-													const isSelected = selectedSchedule?.id === schedule.id;
-													return (
-														<button
-															key={`${schedule.id}-${startCol}-${lane}`}
-															type="button"
-															title={`${schedule.title} (${formatPeriod(schedule.date, schedule.endDate)})`}
-															onClick={(e) => {
-																e.stopPropagation();
-																handleSelectSchedule(schedule);
-															}}
-															className={`pointer-events-auto mx-0.5 my-0.5 flex items-center overflow-hidden px-1.5 text-left text-xs font-medium leading-none whitespace-nowrap ${typeBadgeClass(
-																schedule.type
-															)} ${isRangeStart ? "rounded-l-md" : "rounded-l-none"} ${
-																isRangeEnd ? "rounded-r-md" : "rounded-r-none"
-															} ${isSelected ? "ring-2 ring-blue-600 ring-offset-0 z-10" : ""} hover:brightness-95`}
-															style={{
-																gridColumn: `${startCol + 1} / span ${span}`,
-																gridRow: lane + 2,
-															}}
-														>
-															<span className="truncate">{schedule.title}</span>
-														</button>
-													);
-												})}
-											</div>
-										</div>
-									);
-								})}
+																{schedule.title}
+															</button>
+														))}
+													</div>
+												</div>
+											);
+										})}
+									</div>
+								))}
 							</div>
 						)}
 					</div>

@@ -8,11 +8,8 @@
  *
  * @module component/nursing-home/pages/employee-job-training/EmployeeJobTraining
  */
-import React, { useEffect, useMemo, useState } from "react";
-import {
-	buildJobTrainingPrintHtml,
-	openPrintPreviewWindow,
-} from "./employeeJobTrainingPrint";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { buildJobTrainingPrintHtml } from "./employeeJobTrainingPrint";
 
 interface JobTrainingRow {
 	ANCD?: string | number;
@@ -42,7 +39,139 @@ type UserInfo = {
 };
 
 const ITEMS_PER_PAGE = 10;
-const PROGRAM_ID = "F60060";
+const MAX_PHOTOS = 3;
+
+type TrainingPhoto = { blobName: string };
+
+function parseMimgPhotos(mimg: string | null | undefined): TrainingPhoto[] {
+	const s = String(mimg ?? "").trim();
+	if (!s) return [];
+	const fromToken = (raw: string): TrainingPhoto | null => {
+		let t = String(raw || "").trim().replace(/^["']+|["']+$/g, "").trim();
+		if (!t) return null;
+		const q = t.match(/blobName=([^&]+)/i);
+		if (q) {
+			try {
+				t = decodeURIComponent(q[1]);
+			} catch {
+				t = q[1];
+			}
+		}
+		const blobName = t.replace(/^["']+|["']+$/g, "").trim();
+		return blobName ? { blobName } : null;
+	};
+	if (s.startsWith("[")) {
+		try {
+			const parsed = JSON.parse(s);
+			if (Array.isArray(parsed)) {
+				return parsed
+					.map((p: unknown) => {
+						if (typeof p === "string") return fromToken(p);
+						if (p && typeof p === "object") {
+							return fromToken(String((p as { blobName?: unknown }).blobName ?? ""));
+						}
+						return null;
+					})
+					.filter((p): p is TrainingPhoto => Boolean(p?.blobName))
+					.slice(0, MAX_PHOTOS);
+			}
+		} catch {
+			/* fall through */
+		}
+	}
+	return s
+		.split(",")
+		.map(fromToken)
+		.filter((p): p is TrainingPhoto => Boolean(p?.blobName))
+		.slice(0, MAX_PHOTOS);
+}
+
+function serializeMimgPhotos(photos: TrainingPhoto[]): string {
+	if (!photos.length) return "";
+	return JSON.stringify(photos.slice(0, MAX_PHOTOS).map((p) => p.blobName));
+}
+
+function photoViewUrl(blobName: string) {
+	return `/api/f60060/photos?blobName=${encodeURIComponent(blobName)}`;
+}
+
+async function fetchPhotoAsDataUrl(blobName: string): Promise<string | null> {
+	try {
+		const res = await fetch(photoViewUrl(blobName), { credentials: "include", cache: "no-store" });
+		if (!res.ok) return null;
+		const blob = await res.blob();
+		const type = String(blob.type || "").toLowerCase();
+		if (type.includes("json") || blob.size < 24) return null;
+		return await new Promise<string | null>((resolve) => {
+			const reader = new FileReader();
+			reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+			reader.onerror = () => resolve(null);
+			reader.readAsDataURL(blob);
+		});
+	} catch {
+		return null;
+	}
+}
+
+function TrainingPhotoThumb({
+	blobName,
+	canRemove,
+	onRemove,
+	imgClassName,
+}: {
+	blobName: string;
+	canRemove?: boolean;
+	onRemove?: () => void;
+	imgClassName: string;
+}) {
+	const [src, setSrc] = useState<string | null>(null);
+	const [failed, setFailed] = useState(false);
+
+	useEffect(() => {
+		let objectUrl: string | null = null;
+		let cancelled = false;
+		setSrc(null);
+		setFailed(false);
+		(async () => {
+			try {
+				const res = await fetch(photoViewUrl(blobName), { credentials: "include", cache: "no-store" });
+				if (!res.ok) throw new Error("load failed");
+				const blob = await res.blob();
+				const type = String(blob.type || "").toLowerCase();
+				if (type.includes("json") || blob.size < 24) throw new Error("not an image");
+				objectUrl = URL.createObjectURL(blob);
+				if (!cancelled) setSrc(objectUrl);
+			} catch {
+				if (!cancelled) setFailed(true);
+			}
+		})();
+		return () => {
+			cancelled = true;
+			if (objectUrl) URL.revokeObjectURL(objectUrl);
+		};
+	}, [blobName]);
+
+	return (
+		<div className="relative overflow-hidden rounded border border-blue-200 bg-white">
+			{src ? (
+				<img src={src} alt="" className={imgClassName} />
+			) : (
+				<div className={`${imgClassName} flex items-center justify-center text-sm text-blue-900/50`}>
+					{failed ? "사진을 불러올 수 없습니다" : "불러오는 중..."}
+				</div>
+			)}
+			{canRemove ? (
+				<button
+					type="button"
+					onClick={onRemove}
+					className="absolute top-1 right-1 rounded bg-red-600 px-2 py-0.5 text-xs text-white hover:bg-red-700"
+				>
+					삭제
+				</button>
+			) : null}
+		</div>
+	);
+}
 
 function formatDate(date: Date): string {
 	const y = date.getFullYear();
@@ -92,6 +221,7 @@ const emptyForm = {
 	content: "",
 	attendees: "",
 	evaluation: "",
+	photoMimg: "",
 };
 
 const emptyModalForm = { ...emptyForm };
@@ -124,47 +254,26 @@ export default function EmployeeJobTraining() {
 	const [loading, setLoading] = useState(false);
 	const [currentPage, setCurrentPage] = useState(1);
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
-	const [hasProgramAccess, setHasProgramAccess] = useState(true);
 	const [createModalOpen, setCreateModalOpen] = useState(false);
 	const [modalForm, setModalForm] = useState(emptyModalForm);
 	const [modalSaveLoading, setModalSaveLoading] = useState(false);
+	const [photoUploading, setPhotoUploading] = useState(false);
+	const modalPhotoInputRef = useRef<HTMLInputElement | null>(null);
+	const detailPhotoInputRef = useRef<HTMLInputElement | null>(null);
 
-	const fetchUserAndPermission = async () => {
+	const attachedPhotos = useMemo(() => parseMimgPhotos(form.photoMimg), [form.photoMimg]);
+	const modalPhotos = useMemo(() => parseMimgPhotos(modalForm.photoMimg), [modalForm.photoMimg]);
+
+	const fetchUserInfo = async () => {
 		try {
 			const res = await fetch("/api/auth/user-info", { method: "GET" });
 			const result = await res.json().catch(() => ({}));
 			if (!res.ok || !result?.success) {
 				throw new Error(result?.error || "사용자 정보 조회 실패");
 			}
-			const u = (result.data || {}) as UserInfo;
-			setUserInfo(u);
-
-			const ancd = u?.ancd;
-			const uid = u?.uid;
-			if (!ancd || !uid) {
-				setHasProgramAccess(true);
-				return;
-			}
-
-			const permRes = await fetch(
-				`/api/f00131?ancd=${encodeURIComponent(String(ancd))}&uid=${encodeURIComponent(
-					String(uid)
-				)}&pgmid=${encodeURIComponent(PROGRAM_ID)}`,
-				{ method: "GET" }
-			);
-			const perm = await permRes.json().catch(() => ({}));
-			if (!permRes.ok || !perm?.success) {
-				setHasProgramAccess(true);
-				return;
-			}
-			if (typeof perm.allowed === "boolean") {
-				setHasProgramAccess(perm.allowed !== false);
-				return;
-			}
-			setHasProgramAccess(true);
+			setUserInfo((result.data || {}) as UserInfo);
 		} catch (e) {
-			console.error("사용자/권한 조회 오류:", e);
-			setHasProgramAccess(true);
+			console.error("사용자 정보 조회 오류:", e);
 		}
 	};
 
@@ -196,6 +305,7 @@ export default function EmployeeJobTraining() {
 				MDES: toText(r?.MDES),
 				MNM: toText(r?.MNM),
 				MODES: toText(r?.MODES),
+				MIMG: toText(r?.MIMG),
 				TRAINER_NM: toText(r?.TRAINER_NM),
 			}));
 			setTrainingList(mapped);
@@ -210,7 +320,7 @@ export default function EmployeeJobTraining() {
 	};
 
 	useEffect(() => {
-		fetchUserAndPermission();
+		fetchUserInfo();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
@@ -238,6 +348,7 @@ export default function EmployeeJobTraining() {
 		content: toText(row.MDES),
 		attendees: toText(row.MNM),
 		evaluation: toText(row.MODES),
+		photoMimg: toText(row.MIMG),
 	});
 
 	const handleSelectTraining = (row: JobTrainingRow) => {
@@ -248,10 +359,6 @@ export default function EmployeeJobTraining() {
 	};
 
 	const handleModify = () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!selectedTraining?.MDT) {
 			alert("수정할 직무교육을 선택해주세요.");
 			return;
@@ -259,7 +366,27 @@ export default function EmployeeJobTraining() {
 		setIsEditMode(true);
 	};
 
-	const handleCancelEdit = () => {
+	const deleteBlobQuietly = async (blobName: string) => {
+		try {
+			await fetch("/api/f60060/photos", {
+				method: "DELETE",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({ blobName }),
+			});
+		} catch {
+			/* ignore */
+		}
+	};
+
+	const discardUnsavedPhotos = async (currentMimg: string, originalMimg?: string) => {
+		const current = parseMimgPhotos(currentMimg);
+		const original = new Set(parseMimgPhotos(originalMimg).map((p) => p.blobName));
+		await Promise.all(current.filter((p) => !original.has(p.blobName)).map((p) => deleteBlobQuietly(p.blobName)));
+	};
+
+	const handleCancelEdit = async () => {
+		await discardUnsavedPhotos(form.photoMimg, selectedTraining?.MIMG);
 		setIsEditMode(false);
 		if (selectedTraining) {
 			setForm(mapRowToForm(selectedTraining));
@@ -285,8 +412,9 @@ export default function EmployeeJobTraining() {
 		setCreateModalOpen(true);
 	};
 
-	const closeCreateModal = () => {
+	const closeCreateModal = async () => {
 		if (modalSaveLoading) return;
+		await discardUnsavedPhotos(modalForm.photoMimg);
 		setCreateModalOpen(false);
 		setModalForm(emptyModalForm);
 	};
@@ -322,6 +450,7 @@ export default function EmployeeJobTraining() {
 			MDOC: data.title || null,
 			MDES: data.content || null,
 			MNM: data.attendees || null,
+			MIMG: data.photoMimg || null,
 			MODES: data.evaluation || null,
 			TRAINER_NM: data.instructor || null,
 			INEMPNO: userInfo?.empno != null ? String(userInfo.empno) : null,
@@ -341,10 +470,6 @@ export default function EmployeeJobTraining() {
 	};
 
 	const handleModalSave = async () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!modalForm.trainingDate) {
 			alert("교육일자를 입력해주세요.");
 			return;
@@ -354,7 +479,8 @@ export default function EmployeeJobTraining() {
 		try {
 			const newMdt = await persistTraining(modalForm, { isNew: true });
 			alert("직무교육이 등록되었습니다.");
-			closeCreateModal();
+			setCreateModalOpen(false);
+			setModalForm(emptyModalForm);
 			const refreshed = await fetchTrainings();
 			const saved = refreshed.find((m) => formatDateYmd(m.MDT) === newMdt);
 			if (saved) {
@@ -370,16 +496,71 @@ export default function EmployeeJobTraining() {
 		}
 	};
 
-	const handlePhotoRegister = (e: React.MouseEvent) => {
-		e.stopPropagation();
-		alert("기능개발중입니다");
+	const handleUploadPhotos = async (files: FileList | null, source: "modal" | "detail") => {
+		if (source === "detail" && !isEditMode) {
+			alert("수정 버튼을 누른 뒤 사진을 첨부할 수 있습니다.");
+			return;
+		}
+		if (!files || files.length === 0) return;
+		const current = source === "modal" ? modalPhotos : attachedPhotos;
+		const remain = MAX_PHOTOS - current.length;
+		if (remain <= 0) {
+			alert(`사진은 최대 ${MAX_PHOTOS}장까지 첨부할 수 있습니다.`);
+			return;
+		}
+		const picked = Array.from(files).slice(0, remain);
+		setPhotoUploading(true);
+		try {
+			const next = [...current];
+			for (const file of picked) {
+				const fd = new FormData();
+				fd.append("file", file);
+				const res = await fetch("/api/f60060/photos", {
+					method: "POST",
+					body: fd,
+					credentials: "include",
+				});
+				const json = await res.json().catch(() => ({}));
+				if (!res.ok || !json?.success || !json?.photo?.blobName) {
+					throw new Error(json?.error || `${file.name} 업로드에 실패했습니다.`);
+				}
+				next.push({ blobName: String(json.photo.blobName) });
+			}
+			const serialized = serializeMimgPhotos(next);
+			if (source === "modal") {
+				setModalForm((p) => ({ ...p, photoMimg: serialized }));
+			} else {
+				setForm((p) => ({ ...p, photoMimg: serialized }));
+			}
+			if (files.length > remain) {
+				alert(`사진은 최대 ${MAX_PHOTOS}장까지 첨부됩니다. 초과분은 제외되었습니다.`);
+			}
+		} catch (e) {
+			alert(e instanceof Error ? e.message : "사진 업로드 중 오류가 발생했습니다.");
+		} finally {
+			setPhotoUploading(false);
+			if (source === "modal" && modalPhotoInputRef.current) modalPhotoInputRef.current.value = "";
+			if (source === "detail" && detailPhotoInputRef.current) detailPhotoInputRef.current.value = "";
+		}
+	};
+
+	const handleRemovePhoto = (blobName: string, source: "modal" | "detail") => {
+		if (source === "detail" && !isEditMode) return;
+		const current = source === "modal" ? modalPhotos : attachedPhotos;
+		const next = serializeMimgPhotos(current.filter((p) => p.blobName !== blobName));
+		if (source === "modal") {
+			setModalForm((p) => ({ ...p, photoMimg: next }));
+			void deleteBlobQuietly(blobName);
+			return;
+		}
+		setForm((p) => ({ ...p, photoMimg: next }));
+		const original = new Set(parseMimgPhotos(selectedTraining?.MIMG).map((p) => p.blobName));
+		if (!original.has(blobName)) {
+			void deleteBlobQuietly(blobName);
+		}
 	};
 
 	const handleSave = async () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!isEditMode) {
 			alert("수정 버튼을 눌러 편집 모드로 전환한 후 저장해주세요.");
 			return;
@@ -400,6 +581,11 @@ export default function EmployeeJobTraining() {
 				isNew: false,
 			});
 
+			const savedMimg = serializeMimgPhotos(attachedPhotos);
+			const kept = new Set(parseMimgPhotos(savedMimg).map((p) => p.blobName));
+			const previous = parseMimgPhotos(selectedTraining?.MIMG);
+			await Promise.all(previous.filter((p) => !kept.has(p.blobName)).map((p) => deleteBlobQuietly(p.blobName)));
+
 			alert("직무교육이 수정되었습니다.");
 			setIsEditMode(false);
 			const refreshed = await fetchTrainings();
@@ -408,7 +594,7 @@ export default function EmployeeJobTraining() {
 				setSelectedTraining(saved);
 				setForm(mapRowToForm(saved));
 			} else {
-				setSelectedTraining({ MDT: newMdt });
+				setSelectedTraining({ MDT: newMdt, MIMG: savedMimg });
 				setForm({ ...form, trainingDate: newMdt });
 			}
 		} catch (err) {
@@ -420,10 +606,6 @@ export default function EmployeeJobTraining() {
 	};
 
 	const handleDelete = async () => {
-		if (!hasProgramAccess) {
-			alert("프로그램 사용 권한이 없습니다.");
-			return;
-		}
 		if (!selectedTraining?.MDT) {
 			alert("삭제할 직무교육을 선택해주세요.");
 			return;
@@ -447,6 +629,8 @@ export default function EmployeeJobTraining() {
 				throw new Error(result?.error || "직무교육 삭제에 실패했습니다.");
 			}
 
+			await Promise.all(parseMimgPhotos(selectedTraining.MIMG).map((p) => deleteBlobQuietly(p.blobName)));
+
 			alert("직무교육이 삭제되었습니다.");
 			setSelectedTraining(null);
 			setIsEditMode(false);
@@ -460,10 +644,25 @@ export default function EmployeeJobTraining() {
 		}
 	};
 
-	const handlePrint = () => {
+	const handlePrint = async () => {
 		if (!form.trainingDate && !selectedTraining?.MDT) {
 			alert("출력할 직무교육을 선택해주세요.");
 			return;
+		}
+
+		const printWindow = window.open("", "_blank");
+		if (!printWindow) {
+			alert("팝업이 차단되었습니다. 팝업 차단을 해제해 주세요.");
+			return;
+		}
+		printWindow.document.write(
+			"<!DOCTYPE html><html lang='ko'><head><meta charset='UTF-8' /><title>직원 직무교육</title></head><body>출력 준비 중...</body></html>"
+		);
+
+		const photoSrcs: string[] = [];
+		for (const p of attachedPhotos) {
+			const dataUrl = await fetchPhotoAsDataUrl(p.blobName);
+			if (dataUrl) photoSrcs.push(dataUrl);
 		}
 
 		const mdt = formatDateYmd(form.trainingDate || selectedTraining?.MDT || "");
@@ -477,8 +676,15 @@ export default function EmployeeJobTraining() {
 			content: form.content,
 			attendees: form.attendees,
 			evaluation: form.evaluation,
+			photoSrcs,
 		});
-		openPrintPreviewWindow(html);
+		printWindow.document.open();
+		printWindow.document.write(html);
+		printWindow.document.close();
+		setTimeout(() => {
+			printWindow.focus();
+			printWindow.print();
+		}, 250);
 	};
 
 	const pageNumbers = useMemo(() => {
@@ -803,6 +1009,51 @@ export default function EmployeeJobTraining() {
 										</div>
 									)}
 								</div>
+
+								<div className="col-span-12">
+									<div className="flex items-center justify-between gap-2 mb-2">
+										<label className="w-24 shrink-0 rounded border border-blue-300 bg-blue-100 px-2 py-2 text-sm font-medium text-blue-900">
+											사진
+										</label>
+										{isEditMode ? (
+											<>
+												<input
+													ref={detailPhotoInputRef}
+													type="file"
+													accept="image/jpeg,image/png,image/webp,image/gif"
+													multiple
+													className="hidden"
+													onChange={(e) => void handleUploadPhotos(e.target.files, "detail")}
+												/>
+												<button
+													type="button"
+													disabled={photoUploading || attachedPhotos.length >= MAX_PHOTOS}
+													onClick={() => detailPhotoInputRef.current?.click()}
+													className="rounded border border-blue-400 bg-blue-200 px-3 py-1 text-xs font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
+												>
+													{photoUploading ? "업로드 중..." : `사진등록 (최대 ${MAX_PHOTOS}장)`}
+												</button>
+											</>
+										) : null}
+									</div>
+									{attachedPhotos.length === 0 ? (
+										<div className="px-3 py-6 text-sm text-center text-blue-900/50 border border-blue-200 rounded bg-gray-50">
+											등록된 사진이 없습니다
+										</div>
+									) : (
+										<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+											{attachedPhotos.map((p) => (
+												<TrainingPhotoThumb
+													key={p.blobName}
+													blobName={p.blobName}
+													canRemove={isEditMode}
+													onRemove={() => handleRemovePhoto(p.blobName, "detail")}
+													imgClassName="w-full h-40 object-contain bg-white"
+												/>
+											))}
+										</div>
+									)}
+								</div>
 							</div>
 						)}
 					</div>
@@ -849,7 +1100,7 @@ export default function EmployeeJobTraining() {
 									<button
 										type="button"
 										onClick={() => void handleSave()}
-										disabled={!hasProgramAccess || loading}
+										disabled={loading}
 										className="min-w-28 rounded border border-blue-500 bg-blue-500 px-8 py-2 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
 									>
 										저장
@@ -896,7 +1147,7 @@ export default function EmployeeJobTraining() {
 								/>
 							</div>
 
-							<div className="flex flex-wrap items-center gap-2">
+							<div className="flex items-center gap-2">
 								<label className={modalLabelCls}>교육시간</label>
 								<input
 									type="time"
@@ -915,14 +1166,17 @@ export default function EmployeeJobTraining() {
 									}
 									className={modalTimeCls}
 								/>
-								<label className={`${modalLabelCls} w-20`}>강사명</label>
+							</div>
+
+							<div className="flex items-center gap-2">
+								<label className={modalLabelCls}>강사명</label>
 								<input
 									type="text"
 									value={modalForm.instructor}
 									onChange={(e) =>
 										setModalForm((f) => ({ ...f, instructor: e.target.value }))
 									}
-									className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+									className={modalFieldCls}
 								/>
 							</div>
 
@@ -993,6 +1247,52 @@ export default function EmployeeJobTraining() {
 									className={`${modalFieldCls} resize-y min-h-[120px]`}
 								/>
 							</div>
+
+							<div className="space-y-2">
+								<div className="flex items-center justify-between gap-2">
+									<div className="flex items-center gap-2">
+										<label className={modalLabelCls}>사진</label>
+										<button
+											type="button"
+											disabled={
+												modalSaveLoading ||
+												photoUploading ||
+												modalPhotos.length >= MAX_PHOTOS
+											}
+											onClick={() => modalPhotoInputRef.current?.click()}
+											className="px-3 py-1 text-xs font-semibold border border-blue-300 rounded bg-white text-blue-900 hover:bg-blue-50 disabled:opacity-50"
+										>
+											{photoUploading ? "업로드 중…" : "사진등록"}
+										</button>
+									</div>
+									<span className="text-xs text-blue-900/70">최대 {MAX_PHOTOS}장</span>
+								</div>
+								<input
+									ref={modalPhotoInputRef}
+									type="file"
+									accept="image/jpeg,image/png,image/webp,image/gif"
+									multiple
+									className="hidden"
+									onChange={(e) => void handleUploadPhotos(e.target.files, "modal")}
+								/>
+								{modalPhotos.length === 0 ? (
+									<div className="px-3 py-5 text-sm text-center text-blue-900/50 border border-blue-200 rounded bg-gray-50">
+										등록된 사진이 없습니다. 사진등록을 눌러 첨부하세요.
+									</div>
+								) : (
+									<div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+										{modalPhotos.map((p) => (
+											<TrainingPhotoThumb
+												key={p.blobName}
+												blobName={p.blobName}
+												canRemove
+												onRemove={() => handleRemovePhoto(p.blobName, "modal")}
+												imgClassName="w-full h-32 object-contain bg-white"
+											/>
+										))}
+									</div>
+								)}
+							</div>
 						</div>
 
 						<div className="flex border-t border-blue-200">
@@ -1003,14 +1303,6 @@ export default function EmployeeJobTraining() {
 								className="flex-1 border-r border-blue-200 bg-blue-100 py-3 text-sm font-semibold text-blue-900 hover:bg-blue-200 disabled:opacity-50"
 							>
 								{modalSaveLoading ? "저장 중…" : "저장"}
-							</button>
-							<button
-								type="button"
-								disabled={modalSaveLoading}
-								onClick={(e) => handlePhotoRegister(e)}
-								className="w-32 border-r border-blue-200 bg-white py-3 text-sm font-medium text-blue-900 hover:bg-blue-50 disabled:opacity-50"
-							>
-								사진등록
 							</button>
 							<button
 								type="button"

@@ -76,6 +76,7 @@ export async function GET(req) {
     const searchName = searchParams.get('name') || '';
     const uid = searchParams.get('uid') || '';
     const empno = searchParams.get('empno') || '';
+    const q = searchParams.get('q') || '';
 
     // F01010 테이블에서 사원 정보 조회
     let query = `
@@ -136,6 +137,9 @@ export async function GET(req) {
       // 사원번호로 직접 조회 (ancd는 이미 위에서 처리됨)
       query += ` AND [EMPNO] = @empno`;
       request.input('empno', parseInt(empno.trim()));
+    } else if (q && q.trim() !== '') {
+      query += ` AND ([EMPNM] LIKE @q OR CAST([EMPNO] AS VARCHAR(20)) LIKE @q)`;
+      request.input('q', `%${q.trim()}%`);
     } else if (searchName && searchName.trim() !== '') {
       // 사원명으로 검색
       query += ` AND [EMPNM] LIKE @searchName`;

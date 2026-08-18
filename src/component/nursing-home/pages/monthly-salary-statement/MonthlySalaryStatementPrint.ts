@@ -795,8 +795,6 @@ export function buildBenefitStatement24Body(
 	</tbody>
 </table>
 
-<div class="f24-gapfill" aria-hidden="true"></div>
-
 <table class="f24-cardtbl" cellspacing="0">
 	<tr>
 		<td rowspan="2" class="f24-cardside">신용카드를<br/>사용하실때</td>
@@ -885,11 +883,6 @@ body {
 	display: flex;
 	flex-direction: column;
 	min-height: 0;
-	width: 100%;
-}
-.f24-gapfill {
-	flex: 1 1 auto;
-	min-height: 3mm;
 	width: 100%;
 }
 .f24-toprow {

@@ -10,7 +10,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { sections3 } from '../menuData';
+import { sections3, menuNameMatchesQuery } from '../menuData';
 
 export default function NursingHomeMenu() {
   const [openSection, setOpenSection] = useState<string | null>(null);
@@ -19,12 +19,12 @@ export default function NursingHomeMenu() {
 
   const filtered = useMemo(() => {
     if (!query.trim()) return sections3;
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     const result: typeof sections3 = {};
     Object.entries(sections3).forEach(([sectionTitle, groupsObj]) => {
       const groupFiltered: Record<string, { name: string; link: string }[]> = {};
       Object.entries(groupsObj).forEach(([groupTitle, items]) => {
-        const hits = items.filter((it) => it.name.toLowerCase().includes(q));
+        const hits = items.filter((it) => menuNameMatchesQuery(it.name, q));
         if (hits.length) groupFiltered[groupTitle] = hits;
       });
       if (Object.keys(groupFiltered).length) result[sectionTitle] = groupFiltered;

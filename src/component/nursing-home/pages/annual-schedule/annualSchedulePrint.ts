@@ -128,13 +128,6 @@ function typeStyle(type?: string): { bg: string; border: string; fg: string; cls
 }
 
 type WeekDay = { date: Date | null; dateStr: string | null };
-type EventSegment = {
-	item: AnnualSchedulePrintItem;
-	startCol: number;
-	span: number;
-	lane: number;
-	key: string;
-};
 
 function buildWeeks(year: number, month: number): WeekDay[][] {
 	const first = new Date(year, month - 1, 1);
@@ -152,81 +145,38 @@ function buildWeeks(year: number, month: number): WeekDay[][] {
 	return weeks;
 }
 
-function buildWeekSegments(week: WeekDay[], schedules: AnnualSchedulePrintItem[]): EventSegment[] {
-	const raw: Omit<EventSegment, "lane">[] = [];
-	schedules.forEach((item, idx) => {
-		const start = item.date.slice(0, 10);
-		const end = (item.endDate || item.date).slice(0, 10);
-		let startCol = -1;
-		let endCol = -1;
-		for (let c = 0; c < 7; c++) {
-			const ds = week[c]?.dateStr;
-			if (!ds) continue;
-			if (dateInRange(ds, start, end)) {
-				if (startCol < 0) startCol = c;
-				endCol = c;
-			}
-		}
-		if (startCol >= 0 && endCol >= startCol) {
-			raw.push({
-				item,
-				startCol,
-				span: endCol - startCol + 1,
-				key: `${idx}-${startCol}`,
-			});
-		}
-	});
-	raw.sort((a, b) => a.startCol - b.startCol || b.span - a.span);
-	const laneEnds: number[] = [];
-	const result: EventSegment[] = [];
-	for (const seg of raw) {
-		let lane = 0;
-		while (lane < laneEnds.length && laneEnds[lane] > seg.startCol) lane += 1;
-		if (lane === laneEnds.length) laneEnds.push(0);
-		laneEnds[lane] = seg.startCol + seg.span;
-		result.push({ ...seg, lane });
-	}
-	return result;
+function schedulesOnDay(
+	dateStr: string,
+	schedules: AnnualSchedulePrintItem[]
+): AnnualSchedulePrintItem[] {
+	return schedules
+		.filter((s) => dateInRange(dateStr, s.date, s.endDate || s.date))
+		.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title));
 }
 
 function buildCalendarBody(data: AnnualSchedulePrintData): string {
 	const weeks = buildWeeks(data.year, data.month);
 	return weeks
 		.map((week) => {
-			const segments = buildWeekSegments(week, data.schedules);
-			const laneCount =
-				segments.length > 0 ? Math.max(...segments.map((s) => s.lane)) + 1 : 1;
-			const dayCells = week
+			const cells = week
 				.map((cell) => {
-					if (!cell.date) return `<td class="day empty">&nbsp;</td>`;
+					if (!cell.date || !cell.dateStr) {
+						return `<td class="day empty"><div class="day-num">&nbsp;</div></td>`;
+					}
 					const dow = cell.date.getDay();
 					const cls = dow === 0 ? "sun" : dow === 6 ? "sat" : "";
-					return `<td class="day ${cls}"><div class="day-num">${cell.date.getDate()}</div></td>`;
+					const badges = schedulesOnDay(cell.dateStr, data.schedules)
+						.map((item) => {
+							const st = typeStyle(item.type);
+							return `<div class="bar ${st.cls}" style="background-color:${st.bg} !important;color:${st.fg}">${escapeHtml(
+								item.title
+							)}</div>`;
+						})
+						.join("");
+					return `<td class="day ${cls}"><div class="day-num">${cell.date.getDate()}</div><div class="badges">${badges}</div></td>`;
 				})
 				.join("");
-
-			const eventRows = Array.from({ length: laneCount }, (_, lane) => {
-				const cells: string[] = [];
-				let c = 0;
-				while (c < 7) {
-					const seg = segments.find((s) => s.lane === lane && s.startCol === c);
-					if (seg) {
-						const st = typeStyle(seg.item.type);
-						cells.push(
-							`<td class="evt" colspan="${seg.span}"><div class="bar ${st.cls}" style="background-color:${st.bg} !important;border-left:3px solid ${st.border};color:${st.fg}">${escapeHtml(
-								seg.item.title
-							)}</div></td>`
-						);
-						c += seg.span;
-					} else {
-						cells.push(`<td class="evt-empty">&nbsp;</td>`);
-						c += 1;
-					}
-				}
-				return `<tr class="evt-row">${cells.join("")}</tr>`;
-			}).join("");
-
-			return `<tr class="day-row">${dayCells}</tr>${eventRows}`;
+			return `<tr class="week">${cells}</tr>`;
 		})
 		.join("");
 }
@@ -256,6 +206,9 @@ function calendarPageHtml(
       <div class="doc-title">${escapeHtml(title)}</div>
     </div>
     <table class="cal">
+      <colgroup>
+        <col /><col /><col /><col /><col /><col /><col />
+      </colgroup>
       <thead>
         <tr>
           <th class="sun">일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th class="sat">토</th>
@@ -306,9 +259,11 @@ export function buildAnnualScheduleCalendarPrintHtml(
   <meta charset="UTF-8" />
   <title>${escapeHtml(docTitle)}</title>
   <style>
-    @page { size: A4 landscape; margin: 10mm 12mm; }
+    @page { size: A4 landscape; margin: 4mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
+      width: 100%;
+      height: 100%;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
@@ -319,33 +274,52 @@ export function buildAnnualScheduleCalendarPrintHtml(
       color: #000;
       background: #fff;
     }
-    .page { width: 100%; max-width: 277mm; margin: 0 auto; }
+    .page {
+      width: 100%;
+      height: 100%;
+      min-height: 202mm;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+    }
     .page-break { page-break-after: always; break-after: page; }
-    .header { text-align: center; margin-bottom: 10px; position: relative; min-height: 40px; }
-    .doc-title { font-size: 18pt; font-weight: bold; letter-spacing: 0.12em; }
-    .facility { position: absolute; left: 0; top: 8px; font-size: 10pt; }
-    table.cal { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .header { text-align: center; margin-bottom: 4px; position: relative; min-height: 28px; flex: 0 0 auto; }
+    .doc-title { font-size: 16pt; font-weight: bold; letter-spacing: 0.1em; }
+    .facility { position: absolute; left: 0; top: 6px; font-size: 10pt; }
+    table.cal {
+      width: 100%;
+      flex: 1 1 auto;
+      height: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    table.cal col { width: 14.28%; }
     table.cal th, table.cal td { border: 1px solid #333; vertical-align: top; }
     table.cal th {
       background: #f0f4f8 !important;
       text-align: center;
-      padding: 6px 2px;
+      padding: 5px 2px;
       font-weight: bold;
       font-size: 10pt;
+      height: 22px;
     }
     th.sun, td.day.sun .day-num { color: #c00; }
     th.sat, td.day.sat .day-num { color: #06c; }
-    td.day { height: 22px; padding: 3px 4px; background: #fff; }
+    tr.week td.day {
+      height: 28mm;
+      min-height: 28mm;
+      padding: 3px 4px;
+      background: #fff;
+    }
     td.day.empty { background: #f7f7f7 !important; }
-    .day-num { font-weight: 600; font-size: 10pt; }
-    tr.evt-row td { height: 18px; padding: 1px 2px; border-top: none; }
-    td.evt-empty { border-top-color: #ddd; }
+    .day-num { font-weight: 600; font-size: 10pt; line-height: 1.2; color: #1e3a8a; }
+    .badges { margin-top: 3px; display: flex; flex-direction: column; gap: 3px; }
     .bar {
-      font-size: 8.5pt;
+      font-size: 8pt;
       font-weight: 600;
-      line-height: 1.2;
-      padding: 2px 5px;
-      border-radius: 3px;
+      line-height: 1.3;
+      padding: 2px 7px;
+      border-radius: 999px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -353,12 +327,12 @@ export function buildAnnualScheduleCalendarPrintHtml(
       print-color-adjust: exact !important;
       color-adjust: exact !important;
     }
-    .bar.t-event { background-color: #93c5fd !important; border-left: 3px solid #1d4ed8; color: #1e3a8a; }
-    .bar.t-off { background-color: #fbbf24 !important; border-left: 3px solid #b45309; color: #78350f; }
-    .bar.t-edu { background-color: #6ee7b7 !important; border-left: 3px solid #047857; color: #064e3b; }
-    .bar.t-etc { background-color: #cbd5e1 !important; border-left: 3px solid #475569; color: #1e293b; }
-    .bar.t-default { background-color: #e2e8f0 !important; border-left: 3px solid #64748b; color: #334155; }
-    .legend { margin-top: 10px; font-size: 9.5pt; }
+    .bar.t-event { background-color: #93c5fd !important; color: #1e3a8a; }
+    .bar.t-off { background-color: #fbbf24 !important; color: #78350f; }
+    .bar.t-edu { background-color: #6ee7b7 !important; color: #064e3b; }
+    .bar.t-etc { background-color: #cbd5e1 !important; color: #1e293b; }
+    .bar.t-default { background-color: #e2e8f0 !important; color: #334155; }
+    .legend { margin-top: 6px; font-size: 9.5pt; flex: 0 0 auto; }
     .legend span { display: inline-block; margin-right: 14px; vertical-align: middle; }
     .swatch {
       display: inline-block;
@@ -370,6 +344,10 @@ export function buildAnnualScheduleCalendarPrintHtml(
       border: 1px solid #666;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
+    }
+    @media print {
+      html, body, .page { width: 100%; height: 100%; margin: 0; }
+      .page { min-height: 0; }
     }
   </style>
 </head>

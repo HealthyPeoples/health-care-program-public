@@ -176,7 +176,9 @@ describe('MonthlySalaryStatementGrid — presentational', () => {
 		);
 		assert.match(led, /기타비용 수급/);
 		assert.match(led, />생일</);
-		assert.doesNotMatch(led, /수급자부담금합계/);
+		assert.match(led, /수급자부담금합계/);
+		assert.match(led, />합계</);
+		assert.match(occ, />합계</);
 	});
 
 	it('행 데이터 렌더 (recipient)', () => {

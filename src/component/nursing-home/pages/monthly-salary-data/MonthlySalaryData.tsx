@@ -90,9 +90,9 @@ function mapDbToSalaryRow(r: Record<string, unknown>): SalaryRow {
 	const b9 = num(r.BSAL9);
 	const esal = num(r.ESAL);
 	const sumBs = b1 + b2 + b3 + b4 + b6 + b7 + b8 + b9;
-	const benefitTotal = sal1 + sal2 + sumBs + esal;
+	/** 급여합계 = 공단부담금 + 수급자부담금 (V40100). 비급여는 수급자부담금합에만 포함 */
+	const benefitTotal = sal1 + sal2;
 	const recipientTotal = sal2 + sumBs + esal;
-	const half = Math.floor(b9 / 2);
 	return {
 		pnum: String(r.PNUM ?? ""),
 		recipient: String(r.P_NM ?? ""),
@@ -101,11 +101,11 @@ function mapDbToSalaryRow(r: Record<string, unknown>): SalaryRow {
 		benefitTotal: fmtAmt(benefitTotal),
 		nhaContribution: fmtAmt(sal1),
 		recipientContribution: fmtAmt(sal2),
-		nonBenefitMeal: fmtAmt(b1),
+		nonBenefitMeal: fmtAmt(b1 + b2),
 		roomUpgradeFee: fmtAmt(b6),
 		outpatientFee: fmtAmt(b3),
-		contractedMedical: fmtAmt(half),
-		contractedPrescription: fmtAmt(b9 - half),
+		contractedMedical: fmtAmt(b8),
+		contractedPrescription: fmtAmt(b9),
 		otherCosts: fmtAmt(esal),
 		recipientContributionTotal: fmtAmt(recipientTotal),
 	};
@@ -114,7 +114,6 @@ function mapDbToSalaryRow(r: Record<string, unknown>): SalaryRow {
 /** F40100 → 하단 상세 */
 function mapDbToDetailForm(r: Record<string, unknown>): SalaryDetailForm {
 	const b9 = num(r.BSAL9);
-	const half = Math.floor(b9 / 2);
 	return {
 		recipient: String(r.P_NM ?? ""),
 		birthday: displayBirth(formatBirthFromDb(r.P_BRDT)),
@@ -133,8 +132,8 @@ function mapDbToDetailForm(r: Record<string, unknown>): SalaryDetailForm {
 		roomAdjustFee: "",
 		bathFee: fmtAmt(num(r.BSAL7)),
 		dementiaFee: fmtAmt(num(r.BSAL8)),
-		contractedMedicalFee: fmtAmt(half),
-		prescriptionFee: fmtAmt(b9 - half),
+		contractedMedicalFee: fmtAmt(0),
+		prescriptionFee: fmtAmt(b9),
 	};
 }
 
@@ -364,13 +363,16 @@ export default function MonthlySalaryData() {
 	}, [detailForm]);
 
 	const readOnlyInputClass =
-		"flex-1 rounded border border-blue-200 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default";
+		"h-9 min-w-0 flex-1 rounded border border-blue-200 bg-slate-50 px-2.5 text-sm text-blue-900/90 outline-none cursor-default";
 	const editableInputClass =
-		"flex-1 rounded border border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
+		"h-9 min-w-0 flex-1 rounded border border-blue-300 bg-white px-2.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-400";
+	const amountReadOnlyClass = `${readOnlyInputClass} text-right tabular-nums`;
+	const amountEditableClass = `${editableInputClass} text-right tabular-nums`;
 	const readOnlySelectClass =
-		"flex-1 rounded border border-blue-200 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default";
+		"h-9 min-w-0 flex-1 rounded border border-blue-200 bg-slate-50 px-2.5 text-sm text-blue-900/90 outline-none cursor-default";
 	const editableTextareaClass =
-		"min-h-[52px] flex-1 rounded border border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
+		"min-h-[52px] min-w-0 flex-1 rounded border border-blue-300 bg-white px-2.5 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-400";
+	const fieldLabelClass = "w-28 shrink-0 text-sm font-medium text-blue-900";
 
 	useEffect(() => {
 		setDetailPage((p) => Math.min(p, detailTotalPages));
@@ -635,52 +637,55 @@ export default function MonthlySalaryData() {
 			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				<div className="flex flex-1 flex-col overflow-hidden bg-white">
 					{/* 상단: 제목 + 급여년월/계산단위 + 버튼 */}
-					<div className="flex flex-wrap items-center gap-4 border-b border-blue-200 bg-blue-50/50 p-4">
-						<h2 className="text-lg font-semibold text-blue-900">수급자급여발생자료</h2>
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900">급여년월</label>
-							<input
-								type="month"
-								value={payYearMonth}
-								onChange={(e) => setPayYearMonth(e.target.value)}
-								className="rounded border border-blue-300 bg-white px-3 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
-							/>
-						</div>
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900">수급자명</label>
-							<input
-								type="text"
-								value={recipientFilter}
-								onChange={(e) => setRecipientFilter(e.target.value)}
-								placeholder="이름 입력 시 즉시 필터"
-								className="min-w-[120px] rounded border border-blue-300 bg-white px-3 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
-							/>
-						</div>
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900">급여계산단위</label>
-							<label className="flex cursor-pointer items-center gap-2">
+					<div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-200 bg-blue-50 px-4 py-3">
+						<div className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2">
+							<h2 className="whitespace-nowrap text-xl font-semibold text-blue-900">
+								수급자급여발생자료
+							</h2>
+							<div className="flex items-center gap-2">
+								<label className="whitespace-nowrap text-sm font-medium text-blue-900">
+									급여년월
+								</label>
 								<input
-									type="checkbox"
-									checked={payCalcUnit}
-									onChange={(e) => setPayCalcUnit(e.target.checked)}
-									className="rounded border-blue-300 text-blue-600"
+									type="month"
+									value={payYearMonth}
+									onChange={(e) => setPayYearMonth(e.target.value)}
+									className="h-9 rounded border border-blue-300 bg-white px-2.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-400"
 								/>
-								<span className="text-sm text-blue-900">십미만절사</span>
-							</label>
+							</div>
+							<div className="flex items-center gap-2">
+								<label className="whitespace-nowrap text-sm font-medium text-blue-900">
+									수급자명
+								</label>
+								<input
+									type="text"
+									value={recipientFilter}
+									onChange={(e) => setRecipientFilter(e.target.value)}
+									placeholder="이름 입력 시 즉시 필터"
+									className="h-9 w-44 min-w-[10rem] rounded border border-blue-300 bg-white px-2.5 text-sm text-blue-900 placeholder:text-blue-900/40 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-400"
+								/>
+							</div>
+							<div className="flex items-center gap-2">
+								<span className="whitespace-nowrap text-sm font-medium text-blue-900">
+									급여계산단위
+								</span>
+								<label className="flex h-9 cursor-pointer items-center gap-2 rounded border border-blue-300 bg-white px-2.5 hover:bg-blue-50">
+									<input
+										type="checkbox"
+										checked={payCalcUnit}
+										onChange={(e) => setPayCalcUnit(e.target.checked)}
+										className="h-4 w-4 accent-blue-600"
+									/>
+									<span className="whitespace-nowrap text-sm text-blue-900">십미만절사</span>
+								</label>
+							</div>
 						</div>
-						<div className="ml-auto flex flex-wrap gap-2">
-							{/* <button
-								type="button"
-								onClick={handleSearch}
-								className="rounded border border-blue-400 bg-blue-200 px-4 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-300"
-							>
-								검색
-							</button> */}
+						<div className="flex flex-wrap items-center gap-2">
 							<button
 								type="button"
 								onClick={handleCalcAll}
 								disabled={calcLoading || salaryLoading}
-								className="rounded border border-blue-400 bg-blue-200 px-4 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
+								className="h-9 rounded border border-blue-700 bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
 							>
 								{calcLoading ? "계산 중..." : "전체급여계산"}
 							</button>
@@ -688,63 +693,71 @@ export default function MonthlySalaryData() {
 								type="button"
 								onClick={handleCalcIndividual}
 								disabled={calcLoading || salaryLoading}
-								className="rounded border border-blue-400 bg-blue-200 px-4 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
+								className="h-9 rounded border border-blue-300 bg-white px-4 text-sm font-medium text-blue-900 hover:bg-blue-100 disabled:pointer-events-none disabled:opacity-50"
 							>
 								개별계산
 							</button>
-							{/* <button
-								type="button"
-								onClick={handleClose}
-								className="rounded border border-blue-400 bg-blue-200 px-4 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-300"
-							>
-								닫기
-							</button> */}
 						</div>
 					</div>
 
 					{/* 중앙: 급여 테이블 */}
-					<div className="flex-1 overflow-hidden border-b border-blue-200 min-w-0">
-						<div className="h-full overflow-x-auto overflow-y-auto w-full min-w-0">
-							<table className="w-max max-w-none min-w-[900px] text-xs">
-								<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-100">
-									<tr>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+					<div className="min-h-0 min-w-0 flex-1 overflow-hidden border-b border-blue-200">
+						<div className="h-full w-full min-w-0 overflow-x-auto overflow-y-auto">
+							<table className="w-full min-w-[1120px] border-collapse text-xs">
+								<colgroup>
+									<col className="w-[9.5rem]" />
+									<col className="w-[7.5rem]" />
+									<col className="w-[5.5rem]" />
+									<col />
+									<col />
+									<col />
+									<col />
+									<col />
+									<col />
+									<col />
+									<col />
+									<col />
+									<col />
+								</colgroup>
+								<thead className="sticky top-0 z-10 bg-blue-50">
+									<tr className="border-b border-blue-200">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											수급자
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											생일
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											등급
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											급여합계
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											공단부담금
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											수급자부담금
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											비급여식대
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											병실승급비
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											외래진료비
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											촉탁의료
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											촉탁처방
 										</th>
-										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap border-r border-blue-200 px-2 py-2.5 text-center font-semibold text-blue-900">
 											기타비용
 										</th>
-										<th className="whitespace-nowrap px-2 py-2 text-center font-semibold text-blue-900">
+										<th className="whitespace-nowrap px-2 py-2.5 text-center font-semibold text-blue-900">
 											수급자부담금합
 										</th>
 									</tr>
@@ -752,7 +765,7 @@ export default function MonthlySalaryData() {
 								<tbody>
 									{salaryLoading ? (
 										<tr>
-											<td colSpan={13} className="px-2 py-8 text-center text-blue-900/60">
+											<td colSpan={13} className="px-2 py-10 text-center text-sm text-blue-900/60">
 												로딩 중...
 											</td>
 										</tr>
@@ -760,64 +773,70 @@ export default function MonthlySalaryData() {
 										<tr>
 											<td
 												colSpan={13}
-												className="px-2 py-8 text-center text-blue-900/60"
+												className="px-2 py-10 text-center text-sm text-blue-900/60"
 											>
 												해당 급여년월 데이터가 없습니다.
 											</td>
 										</tr>
 									) : (
-										salaryRows.map((row, idx) => (
+										salaryRows.map((row, idx) => {
+											const selected =
+												selectedMember &&
+												String(selectedMember.PNUM).trim() === row.pnum.trim();
+											return (
 											<tr
 												key={`${row.pnum}-${idx}`}
 												onClick={() => handleRowClick(row)}
-												className={`cursor-pointer border-b border-blue-50 hover:bg-blue-50/50 ${
-													selectedMember &&
-													String(selectedMember.PNUM).trim() === row.pnum.trim()
-														? "bg-blue-100"
-														: ""
+												className={`cursor-pointer border-b border-blue-100 ${
+													selected
+														? "bg-blue-100 font-medium hover:bg-blue-100"
+														: idx % 2 === 1
+															? "bg-slate-50/80 hover:bg-blue-50"
+															: "bg-white hover:bg-blue-50"
 												}`}
 											>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="truncate border-r border-blue-100 px-2 py-2 text-left text-blue-900">
 													{row.recipient}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-center tabular-nums text-blue-900">
 													{row.birthday}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-center text-blue-900">
 													{row.grade}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.benefitTotal}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.nhaContribution}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.recipientContribution}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.nonBenefitMeal}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.roomUpgradeFee}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.outpatientFee}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.contractedMedical}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.contractedPrescription}
 												</td>
-												<td className="border-r border-blue-100 px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap border-r border-blue-100 px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.otherCosts}
 												</td>
-												<td className="px-2 py-1.5 text-center">
+												<td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-blue-900">
 													{row.recipientContributionTotal}
 												</td>
 											</tr>
-										))
+											);
+										})
 									)}
 								</tbody>
 							</table>
@@ -825,10 +844,10 @@ export default function MonthlySalaryData() {
 					</div>
 
 					{/* 하단: 상세 입력/표시 영역 */}
-					<div className="relative border-t border-blue-200 bg-blue-50/30 p-4">
+					<div className="relative border-t border-blue-200 bg-slate-50/60 p-4">
 						{!selectedMember && (
-							<div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 backdrop-blur-[2px]">
-								<p className="rounded-lg border border-blue-300 bg-white/90 px-5 py-3 text-base font-semibold text-blue-900 shadow-sm">
+							<div className="absolute inset-0 z-20 flex items-center justify-center bg-white/50">
+								<p className="rounded-lg border border-blue-300 bg-white px-8 py-4 text-base font-semibold text-blue-900 shadow-sm">
 									수급자를 선택해주세요
 								</p>
 							</div>
@@ -837,17 +856,17 @@ export default function MonthlySalaryData() {
 							className={!selectedMember ? "pointer-events-none select-none blur-[2px]" : undefined}
 							aria-hidden={!selectedMember}
 						>
-						<div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded border border-orange-400 bg-orange-50 px-3 py-2.5">
-							<span className="text-base font-semibold text-orange-800">
+						<div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-orange-300 bg-orange-50 px-4 py-2.5">
+							<span className="text-sm font-semibold text-orange-800">
 								수급자 {selectedMember?.P_NM || detailForm.recipient || "***"}님 부담금 합
 							</span>
-							<span className="text-3xl font-bold tabular-nums text-orange-700">
+							<span className="text-2xl font-bold tabular-nums leading-none text-orange-700">
 								{recipientBurdenTotal.toLocaleString("ko-KR")}
 							</span>
 						</div>
-						<div className="grid grid-cols-2 gap-x-8 gap-y-3 md:grid-cols-4">
+						<div className="grid grid-cols-2 gap-x-6 gap-y-2.5 md:grid-cols-4">
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									수급자
 								</label>
 								<input
@@ -858,7 +877,7 @@ export default function MonthlySalaryData() {
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									생일
 								</label>
 								<input
@@ -869,31 +888,31 @@ export default function MonthlySalaryData() {
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									보험자부담율%
 								</label>
 								<input
 									type="text"
 									value={detailForm.inSper}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 									placeholder="INSPER"
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									수급자부담율%
 								</label>
 								<input
 									type="text"
 									value={detailForm.usrPer}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 									placeholder="USRPER"
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									부담구분
 								</label>
 								<select
@@ -907,7 +926,7 @@ export default function MonthlySalaryData() {
 								</select>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									공단부담금
 								</label>
 								<input
@@ -919,11 +938,11 @@ export default function MonthlySalaryData() {
 											nhaContribution: formatAmountInput(e.target.value),
 										}))
 									}
-									className={editableInputClass}
+									className={amountEditableClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									수급자부담금
 								</label>
 								<input
@@ -935,11 +954,11 @@ export default function MonthlySalaryData() {
 											recipientContribution: formatAmountInput(e.target.value),
 										}))
 									}
-									className={editableInputClass}
+									className={amountEditableClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									이미용비
 								</label>
 								<input
@@ -951,109 +970,80 @@ export default function MonthlySalaryData() {
 											beautyCost: formatAmountInput(e.target.value),
 										}))
 									}
-									className={editableInputClass}
+									className={amountEditableClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									비급여식대
 								</label>
 								<input
 									type="text"
 									value={detailForm.nonBenefitMeal}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									비급여간식
 								</label>
 								<input
 									type="text"
 									value={detailForm.nonBenefitSnack}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									목욕비
 								</label>
 								<input
 									type="text"
 									value={detailForm.bathFee}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 									placeholder="BSAL7"
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
-									치매지원
+								<label className={fieldLabelClass}>
+									촉탁진료비
 								</label>
 								<input
 									type="text"
 									value={detailForm.dementiaFee}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 									placeholder="BSAL8"
 								/>
 							</div>
+
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
-									기타비용
-								</label>
-								<input
-									type="text"
-									value={detailForm.otherCosts}
-									onChange={(e) =>
-										setDetailForm((prev) => ({
-											...prev,
-											otherCosts: formatAmountInput(e.target.value),
-										}))
-									}
-									className={editableInputClass}
-								/>
-							</div>
-							<div className="col-span-2 flex items-start gap-2 md:col-span-4">
-								<label className="w-24 shrink-0 pt-1.5 text-sm font-medium text-blue-900">
-									기타내역
-								</label>
-								<textarea
-									value={detailForm.otherCostDesc}
-									onChange={(e) =>
-										setDetailForm((prev) => ({ ...prev, otherCostDesc: e.target.value }))
-									}
-									rows={2}
-									className={editableTextareaClass}
-									placeholder="ESALDES"
-								/>
-							</div>
-							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									상급병실료
 								</label>
 								<input
 									type="text"
 									value={detailForm.premiumRoomFee}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									외래진료비
 								</label>
 								<input
 									type="text"
 									value={detailForm.outpatientFee}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									병실조정료
 								</label>
 								<input
@@ -1065,29 +1055,51 @@ export default function MonthlySalaryData() {
 											roomAdjustFee: formatAmountInput(e.target.value),
 										}))
 									}
-									className={editableInputClass}
+									className={amountEditableClass}
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
-									촉탁진료비
-								</label>
-								<input
-									type="text"
-									value={detailForm.contractedMedicalFee}
-									readOnly
-									className={readOnlyInputClass}
-								/>
-							</div>
-							<div className="flex items-center gap-2">
-								<label className="w-24 shrink-0 text-sm font-medium text-blue-900">
+								<label className={fieldLabelClass}>
 									처방비
 								</label>
 								<input
 									type="text"
-									value={detailForm.prescriptionFee}
+									value={fmtAmt(
+										parseAmt(detailForm.contractedMedicalFee) +
+											parseAmt(detailForm.prescriptionFee)
+									)}
 									readOnly
-									className={readOnlyInputClass}
+									className={amountReadOnlyClass}
+								/>
+							</div>
+							<div className="flex items-center gap-2">
+								<label className={fieldLabelClass}>
+									기타비용
+								</label>
+								<input
+									type="text"
+									value={detailForm.otherCosts}
+									onChange={(e) =>
+										setDetailForm((prev) => ({
+											...prev,
+											otherCosts: formatAmountInput(e.target.value),
+										}))
+									}
+									className={amountEditableClass}
+								/>
+							</div>
+							<div className="col-span-2 flex items-start gap-2 md:col-span-4">
+								<label className={`${fieldLabelClass} pt-1.5`}>
+									기타내역
+								</label>
+								<textarea
+									value={detailForm.otherCostDesc}
+									onChange={(e) =>
+										setDetailForm((prev) => ({ ...prev, otherCostDesc: e.target.value }))
+									}
+									rows={2}
+									className={editableTextareaClass}
+									placeholder="기타내역을 입력해주세요"
 								/>
 							</div>
 						</div>
@@ -1096,7 +1108,7 @@ export default function MonthlySalaryData() {
 								type="button"
 								onClick={handleDetailHistory}
 								disabled={!selectedMember}
-								className="rounded border border-blue-400 bg-blue-200 px-4 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
+								className="h-9 rounded border border-blue-300 bg-white px-4 text-sm font-medium text-blue-900 hover:bg-blue-50 disabled:pointer-events-none disabled:opacity-50"
 							>
 								상세내역
 							</button>
@@ -1104,7 +1116,7 @@ export default function MonthlySalaryData() {
 								type="button"
 								onClick={handleSave}
 								disabled={!selectedMember}
-								className="rounded border border-blue-400 bg-blue-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-600 disabled:opacity-50"
+								className="h-9 rounded border border-blue-700 bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
 							>
 								저장
 							</button>

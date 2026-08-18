@@ -111,9 +111,9 @@ export function f40100ToStatementRow(r: Record<string, unknown>): StatementRow {
 	const b9 = num(r.BSAL9);
 	const esal = num(r.ESAL);
 	const sumBs = b1 + b2 + b3 + b4 + b6 + b7 + b8 + b9;
-	const benefitTotal = sal1 + sal2 + sumBs + esal;
+	/** 급여합계 = 공단부담금 + 수급자부담금 (V40100). 비급여는 수급자부담금합계에만 포함 */
+	const benefitTotal = sal1 + sal2;
 	const recipientBurdenTotal = sal2 + sumBs + esal;
-	const half = Math.floor(b9 / 2);
 	return {
 		pnum: String(r.PNUM ?? "").trim(),
 		recipient: String(r.P_NM ?? ""),
@@ -127,8 +127,8 @@ export function f40100ToStatementRow(r: Record<string, unknown>): StatementRow {
 		nonBenefitSnack: fmtInt(b2),
 		roomUpgradeFee: fmtInt(b6),
 		outpatientFee: fmtInt(b3),
-		contractedMedical: fmtInt(half),
-		contractedPrescription: fmtInt(b9 - half),
+		contractedMedical: fmtInt(b8),
+		contractedPrescription: fmtInt(b9),
 		beautyCost: fmtInt(b4),
 		otherCostsRecipient: fmtInt(esal),
 		recipientBurdenTotal: fmtInt(recipientBurdenTotal),

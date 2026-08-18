@@ -44,6 +44,8 @@ function nbsp(v: string): string {
 export function classifyAttendanceDisplay(row: AttendancePrintRow): string {
 	const wgu = String(row.WGU ?? "").trim();
 	const hodes = String(row.HODES ?? "").trim();
+	if (hodes === "휴직") return "휴직";
+	if (hodes === "퇴직") return "퇴직";
 	if (!wgu || wgu === "1") return "근무";
 	if (wgu === "2") return "연차";
 	if (wgu === "3") return "월차";

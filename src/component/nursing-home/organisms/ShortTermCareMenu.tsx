@@ -10,7 +10,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { Sections3 } from '../menuData';
+import { menuNameMatchesQuery, type Sections3 } from '../menuData';
 
 // 단기보호 메뉴 데이터 (추후 확장 가능)
 const shortTermCareMenuData: Sections3 = {
@@ -29,12 +29,12 @@ export default function ShortTermCareMenu() {
 
   const filtered = useMemo(() => {
     if (!query.trim()) return shortTermCareMenuData;
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     const result: Sections3 = {};
     Object.entries(shortTermCareMenuData).forEach(([sectionTitle, groupsObj]) => {
       const groupFiltered: Record<string, { name: string; link: string }[]> = {};
       Object.entries(groupsObj).forEach(([groupTitle, items]) => {
-        const hits = items.filter((it) => it.name.toLowerCase().includes(q));
+        const hits = items.filter((it) => menuNameMatchesQuery(it.name, q));
         if (hits.length) groupFiltered[groupTitle] = hits;
       });
       if (Object.keys(groupFiltered).length) result[sectionTitle] = groupFiltered;

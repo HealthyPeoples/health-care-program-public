@@ -109,11 +109,82 @@ export function buildLeavePeriods(
 	return periods.reverse();
 }
 
+/** 기준년도에 해당하는 발생 구간 1건 (미래 구간도 생성 가능) */
+export function buildPeriodForYear(
+	anchorDate: string | null | undefined,
+	hireDate: string | null | undefined,
+	year: number,
+): LeavePeriod | null {
+	const anchor = parseDateOnly(anchorDate) ?? parseDateOnly(hireDate);
+	if (!anchor) return null;
+
+	let accrual = addYears(anchor, 1);
+	for (let i = 0; i < 60; i++) {
+		const accrualYear = accrual.getFullYear();
+		const end = addDays(addYears(accrual, 1), -1);
+		if (accrualYear === year) {
+			return {
+				accrualDate: formatLocalDate(accrual),
+				endDate: formatLocalDate(end),
+				accrualYear,
+			};
+		}
+		if (accrualYear > year) break;
+		accrual = addYears(accrual, 1);
+	}
+	return findPeriodForBaseYear(
+		buildLeavePeriodsChronological(anchorDate, hireDate, year),
+		year,
+	) ?? null;
+}
+
+export interface AnnualLeaveGrantRow {
+	EMPNO?: number;
+	YDT: string;
+	YEDT: string;
+	YCNT: number;
+}
+
+export function grantsToSummary(
+	grants: AnnualLeaveGrantRow[],
+	attendanceRows: F02010LeaveRow[],
+): AnnualLeaveSummaryRow[] {
+	return [...grants]
+		.map((g) => {
+			const accrualDate = String(g.YDT ?? "").slice(0, 10);
+			const endDate = String(g.YEDT ?? "").slice(0, 10);
+			const granted = Number(g.YCNT) || 0;
+			const used = countLeaveDays(attendanceRows, accrualDate, endDate);
+			return {
+				accrualDate,
+				endDate,
+				accrualYear: parseInt(accrualDate.slice(0, 4), 10) || 0,
+				annualLeaveDays: granted,
+				usedDays: used,
+				remainingDays: granted - used,
+			};
+		})
+		.filter((r) => r.accrualDate)
+		.sort((a, b) => b.accrualDate.localeCompare(a.accrualDate));
+}
+
+export function getAttendanceFetchRangeFromGrants(
+	grants: AnnualLeaveGrantRow[],
+): { start: string; end: string } | null {
+	if (!grants.length) return null;
+	const starts = grants.map((g) => String(g.YDT ?? "").slice(0, 10)).filter(Boolean).sort();
+	const ends = grants.map((g) => String(g.YEDT ?? "").slice(0, 10)).filter(Boolean).sort();
+	if (!starts[0] || !ends.length) return null;
+	const today = formatLocalDate(new Date());
+	const lastEnd = ends[ends.length - 1];
+	return { start: starts[0], end: lastEnd > today ? today : lastEnd };
+}
+
 function isDateInRange(wdt: string, start: string, end: string): boolean {
 	return wdt >= start && wdt <= end;
 }
 
-/** 년차 휴가 사용으로 집계하는 근무구분 */
+/** 년차 사용으로 집계하는 휴무 — 근무표 WGU: 2=연차 */
 const LEAVE_WGU_CODES = new Set(["2"]);
 
 export function isLeaveWgu(wgu?: string | null): boolean {
@@ -160,7 +231,7 @@ export function findPeriodForBaseYear(
 	);
 }
 
-/** 발생일자~종료일자 구간 내 WGU=2 근태만 근무 상세로 표시 */
+/** 발생일자~종료일자 구간 내 휴무(연차 WGU=2)만 근무 상세로 표시 */
 export function buildWorkDetailListForDateRange(
 	attendanceRows: F02010LeaveRow[],
 	startDate: string,
@@ -426,6 +497,164 @@ export function buildAllDetailAnnualLeavePrintSections(
 		const empAttendance = attendanceByEmpno.get(emp.EMPNO) ?? [];
 		const section = buildDetailAnnualLeavePrintSection(emp, empAttendance, baseYear);
 		if (section) sections.push(section);
+	}
+	return sections;
+}
+
+export function groupGrantsByEmpno(grants: AnnualLeaveGrantRow[]): Map<number, AnnualLeaveGrantRow[]> {
+	const map = new Map<number, AnnualLeaveGrantRow[]>();
+	for (const g of grants) {
+		const empno = Number(g.EMPNO);
+		if (!empno) continue;
+		if (!map.has(empno)) map.set(empno, []);
+		map.get(empno)!.push(g);
+	}
+	return map;
+}
+
+export function getAttendanceRangeFromGrantMap(
+	grantsByEmpno: Map<number, AnnualLeaveGrantRow[]>,
+	empnos?: number[],
+): { start: string; end: string } | null {
+	const list: AnnualLeaveGrantRow[] = [];
+	if (empnos) {
+		for (const n of empnos) list.push(...(grantsByEmpno.get(n) ?? []));
+	} else {
+		for (const rows of grantsByEmpno.values()) list.push(...rows);
+	}
+	return getAttendanceFetchRangeFromGrants(list);
+}
+
+function grantSummaryToPrintBase(
+	employee: EmployeeForAnnualLeavePrint,
+	summary: AnnualLeaveSummaryRow[],
+): Omit<FullAnnualLeavePrintRow, "yearIndex" | "showEmployeeColumns">[] {
+	const baseDate = formatDateField(employee.BASE_DT) || formatDateField(employee.SDT);
+	const chrono = [...summary].sort((a, b) => a.accrualDate.localeCompare(b.accrualDate));
+	return chrono.map((s) => ({
+		empnm: String(employee.EMPNM ?? "").trim(),
+		job: String(employee.JOB ?? "").trim(),
+		status: getWorkStatusLabel(employee.JOBST),
+		hireDate: formatDateField(employee.SDT),
+		resignDate: formatDateField(employee.EDT),
+		baseDate,
+		startDate: s.accrualDate,
+		endDate: s.endDate,
+		annualLeaveDays: s.annualLeaveDays,
+		usedDays: s.usedDays,
+		remark: "",
+	}));
+}
+
+export function buildFullAnnualLeavePrintRowsFromGrants(
+	employee: EmployeeForAnnualLeavePrint,
+	grants: AnnualLeaveGrantRow[],
+	attendanceRows: F02010LeaveRow[],
+): FullAnnualLeavePrintRow[] {
+	const summary = grantsToSummary(grants, attendanceRows);
+	if (summary.length === 0) return [];
+	const chrono = grantSummaryToPrintBase(employee, summary);
+	return chrono.map((row, idx) => ({
+		...row,
+		yearIndex: idx,
+		showEmployeeColumns: idx === 0,
+	}));
+}
+
+export function buildAllEmployeesAnnualLeavePrintRowsFromGrants(
+	employees: EmployeeForAnnualLeavePrint[],
+	attendanceByEmpno: Map<number, F02010LeaveRow[]>,
+	grantsByEmpno: Map<number, AnnualLeaveGrantRow[]>,
+): FullAnnualLeavePrintRow[] {
+	const sorted = [...employees].sort((a, b) =>
+		String(a.EMPNM ?? "").localeCompare(String(b.EMPNM ?? ""), "ko"),
+	);
+	const allRows: FullAnnualLeavePrintRow[] = [];
+	for (const emp of sorted) {
+		const rows = buildFullAnnualLeavePrintRowsFromGrants(
+			emp,
+			grantsByEmpno.get(emp.EMPNO) ?? [],
+			attendanceByEmpno.get(emp.EMPNO) ?? [],
+		);
+		allRows.push(...rows);
+	}
+	return allRows;
+}
+
+export function buildBaseYearAnnualLeavePrintRowFromGrants(
+	employee: EmployeeForAnnualLeavePrint,
+	grants: AnnualLeaveGrantRow[],
+	attendanceRows: F02010LeaveRow[],
+	baseYear: number,
+): BaseYearAnnualLeavePrintRow | null {
+	const summary = grantsToSummary(grants, attendanceRows);
+	const row =
+		summary.find((s) => s.accrualYear === baseYear) ??
+		summary.find((s) => s.accrualDate.slice(0, 4) <= String(baseYear) && s.endDate.slice(0, 4) >= String(baseYear));
+	if (!row) return null;
+	const chrono = [...summary].sort((a, b) => a.accrualDate.localeCompare(b.accrualDate));
+	const yearIndex = chrono.findIndex((s) => s.accrualDate === row.accrualDate);
+	return {
+		empnm: String(employee.EMPNM ?? "").trim(),
+		job: String(employee.JOB ?? "").trim(),
+		status: getWorkStatusLabel(employee.JOBST),
+		hireDate: formatDateField(employee.SDT),
+		resignDate: formatDateField(employee.EDT),
+		startDate: row.accrualDate,
+		endDate: row.endDate,
+		yearIndex: yearIndex >= 0 ? yearIndex : 0,
+		annualLeaveDays: row.annualLeaveDays,
+		usedDays: row.usedDays,
+	};
+}
+
+export function buildAllBaseYearAnnualLeavePrintRowsFromGrants(
+	employees: EmployeeForAnnualLeavePrint[],
+	attendanceByEmpno: Map<number, F02010LeaveRow[]>,
+	grantsByEmpno: Map<number, AnnualLeaveGrantRow[]>,
+	baseYear: number,
+): BaseYearAnnualLeavePrintRow[] {
+	const sorted = [...employees].sort((a, b) =>
+		String(a.EMPNM ?? "").localeCompare(String(b.EMPNM ?? ""), "ko"),
+	);
+	const rows: BaseYearAnnualLeavePrintRow[] = [];
+	for (const emp of sorted) {
+		const row = buildBaseYearAnnualLeavePrintRowFromGrants(
+			emp,
+			grantsByEmpno.get(emp.EMPNO) ?? [],
+			attendanceByEmpno.get(emp.EMPNO) ?? [],
+			baseYear,
+		);
+		if (row) rows.push(row);
+	}
+	return rows;
+}
+
+export function buildAllDetailAnnualLeavePrintSectionsFromGrants(
+	employees: EmployeeForAnnualLeavePrint[],
+	attendanceByEmpno: Map<number, F02010LeaveRow[]>,
+	grantsByEmpno: Map<number, AnnualLeaveGrantRow[]>,
+	baseYear: number,
+): DetailAnnualLeavePrintSection[] {
+	const sorted = [...employees].sort((a, b) =>
+		String(a.EMPNM ?? "").localeCompare(String(b.EMPNM ?? ""), "ko"),
+	);
+	const sections: DetailAnnualLeavePrintSection[] = [];
+	for (const emp of sorted) {
+		const empAttendance = attendanceByEmpno.get(emp.EMPNO) ?? [];
+		const summary = buildBaseYearAnnualLeavePrintRowFromGrants(
+			emp,
+			grantsByEmpno.get(emp.EMPNO) ?? [],
+			empAttendance,
+			baseYear,
+		);
+		if (!summary) continue;
+		const details = buildWorkDetailListForDateRange(
+			empAttendance,
+			summary.startDate,
+			summary.endDate,
+		).map((d) => ({ workDate: d.workDate, workType: d.workType }));
+		sections.push({ ...summary, details });
 	}
 	return sections;
 }
