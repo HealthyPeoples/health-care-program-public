@@ -77,13 +77,13 @@ export default function MonthlySalaryStatementToolbar({
 				</div>
 			)}
 			{/* 탭 — 서식 구분(동일 F40100+F10010 데이터 기준, 추후 탭별 출력 분기 가능) */}
-			<div className="flex flex-wrap gap-2">
+			<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
 				{tabs.map((tab) => (
 					<button
 						type="button"
 						key={tab.id}
 						onClick={() => onDocumentKindClick(tab.id)}
-						className={`rounded-lg border-2 px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+						className={`w-full rounded-lg border-2 px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
 							activeTab === tab.id
 								? "border-zinc-700 bg-zinc-200 text-zinc-900 shadow-inner"
 								: "border-zinc-300 bg-white text-zinc-800 hover:border-zinc-400 hover:bg-zinc-50"

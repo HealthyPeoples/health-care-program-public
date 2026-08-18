@@ -708,8 +708,8 @@ export default function FacilityWorkLog() {
 											value={form.jdes}
 											disabled={!isEditMode}
 											onChange={(e) => setForm((p) => ({ ...p, jdes: e.target.value }))}
-											rows={8}
-											className={`col-span-10 ${inputCls} resize-none disabled:bg-gray-50`}
+											rows={16}
+											className={`col-span-10 ${inputCls} min-h-[360px] resize-none disabled:bg-gray-50`}
 										/>
 									</div>
 
@@ -724,17 +724,17 @@ export default function FacilityWorkLog() {
 									</div>
 
 									<div className="rounded border border-blue-300 overflow-hidden">
-										<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 text-sm font-semibold text-blue-900">
+										<div className="border-b border-blue-200 bg-blue-100 px-3 py-1 text-sm font-semibold text-blue-900">
 											지시사항
 										</div>
-										<div className="max-h-[180px] overflow-auto">
+										<div className="max-h-[88px] overflow-auto">
 											<table className="w-full text-sm">
 												<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-50">
 													<tr>
-														<th className="w-[160px] border-r border-blue-200 px-3 py-2 text-left font-semibold text-blue-900">
+														<th className="w-[160px] border-r border-blue-200 px-2 py-1 text-left font-semibold text-blue-900">
 															결재자
 														</th>
-														<th className="px-3 py-2 text-left font-semibold text-blue-900">
+														<th className="px-2 py-1 text-left font-semibold text-blue-900">
 															지시사항
 														</th>
 													</tr>
@@ -742,7 +742,7 @@ export default function FacilityWorkLog() {
 												<tbody>
 													{instructionRows.map((row) => (
 														<tr key={row.key} className="border-b border-blue-50">
-															<td className="border-r border-blue-100 px-2 py-1.5">
+															<td className="border-r border-blue-100 px-1.5 py-0.5">
 																{isEditMode ? (
 																	<input
 																		value={row.approver}
@@ -753,13 +753,13 @@ export default function FacilityWorkLog() {
 																				e.target.value
 																			)
 																		}
-																		className={`w-full ${inputCls}`}
+																		className={`w-full ${inputCls} py-1`}
 																	/>
 																) : (
 																	<span className="px-1">{row.approver || "-"}</span>
 																)}
 															</td>
-															<td className="px-2 py-1.5">
+															<td className="px-1.5 py-0.5">
 																{isEditMode ? (
 																	<input
 																		value={row.instruction}
@@ -770,7 +770,7 @@ export default function FacilityWorkLog() {
 																				e.target.value
 																			)
 																		}
-																		className={`w-full ${inputCls}`}
+																		className={`w-full ${inputCls} py-1`}
 																	/>
 																) : (
 																	<span className="px-1">{row.instruction || "-"}</span>
@@ -898,38 +898,27 @@ export default function FacilityWorkLog() {
 								<div className="col-span-4" />
 							</div>
 
-							<div className="grid grid-cols-12 gap-2 items-center">
-								<span className={`col-span-1 ${labelCls}`}>정원</span>
-								<input
-									value={modalForm.fcnt}
-									onChange={(e) => setModalForm((p) => ({ ...p, fcnt: e.target.value }))}
-									className={`col-span-1 ${inputCls}`}
-								/>
-								<span className={`col-span-1 ${labelCls}`}>현인원</span>
-								<input
-									value={modalForm.hcnt}
-									onChange={(e) => setModalForm((p) => ({ ...p, hcnt: e.target.value }))}
-									className={`col-span-1 ${inputCls}`}
-								/>
-								<span className={`col-span-1 ${labelCls}`}>이용인원</span>
-								<input
-									value={modalForm.scnt}
-									onChange={(e) => setModalForm((p) => ({ ...p, scnt: e.target.value }))}
-									className={`col-span-1 ${inputCls}`}
-								/>
-								<span className={`col-span-1 ${labelCls}`}>신규입소자</span>
-								<input
-									value={modalForm.ncnt}
-									onChange={(e) => setModalForm((p) => ({ ...p, ncnt: e.target.value }))}
-									className={`col-span-1 ${inputCls}`}
-								/>
-								<span className={`col-span-1 ${labelCls}`}>퇴소자</span>
-								<input
-									value={modalForm.ecnt}
-									onChange={(e) => setModalForm((p) => ({ ...p, ecnt: e.target.value }))}
-									className={`col-span-1 ${inputCls}`}
-								/>
-								<div className="col-span-2" />
+							<div className="grid grid-cols-5 gap-2">
+								{[
+									{ label: "정원", value: modalForm.fcnt, key: "fcnt" as const },
+									{ label: "현인원", value: modalForm.hcnt, key: "hcnt" as const },
+									{ label: "이용인원", value: modalForm.scnt, key: "scnt" as const },
+									{ label: "신규입소자", value: modalForm.ncnt, key: "ncnt" as const },
+									{ label: "퇴소자", value: modalForm.ecnt, key: "ecnt" as const },
+								].map((item) => (
+									<div key={item.key} className="flex min-w-0 items-center gap-1">
+										<span className="flex h-10 shrink-0 items-center justify-center whitespace-nowrap rounded border border-blue-300 bg-blue-100 px-2 text-sm font-medium text-blue-900">
+											{item.label}
+										</span>
+										<input
+											value={item.value}
+											onChange={(e) =>
+												setModalForm((p) => ({ ...p, [item.key]: e.target.value }))
+											}
+											className={`${inputCls} h-10 min-w-0 flex-1 px-2`}
+										/>
+									</div>
+								))}
 							</div>
 
 							<div className="grid grid-cols-12 gap-2 items-center">
@@ -946,18 +935,17 @@ export default function FacilityWorkLog() {
 								<textarea
 									value={modalForm.jdes}
 									onChange={(e) => setModalForm((p) => ({ ...p, jdes: e.target.value }))}
-									rows={8}
-									className={`col-span-10 ${inputCls} resize-none`}
+									rows={14}
+									className={`col-span-10 ${inputCls} min-h-[280px] resize-none`}
 								/>
 							</div>
 
-							<div className="grid grid-cols-12 gap-2">
-								<span className={`${modalLabelCls} self-start`}>지출내역</span>
-								<textarea
+							<div className="grid grid-cols-12 gap-2 items-center">
+								<span className={modalLabelCls}>지출내역</span>
+								<input
 									value={modalForm.otdes}
 									onChange={(e) => setModalForm((p) => ({ ...p, otdes: e.target.value }))}
-									rows={4}
-									className={`col-span-10 ${inputCls} resize-none`}
+									className={`col-span-10 ${inputCls}`}
 								/>
 							</div>
 						</div>

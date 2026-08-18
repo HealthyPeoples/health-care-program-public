@@ -66,14 +66,14 @@ function buildOnePage(data: FacilityWorkLogPrintData): string {
     </table>
     <table class="block">
       <tr><th>외박명단</th><td>${nbsp(data.svnm)}</td></tr>
-      <tr><th>업무내용</th><td class="pre">${nbsp(data.jdes)}</td></tr>
-      <tr><th>지출내역</th><td class="pre">${nbsp(data.otdes)}</td></tr>
+      <tr><th>업무내용</th><td class="pre jdes">${nbsp(data.jdes)}</td></tr>
+      <tr><th>지출내역</th><td class="pre otdes">${nbsp(data.otdes)}</td></tr>
     </table>
     <div class="sec-title">지시사항</div>
     <table class="inst">
       <thead><tr><th>결재자</th><th>지시사항</th></tr></thead>
       <tbody>
-        ${rows || `<tr><td colspan="2" style="text-align:center;padding:16px">지시사항이 없습니다.</td></tr>`}
+        ${rows || `<tr><td colspan="2" class="inst-empty">지시사항이 없습니다.</td></tr>`}
       </tbody>
     </table>
   </div>`;
@@ -113,9 +113,13 @@ function sharedStyles(): string {
     .stat td { width: 11%; text-align: center; }
     .block { margin-top: 8px; }
     .block th { width: 90px; background: #f3f3f3; text-align: center; font-weight: normal; }
-    .pre { white-space: pre-wrap; min-height: 64px; }
-    .sec-title { margin: 12px 0 6px; font-weight: bold; }
-    .inst th { background: #f3f3f3; text-align: center; font-weight: normal; }
+    .pre { white-space: pre-wrap; word-break: break-word; }
+    .jdes { min-height: 132mm; }
+    .otdes { min-height: 22px; padding: 4px 8px; }
+    .sec-title { margin: 6px 0 4px; font-weight: bold; }
+    .inst th { background: #f3f3f3; text-align: center; font-weight: normal; padding: 3px 6px; }
+    .inst td { padding: 3px 6px; height: 22px; }
+    .inst-empty { text-align: center; padding: 6px; }
     .c-approver { width: 22%; }
   `;
 }
