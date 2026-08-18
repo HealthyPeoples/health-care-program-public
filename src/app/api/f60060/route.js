@@ -6,12 +6,45 @@
  *
  * @module app/api/f60060/route
  */
-import { connPool } from '../../../config/server';
+import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdEmptyTz as normalizeYmd } from '../../../utils/normalizeYmd';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F60060]';
+
+/** MIMG: blob 경로 JSON 저장용. 없으면 추가, 짧으면 NVARCHAR(MAX)로 확장 */
+let mimgColumnEnsured = false;
+async function ensureMimgColumn(pool) {
+  if (mimgColumnEnsured) return;
+  try {
+    const check = await pool.request().query(`
+      SELECT DATA_TYPE AS dataType, CHARACTER_MAXIMUM_LENGTH AS maxLen
+      FROM [돌봄시설DB].INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = 'dbo'
+        AND TABLE_NAME = 'F60060'
+        AND COLUMN_NAME = 'MIMG'
+    `);
+    const row = check.recordset?.[0];
+    if (!row) {
+      await pool.request().query(`
+        ALTER TABLE ${TABLE_NAME} ADD [MIMG] NVARCHAR(MAX) NULL;
+      `);
+      console.log('F60060.MIMG 컬럼을 NVARCHAR(MAX)로 추가했습니다.');
+    } else {
+      const maxLen = row.maxLen;
+      if (typeof maxLen === 'number' && maxLen > 0 && maxLen < 4000) {
+        await pool.request().query(`
+          ALTER TABLE ${TABLE_NAME} ALTER COLUMN [MIMG] NVARCHAR(MAX) NULL;
+        `);
+        console.log('F60060.MIMG 컬럼을 NVARCHAR(MAX)로 확장했습니다. (이전 길이:', maxLen, ')');
+      }
+    }
+    mimgColumnEnsured = true;
+  } catch (e) {
+    console.error('F60060 MIMG 컬럼 확보 실패:', e?.message || e);
+  }
+}
 
 
 export async function GET(req) {
@@ -28,6 +61,8 @@ export async function GET(req) {
     if (!pool) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
+
+    await ensureMimgColumn(pool);
 
     const request = pool.request();
     request.input('ANCD', ancd ?? gate.sessionAncd);
@@ -99,6 +134,8 @@ export async function POST(req) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
+    await ensureMimgColumn(pool);
+
     const request = pool.request();
     request.input('ANCD', ancd);
     request.input('MDT', String(mdt).slice(0, 10));
@@ -120,7 +157,18 @@ export async function POST(req) {
       'TRAINER_NM',
     ];
 
-    editableKeys.forEach((k) => request.input(k, pick(k) == null ? null : String(pick(k))));
+    editableKeys.forEach((k) => {
+      const v = pick(k);
+      if (k === 'MIMG') {
+        request.input(
+          k,
+          sql.NVarChar(sql.MAX),
+          v == null || String(v).trim() === '' ? null : String(v),
+        );
+        return;
+      }
+      request.input(k, v == null ? null : String(v));
+    });
 
     const setSql = editableKeys
       .map((k) => `T.[${k}] = @${k}`)
@@ -168,6 +216,8 @@ export async function DELETE(req) {
     if (!pool) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
+
+    await ensureMimgColumn(pool);
 
     const request = pool.request();
     request.input('ANCD', ancd);

@@ -18,6 +18,7 @@ export type MeetingMinutesPrintData = {
 	attendees: string;
 	appliedDate: string;
 	appliedContent: string;
+	photoSrcs?: string[];
 };
 
 export { openPrintPreviewWindow };
@@ -75,6 +76,15 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
 	const meetingTime = nbsp(formatMeetingTime(data.startTime, data.endTime));
 	const names = parseAttendeeNames(data.attendees);
 	const signatureRows = buildSignatureRows(names);
+	const photoSrcs = Array.isArray(data.photoSrcs) ? data.photoSrcs.filter(Boolean) : [];
+	const photoHtml = photoSrcs.length
+		? photoSrcs
+				.map(
+					(src) =>
+						`<div class="photo-item"><img src="${escapeHtml(src)}" alt="회의록 사진" /></div>`
+				)
+				.join("")
+		: "";
 
 	return `<!DOCTYPE html>
 <html lang="ko">
@@ -93,11 +103,19 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
     }
     .page { width: 100%; max-width: 190mm; margin: 0 auto; }
     .top-bar {
-      position: relative;
-      margin-bottom: 6px;
-      min-height: 56px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
     }
-    .doc-title-wrap { text-align: center; padding-top: 6px; }
+    .top-spacer { width: 168px; flex-shrink: 0; }
+    .doc-title-wrap {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      padding-top: 10px;
+    }
     .doc-title {
       display: inline-block;
       font-size: 22pt;
@@ -109,10 +127,8 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
     table { border-collapse: collapse; width: 100%; }
     td, th { border: 1px solid #000; vertical-align: middle; }
     .approval {
-      position: absolute;
-      right: 0;
-      top: 0;
       width: 168px;
+      flex-shrink: 0;
       font-size: 9.5pt;
       text-align: center;
     }
@@ -120,9 +136,9 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
       background: #f5f5f5;
       font-weight: normal;
       padding: 4px 2px;
-      height: 26px;
+      height: 24px;
     }
-    .approval .sign-box { height: 52px; background: #fff; }
+    .approval .sign-box { height: 48px; background: #fff; }
     .main { margin-bottom: 0; }
     .main .lbl {
       width: 72px;
@@ -130,29 +146,32 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
       background: #f5f5f5;
       text-align: center;
       font-weight: normal;
-      padding: 6px 4px;
+      padding: 5px 4px;
       white-space: nowrap;
     }
-    .main .val { padding: 6px 8px; min-height: 28px; }
+    .main .val { padding: 5px 8px; }
     .main .val-time { width: 28%; }
     .main .val-date { width: 22%; }
     .main .content-cell {
-      padding: 10px 12px;
-      min-height: 220px;
+      padding: 8px 10px;
       vertical-align: top;
+    }
+    .main .content-cell .content-inner {
+      min-height: 78mm;
       white-space: pre-wrap;
       word-break: break-word;
       line-height: 1.55;
     }
     .main .attendee-cell {
-      padding: 8px 10px;
-      min-height: 36px;
+      padding: 6px 10px;
       line-height: 1.5;
     }
     .main .reflect-cell {
-      padding: 10px 12px;
-      min-height: 100px;
+      padding: 6px 10px;
       vertical-align: top;
+    }
+    .main .reflect-cell .reflect-inner {
+      min-height: 22mm;
       white-space: pre-wrap;
       word-break: break-word;
     }
@@ -163,30 +182,50 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
       margin-top: -1px;
     }
     .sign-area { flex: 1; min-width: 0; }
-    .sign-grid { font-size: 10pt; }
+    .sign-grid { font-size: 10pt; height: 100%; }
     .sign-grid th {
       background: #f5f5f5;
       font-weight: normal;
       text-align: center;
       padding: 5px 2px;
-      height: 26px;
+      height: 24px;
     }
     .sign-grid .sig-name {
       width: 22%;
-      padding: 6px 4px;
+      padding: 5px 4px;
       text-align: center;
-      height: 30px;
+      height: 28px;
     }
     .sign-grid .sig-cell {
       width: 28%;
-      height: 30px;
+      height: 28px;
     }
     .memo-box {
-      width: 32%;
-      min-width: 56mm;
+      width: 36%;
+      min-width: 58mm;
       border: 1px solid #000;
       border-left: none;
-      min-height: 198px;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-height: 186px;
+    }
+    .memo-box .photo-item {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid #ccc;
+      background: #fff;
+    }
+    .memo-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
     }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -196,6 +235,7 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
 <body>
   <div class="page">
     <div class="top-bar">
+      <div class="top-spacer" aria-hidden="true"></div>
       <div class="doc-title-wrap">
         <span class="doc-title">회 의 록</span>
       </div>
@@ -230,7 +270,7 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
       </tr>
       <tr>
         <td class="lbl">회의내용</td>
-        <td class="val content-cell" colspan="3">${nbsp(data.content)}</td>
+        <td class="val content-cell" colspan="3"><div class="content-inner">${nbsp(data.content)}</div></td>
       </tr>
       <tr>
         <td class="lbl">참석자</td>
@@ -242,7 +282,7 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
       </tr>
       <tr>
         <td class="lbl">반영내용</td>
-        <td class="val reflect-cell" colspan="3">${nbsp(data.appliedContent)}</td>
+        <td class="val reflect-cell" colspan="3"><div class="reflect-inner">${nbsp(data.appliedContent)}</div></td>
       </tr>
     </table>
 
@@ -258,7 +298,7 @@ export function buildMeetingMinutesPrintHtml(data: MeetingMinutesPrintData): str
           ${signatureRows}
         </table>
       </div>
-      <div class="memo-box"></div>
+      <div class="memo-box">${photoHtml}</div>
     </div>
   </div>
 </body>

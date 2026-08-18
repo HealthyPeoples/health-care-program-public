@@ -207,6 +207,64 @@ async function uploadGuardianMeetingPhoto({ ancd, buffer, fileName, mimeType, si
 }
 
 /**
+ * 직원회의록(F60010.MIMG) 사진.
+ * @param {{ ancd: string|number, buffer: Buffer, fileName: string, mimeType: string, size?: number }} opts
+ */
+async function uploadEmployeeMeetingPhoto({ ancd, buffer, fileName, mimeType, size }) {
+  const { mime, name } = assertAllowedImage(fileName, mimeType, size ?? buffer?.length);
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('업로드할 이미지 데이터가 없습니다.');
+  }
+
+  const container = await getContainerClient();
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 10);
+  const ext = extFromMime(mime);
+  const blobName = `f60010/${sanitizeBlobPathSegment(ancd)}/${stamp}-${rand}.${ext}`;
+
+  const blockBlob = container.getBlockBlobClient(blobName);
+  await blockBlob.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mime },
+  });
+
+  return {
+    blobName,
+    fileName: name.slice(0, 120),
+    contentType: mime,
+    size: buffer.length,
+  };
+}
+
+/**
+ * 직원직무교육(F60060.MIMG) 사진.
+ * @param {{ ancd: string|number, buffer: Buffer, fileName: string, mimeType: string, size?: number }} opts
+ */
+async function uploadEmployeeJobTrainingPhoto({ ancd, buffer, fileName, mimeType, size }) {
+  const { mime, name } = assertAllowedImage(fileName, mimeType, size ?? buffer?.length);
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+    throw new Error('업로드할 이미지 데이터가 없습니다.');
+  }
+
+  const container = await getContainerClient();
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 10);
+  const ext = extFromMime(mime);
+  const blobName = `f60060/${sanitizeBlobPathSegment(ancd)}/${stamp}-${rand}.${ext}`;
+
+  const blockBlob = container.getBlockBlobClient(blobName);
+  await blockBlob.uploadData(buffer, {
+    blobHTTPHeaders: { blobContentType: mime },
+  });
+
+  return {
+    blobName,
+    fileName: name.slice(0, 120),
+    contentType: mime,
+    size: buffer.length,
+  };
+}
+
+/**
  * 자료실 파일 → 전용 컨테이너(data-room)에 기관코드 폴더로 저장
  * 사진(program-daily-log/{ancd}/...)과 동일하게 기관코드가 가상 폴더가 됩니다.
  * blobName 예: 190000/ms6c1a-ab12cd_서식.xlsx
@@ -265,8 +323,22 @@ function isBedsorePhotoBlob(blobName) {
   return String(blobName || '').trim().startsWith('f33010/');
 }
 
+function isEmployeeMeetingBlob(blobName) {
+  return String(blobName || '').trim().startsWith('f60010/');
+}
+
+function isEmployeeJobTrainingBlob(blobName) {
+  return String(blobName || '').trim().startsWith('f60060/');
+}
+
 function isSharedPhotoBlob(blobName) {
-  return isProgramDailyLogBlob(blobName) || isGuardianMeetingBlob(blobName) || isBedsorePhotoBlob(blobName);
+  return (
+    isProgramDailyLogBlob(blobName) ||
+    isGuardianMeetingBlob(blobName) ||
+    isBedsorePhotoBlob(blobName) ||
+    isEmployeeMeetingBlob(blobName) ||
+    isEmployeeJobTrainingBlob(blobName)
+  );
 }
 
 /** 자료실 blob 경로 형식 검증 (기관코드 폴더 하위) */
@@ -379,8 +451,12 @@ module.exports = {
   uploadProgramDailyLogPhoto,
   uploadBedsorePhoto,
   uploadGuardianMeetingPhoto,
+  uploadEmployeeMeetingPhoto,
+  uploadEmployeeJobTrainingPhoto,
   uploadDataRoomFile,
   isGuardianMeetingBlob,
+  isEmployeeMeetingBlob,
+  isEmployeeJobTrainingBlob,
   deleteBlobByName,
   downloadBlobByName,
   downloadDataRoomBlob,

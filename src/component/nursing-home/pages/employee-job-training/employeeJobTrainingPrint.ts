@@ -18,6 +18,7 @@ export type JobTrainingPrintData = {
 	content: string;
 	attendees: string;
 	evaluation: string;
+	photoSrcs?: string[];
 };
 
 export { openPrintPreviewWindow };
@@ -75,6 +76,15 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
 	const trainingTime = nbsp(formatTrainingTime(data.startTime, data.endTime));
 	const names = parseAttendeeNames(data.attendees);
 	const signatureRows = buildSignatureRows(names);
+	const photoSrcs = Array.isArray(data.photoSrcs) ? data.photoSrcs.filter(Boolean) : [];
+	const photoHtml = photoSrcs.length
+		? photoSrcs
+				.map(
+					(src) =>
+						`<div class="photo-item"><img src="${escapeHtml(src)}" alt="직무교육 사진" /></div>`
+				)
+				.join("")
+		: "";
 
 	return `<!DOCTYPE html>
 <html lang="ko">
@@ -82,8 +92,9 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
   <meta charset="UTF-8" />
   <title>직원 직무교육</title>
   <style>
-    @page { size: A4 portrait; margin: 12mm 14mm; }
+    @page { size: A4 portrait; margin: 8mm 10mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       font-family: 'Malgun Gothic', '맑은 고딕', Batang, serif;
       font-size: 10.5pt;
@@ -91,13 +102,27 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
       background: #fff;
       line-height: 1.45;
     }
-    .page { width: 100%; max-width: 190mm; margin: 0 auto; }
-    .top-bar {
-      position: relative;
-      margin-bottom: 6px;
-      min-height: 56px;
+    .page {
+      width: 100%;
+      height: 281mm;
+      display: flex;
+      flex-direction: column;
     }
-    .doc-title-wrap { text-align: center; padding-top: 6px; }
+    .top-bar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+    .top-spacer { width: 168px; flex-shrink: 0; }
+    .doc-title-wrap {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      padding-top: 10px;
+    }
     .doc-title {
       display: inline-block;
       font-size: 20pt;
@@ -109,10 +134,8 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
     table { border-collapse: collapse; width: 100%; }
     td, th { border: 1px solid #000; vertical-align: middle; }
     .approval {
-      position: absolute;
-      right: 0;
-      top: 0;
       width: 168px;
+      flex-shrink: 0;
       font-size: 9.5pt;
       text-align: center;
     }
@@ -123,7 +146,11 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
       height: 26px;
     }
     .approval .sign-box { height: 52px; background: #fff; }
-    .main { margin-bottom: 0; }
+    .main {
+      margin-bottom: 0;
+      flex: 1 1 auto;
+      height: 100%;
+    }
     .main .lbl {
       width: 72px;
       min-width: 72px;
@@ -138,28 +165,70 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
     .main .val-date { width: 22%; }
     .main .val-instructor { width: 26%; }
     .main .content-cell {
-      padding: 10px 12px;
-      min-height: 240px;
+      padding: 8px 10px;
       vertical-align: top;
+    }
+    .main .content-cell .content-inner {
+      min-height: 98mm;
+      height: 100%;
       white-space: pre-wrap;
       word-break: break-word;
       line-height: 1.55;
     }
     .main .attendee-cell {
       padding: 8px 10px;
-      min-height: 48px;
+      min-height: 36px;
       line-height: 1.5;
       white-space: pre-wrap;
       word-break: break-word;
     }
     .main .eval-cell {
-      padding: 10px 12px;
-      min-height: 100px;
+      padding: 8px 10px;
       vertical-align: top;
+    }
+    .main .eval-cell .eval-inner {
+      min-height: 62mm;
+      height: 100%;
       white-space: pre-wrap;
       word-break: break-word;
+      line-height: 1.55;
     }
-    .sign-grid { font-size: 10pt; margin-top: -1px; }
+    .footer-wrap {
+      display: flex;
+      align-items: stretch;
+      width: 100%;
+      margin-top: -1px;
+      flex-shrink: 0;
+    }
+    .sign-area { flex: 1; min-width: 0; }
+    .sign-grid { font-size: 10pt; height: 100%; }
+    .memo-box {
+      width: 36%;
+      min-width: 58mm;
+      border: 1px solid #000;
+      border-left: none;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-height: 186px;
+    }
+    .memo-box .photo-item {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid #ccc;
+      background: #fff;
+    }
+    .memo-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+    }
     .sign-grid th {
       background: #f5f5f5;
       font-weight: normal;
@@ -185,6 +254,7 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
 <body>
   <div class="page">
     <div class="top-bar">
+      <div class="top-spacer" aria-hidden="true"></div>
       <div class="doc-title-wrap">
         <span class="doc-title">직원 직무교육</span>
       </div>
@@ -221,7 +291,7 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
       </tr>
       <tr>
         <td class="lbl">교육내용</td>
-        <td class="val content-cell" colspan="5">${nbsp(data.content)}</td>
+        <td class="val content-cell" colspan="5"><div class="content-inner">${nbsp(data.content)}</div></td>
       </tr>
       <tr>
         <td class="lbl">참석자</td>
@@ -229,19 +299,24 @@ export function buildJobTrainingPrintHtml(data: JobTrainingPrintData): string {
       </tr>
       <tr>
         <td class="lbl">교육평가</td>
-        <td class="val eval-cell" colspan="5">${nbsp(data.evaluation)}</td>
+        <td class="val eval-cell" colspan="5"><div class="eval-inner">${nbsp(data.evaluation)}</div></td>
       </tr>
     </table>
 
-    <table class="sign-grid">
-      <tr>
-        <th>참석자</th>
-        <th>사인</th>
-        <th>참석자</th>
-        <th>사인</th>
-      </tr>
-      ${signatureRows}
-    </table>
+    <div class="footer-wrap">
+      <div class="sign-area">
+        <table class="sign-grid">
+          <tr>
+            <th>참석자</th>
+            <th>사인</th>
+            <th>참석자</th>
+            <th>사인</th>
+          </tr>
+          ${signatureRows}
+        </table>
+      </div>
+      <div class="memo-box">${photoHtml}</div>
+    </div>
   </div>
 </body>
 </html>`;
