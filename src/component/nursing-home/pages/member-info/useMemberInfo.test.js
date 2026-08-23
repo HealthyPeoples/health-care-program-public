@@ -64,8 +64,10 @@ describe('useMemberInfo — wiring', () => {
 	it('roomNoFloor 헬퍼로 층수 필터 유지', () => {
 		const hook = fs.readFileSync(HOOK_TS, 'utf8');
 		assert.match(hook, /from '\.\.\/\.\.\/utils\/roomNoFloor'/);
-		assert.match(hook, /attachLatestRoomNoByPnum<MemberData>\(list\)/);
 		assert.match(hook, /availableFloorsFromMembers\(members\)/);
+		assert.match(hook, /ROOM_NO: normalizeRoomNo/);
+		assert.doesNotMatch(hook, /attachLatestRoomNoByPnum/);
+		assert.doesNotMatch(hook, /saveRoomNoByPnum/);
 		assert.match(hook, /selectedFloor === NO_ROOM_VALUE/);
 		assert.match(hook, /extractMemberFloor\(member\)/);
 		assert.match(hook, /normalizeRoomNo\(member\?\.ROOM_NO\)/);

@@ -12,8 +12,19 @@ import React, { useState, useEffect } from "react";
 import { getCookie } from "@/utils/auth";
 import {
 	buildDailyAttendancePrintHtml,
+	classifyAttendanceDisplay,
+	isWorkClassification,
+	jobshFromWorkClassification,
+	normalizeAttendanceJobsh,
 	openPrintPreviewWindow,
+	workShiftLabel,
 } from "./employeeAttendancePrint";
+import {
+	JOB_LIST_OPTIONS,
+	compareByJobThenName,
+	employeeJobTitle,
+	formatNameWithJob,
+} from "../../utils/employeeJobList";
 
 interface Employee {
 	ANCD: number;
@@ -21,6 +32,7 @@ interface Employee {
 	EMPNM: string;
 	EMPHP?: string;
 	JOB?: string;
+	JOBLIST?: number | string | null;
 	JOBST?: string;
 	JOBADD?: string;
 	JOBSH?: string;
@@ -38,6 +50,8 @@ interface AttendanceData {
 	STM?: string;
 	ETM?: string;
 	EMPNM?: string;
+	JOB?: string;
+	JOBLIST?: number | string | null;
 	[key: string]: unknown;
 }
 
@@ -62,7 +76,7 @@ const initialForm: AttendanceForm = {
 	employeeName: "",
 	workLocation: "",
 	workType: "1",
-	workClassification: "근무",
+	workClassification: "근무(주간)",
 	workDate: "",
 	workStartTime: "",
 	workEndTime: "",
@@ -70,7 +84,9 @@ const initialForm: AttendanceForm = {
 };
 
 const WORK_CLASSIFICATIONS = [
-	"근무",
+	"근무(주간)",
+	"근무(야간)",
+	"근무(심야)",
 	"연차",
 	"월차",
 	"정기휴무",
@@ -79,22 +95,6 @@ const WORK_CLASSIFICATIONS = [
 	"경조사",
 	"결근",
 ];
-
-/** JOBSH — 근무형태: 1=주간, 2=야간, 3=심야 */
-const JOBSH_OPTIONS = [
-	{ value: "1", label: "주간" },
-	{ value: "2", label: "야간" },
-	{ value: "3", label: "심야" },
-];
-
-function normalizeJobsh(value?: string | null): string {
-	const v = String(value ?? "").trim();
-	if (v === "1" || v === "2" || v === "3") return v;
-	if (v === "주간" || /day/i.test(v)) return "1";
-	if (v === "야간" || /night/i.test(v)) return "2";
-	if (v === "심야" || v === "저녁") return "3";
-	return "";
-}
 
 /**
  * WGU 코드 (근무일정과 동일)
@@ -178,14 +178,17 @@ export default function EmployeeAttendance() {
 	};
 
 	// 근무구분 코드를 텍스트로 변환 (목록 표시)
-	const getWorkClassificationText = (wgu?: string, hodes?: string): string => {
-		return getWorkClassificationTextFromCode(wgu, hodes);
+	const getWorkClassificationText = (row: AttendanceData): string => {
+		return classifyAttendanceDisplay(row);
 	};
 
 	// 텍스트를 근무구분 코드로 변환
 	const getWorkClassificationCode = (text: string): string => {
 		switch (String(text ?? "").trim()) {
 			case "근무":
+			case "근무(주간)":
+			case "근무(야간)":
+			case "근무(심야)":
 				return "1";
 			case "연차":
 			case "년차":
@@ -210,26 +213,12 @@ export default function EmployeeAttendance() {
 	};
 
 	// 근무구분 코드를 텍스트로 변환 (폼 바인딩)
-	const getWorkClassificationTextFromCode = (wgu?: string, hodes?: string): string => {
-		const w = String(wgu ?? "").trim();
-		const h = String(hodes ?? "").trim();
-		if (!w || w === "1") return "근무";
-		if (w === "2") return "연차";
-		if (w === "3") return "월차";
-		if (w === "4") return "정기휴무";
-		if (w === "5") return "대휴";
-		if (w === "6") return "병가";
-		if (w === "7") return "경조사";
-		if (w === "9") return "결근";
-		// 구 코드 호환
-		if (/월/.test(h)) return "월차";
-		if (/연|년/.test(h)) return "연차";
-		if (/대휴/.test(h)) return "대휴";
-		if (/병/.test(h)) return "병가";
-		if (/경조/.test(h)) return "경조사";
-		if (/결근/.test(h)) return "결근";
-		if (/정기/.test(h)) return "정기휴무";
-		return "근무";
+	const getWorkClassificationTextFromCode = (
+		wgu?: string,
+		hodes?: string,
+		jobsh?: string
+	): string => {
+		return classifyAttendanceDisplay({ WGU: wgu, HODES: hodes, JOBSH: jobsh });
 	};
 
 	const defaultHodesForClassification = (text: string): string => {
@@ -290,10 +279,11 @@ export default function EmployeeAttendance() {
 				employeeId: String(existingAttendance.EMPNO || ""),
 				employeeName: existingAttendance.EMPNM || employee.EMPNM || "",
 				workLocation: existingAttendance.JOBADD || employee.JOBADD || "",
-				workType: normalizeJobsh(existingAttendance.JOBSH || employee.JOBSH) || "1",
+				workType: normalizeAttendanceJobsh(existingAttendance.JOBSH || employee.JOBSH) || "1",
 				workClassification: getWorkClassificationTextFromCode(
 					existingAttendance.WGU,
-					existingAttendance.HODES
+					existingAttendance.HODES,
+					existingAttendance.JOBSH || employee.JOBSH
 				),
 				workDate: existingAttendance.WDT || formatDate(workDate),
 				workStartTime: existingAttendance.STM || "",
@@ -309,7 +299,8 @@ export default function EmployeeAttendance() {
 				employeeId: String(employee.EMPNO || ""),
 				employeeName: employee.EMPNM || "",
 				workLocation: employee.JOBADD || "",
-				workType: normalizeJobsh(employee.JOBSH) || "1",
+				workType: normalizeAttendanceJobsh(employee.JOBSH) || "1",
+				workClassification: workShiftLabel(employee.JOBSH),
 				workDate: formatDate(workDate),
 			});
 		}
@@ -322,8 +313,7 @@ export default function EmployeeAttendance() {
 			return false;
 		}
 		if (selectedJob && selectedJob !== "") {
-			const employeeJob = String(employee.JOB || "").trim();
-			if (employeeJob !== selectedJob) {
+			if (employeeJobTitle(employee) !== selectedJob) {
 				return false;
 			}
 		}
@@ -334,12 +324,17 @@ export default function EmployeeAttendance() {
 			}
 		}
 		return true;
-	});
+	}).sort(compareByJobThenName);
 
-	// 고유한 직책 목록 추출
-	const uniqueJobs = Array.from(
-		new Set(employeeList.map((emp) => emp.JOB).filter((job) => job && job.trim() !== ""))
+	const standardJobLabels: string[] = JOB_LIST_OPTIONS.map((o) => o.label);
+	const leftoverJobs = Array.from(
+		new Set(
+			[...employeeList, ...attendanceData]
+				.map((row) => employeeJobTitle(row))
+				.filter((job) => job && !standardJobLabels.includes(job))
+		)
 	).sort();
+	const uniqueJobs = [...standardJobLabels, ...leftoverJobs];
 
 	// 페이지네이션 계산
 	const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
@@ -519,7 +514,7 @@ export default function EmployeeAttendance() {
 			...initialForm,
 			workDate: formatDate(workDate),
 			workType: "1",
-			workClassification: "근무",
+			workClassification: "근무(주간)",
 		});
 		setCreateEmpSearch("");
 		setIsCreateModalOpen(true);
@@ -534,7 +529,10 @@ export default function EmployeeAttendance() {
 			employeeId: String(employee.EMPNO || ""),
 			employeeName: employee.EMPNM || "",
 			workLocation: employee.JOBADD || prev.workLocation || "",
-			workType: normalizeJobsh(employee.JOBSH) || prev.workType || "1",
+			workType: normalizeAttendanceJobsh(employee.JOBSH) || prev.workType || "1",
+			workClassification: isWorkClassification(prev.workClassification)
+				? workShiftLabel(employee.JOBSH)
+				: prev.workClassification,
 			workDate: prev.workDate || formatDate(workDate),
 		}));
 	};
@@ -548,11 +546,21 @@ export default function EmployeeAttendance() {
 		return () => clearTimeout(timer);
 	}, [createEmpSearch, isCreateModalOpen]);
 
-	// 근태 목록 페이지네이션 계산
-	const attendanceTotalPages = Math.ceil(attendanceData.length / attendanceItemsPerPage);
+	// 근태 목록 페이지네이션 계산 (직책 필터 + 직책 순서)
+	const filteredAttendanceData = attendanceData.filter((row) => {
+		if (selectedJob && selectedJob !== "") {
+			return employeeJobTitle(row) === selectedJob;
+		}
+		return true;
+	});
+	const sortedAttendanceData = [...filteredAttendanceData].sort(compareByJobThenName);
+	const allFilteredSelected =
+		sortedAttendanceData.length > 0 &&
+		sortedAttendanceData.every((row) => selectedPrintKeys.has(attendanceRowKey(row)));
+	const attendanceTotalPages = Math.ceil(sortedAttendanceData.length / attendanceItemsPerPage);
 	const attendanceStartIndex = (attendanceCurrentPage - 1) * attendanceItemsPerPage;
 	const attendanceEndIndex = attendanceStartIndex + attendanceItemsPerPage;
-	const currentAttendanceItems = attendanceData.slice(attendanceStartIndex, attendanceEndIndex);
+	const currentAttendanceItems = sortedAttendanceData.slice(attendanceStartIndex, attendanceEndIndex);
 
 	// 근태 목록 페이지 변경 핸들러
 	const handleAttendancePageChange = (page: number) => {
@@ -575,6 +583,7 @@ export default function EmployeeAttendance() {
 	// 필터 변경 시 페이지 초기화
 	useEffect(() => {
 		setCurrentPage(1);
+		setAttendanceCurrentPage(1);
 	}, [selectedJob, selectedWorkStatus]);
 
 	// 핸들러 함수들
@@ -646,7 +655,10 @@ export default function EmployeeAttendance() {
 				EMPNO: createFormData.EMPNO,
 				WDT: createFormData.workDate || formatDate(workDate),
 				JOBADD: createFormData.workLocation,
-				JOBSH: normalizeJobsh(createFormData.workType) || createFormData.workType || "1",
+				JOBSH: jobshFromWorkClassification(
+					createFormData.workClassification,
+					normalizeAttendanceJobsh(createFormData.workType) || "1"
+				),
 				WGU: wgu,
 				HODES: hodes,
 				STM: createFormData.workStartTime,
@@ -719,14 +731,11 @@ export default function EmployeeAttendance() {
 	};
 
 	const handleSelectAll = () => {
-		if (attendanceData.length === 0) return;
-		const allSelected =
-			attendanceData.length > 0 &&
-			attendanceData.every((row) => selectedPrintKeys.has(attendanceRowKey(row)));
-		if (allSelected) {
+		if (sortedAttendanceData.length === 0) return;
+		if (allFilteredSelected) {
 			setSelectedPrintKeys(new Set());
 		} else {
-			setSelectedPrintKeys(new Set(attendanceData.map(attendanceRowKey)));
+			setSelectedPrintKeys(new Set(sortedAttendanceData.map(attendanceRowKey)));
 		}
 	};
 
@@ -775,7 +784,10 @@ export default function EmployeeAttendance() {
 				EMPNO: formData.EMPNO,
 				WDT: formatDate(workDate),
 				JOBADD: formData.workLocation,
-				JOBSH: normalizeJobsh(formData.workType) || formData.workType || "1",
+				JOBSH: jobshFromWorkClassification(
+					formData.workClassification,
+					normalizeAttendanceJobsh(formData.workType) || "1"
+				),
 				WGU: wgu,
 				HODES: hodes,
 				STM: formData.workStartTime,
@@ -880,13 +892,10 @@ export default function EmployeeAttendance() {
 						<button
 							type="button"
 							onClick={handleSelectAll}
-							disabled={attendanceData.length === 0}
+							disabled={sortedAttendanceData.length === 0}
 							className="rounded border border-blue-400 bg-white px-3 py-1 text-xs font-medium text-blue-900 hover:bg-blue-100 disabled:opacity-50"
 						>
-							{attendanceData.length > 0 &&
-							attendanceData.every((row) => selectedPrintKeys.has(attendanceRowKey(row)))
-								? "전체해제"
-								: "전체선택"}
+							{allFilteredSelected ? "전체해제" : "전체선택"}
 						</button>
 						<button
 							type="button"
@@ -901,6 +910,21 @@ export default function EmployeeAttendance() {
 							체크한 항목만 출력됩니다
 						</span>
 					</div>
+					<div className="border-b border-blue-100 px-3 py-2">
+						<label className="text-xs text-blue-900/80">직책</label>
+						<select
+							value={selectedJob}
+							onChange={(e) => setSelectedJob(e.target.value)}
+							className="mt-0.5 w-full rounded border border-blue-300 bg-white px-2 py-1 text-sm text-blue-900"
+						>
+							<option value="">직책 전체</option>
+							{uniqueJobs.map((job) => (
+								<option key={job} value={job}>
+									{job}
+								</option>
+							))}
+						</select>
+					</div>
 					<div className="flex-1 overflow-auto">
 						<table className="w-full text-sm">
 							<thead className="sticky top-0 z-10 border-b border-blue-200 bg-blue-100">
@@ -908,14 +932,9 @@ export default function EmployeeAttendance() {
 									<th className="border-r border-blue-200 px-1 py-2 text-center font-semibold text-blue-900 w-8">
 										<input
 											type="checkbox"
-											checked={
-												attendanceData.length > 0 &&
-												attendanceData.every((row) =>
-													selectedPrintKeys.has(attendanceRowKey(row))
-												)
-											}
+											checked={allFilteredSelected}
 											onChange={handleSelectAll}
-											disabled={attendanceData.length === 0}
+											disabled={sortedAttendanceData.length === 0}
 											className="rounded border-blue-400"
 											title="전체선택"
 										/>
@@ -947,6 +966,12 @@ export default function EmployeeAttendance() {
 											근태 데이터가 없습니다.
 										</td>
 									</tr>
+								) : sortedAttendanceData.length === 0 ? (
+									<tr>
+										<td colSpan={5} className="px-3 py-8 text-center text-blue-900/60">
+											해당 직책의 근태가 없습니다.
+										</td>
+									</tr>
 								) : (
 									currentAttendanceItems.map((row) => {
 										const isSelected =
@@ -963,10 +988,11 @@ export default function EmployeeAttendance() {
 														employeeId: String(row.EMPNO || ""),
 														employeeName: row.EMPNM || "",
 														workLocation: row.JOBADD || "",
-														workType: normalizeJobsh(row.JOBSH) || "1",
+														workType: normalizeAttendanceJobsh(row.JOBSH) || "1",
 														workClassification: getWorkClassificationTextFromCode(
 															row.WGU,
-															row.HODES
+															row.HODES,
+															row.JOBSH
 														),
 														workDate: row.WDT || formatDate(workDate),
 														workStartTime: row.STM || "",
@@ -990,10 +1016,10 @@ export default function EmployeeAttendance() {
 													/>
 												</td>
 												<td className="border-r border-blue-100 px-2 py-2 text-center">
-													{row.EMPNM || "-"}
+													{formatNameWithJob(row.EMPNM, row)}
 												</td>
 												<td className="border-r border-blue-100 px-2 py-2 text-center">
-													{getWorkClassificationText(row.WGU, row.HODES)}
+													{getWorkClassificationText(row)}
 												</td>
 												<td className="border-r border-blue-100 px-2 py-2 text-center">
 													{row.HODES || "-"}
@@ -1117,50 +1143,21 @@ export default function EmployeeAttendance() {
 								/>
 							</div>
 
-							{/* 근무형태 (JOBSH: 1=주간, 2=야간, 3=심야) */}
-							<div className="flex items-start gap-2">
-								<label className="w-24 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900">
-									근무형태
-								</label>
-								<div className="flex flex-1 flex-wrap gap-2">
-									{JOBSH_OPTIONS.map((opt) => (
-										<label
-											key={opt.value}
-											className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-1.5 ${
-												formData.workType === opt.value
-													? "border-blue-500 bg-blue-50"
-													: "border-blue-300 bg-white hover:bg-blue-50"
-											}`}
-										>
-											<input
-												type="radio"
-												name="workType"
-												value={opt.value}
-												checked={formData.workType === opt.value}
-												onChange={(e) =>
-													setFormData((prev) => ({ ...prev, workType: e.target.value }))
-												}
-												className="rounded border-blue-300 text-blue-600"
-											/>
-											<span className="text-sm text-blue-900">
-												{opt.label}
-											</span>
-										</label>
-									))}
-								</div>
-							</div>
-
 							{/* 근무구분 */}
 							<div className="flex items-start gap-2">
 								<label className="w-24 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900">
 									근무구분
 								</label>
 								<div className="flex-1">
-									<div className="grid grid-cols-4 gap-2">
+									<div className="grid grid-cols-3 gap-2">
 										{WORK_CLASSIFICATIONS.map((classification) => (
 											<label
 												key={classification}
-												className="flex cursor-pointer items-center gap-2 rounded border border-blue-300 bg-white px-2 py-1.5 hover:bg-blue-50"
+												className={`flex cursor-pointer items-center gap-2 rounded border px-2 py-1.5 ${
+													formData.workClassification === classification
+														? "border-blue-500 bg-blue-50"
+														: "border-blue-300 bg-white hover:bg-blue-50"
+												}`}
 											>
 												<input
 													type="radio"
@@ -1174,6 +1171,9 @@ export default function EmployeeAttendance() {
 															return {
 																...prev,
 																workClassification: next,
+																workType: isWorkClassification(next)
+																	? jobshFromWorkClassification(next)
+																	: prev.workType,
 																leaveReason:
 																	prev.leaveReason.trim() === "" ||
 																	prev.leaveReason ===
@@ -1303,8 +1303,9 @@ export default function EmployeeAttendance() {
 													</td>
 												</tr>
 											) : (
-												createEmpList
+												[...createEmpList]
 													.filter((emp) => String(emp.JOBST || "").trim() !== "9")
+													.sort(compareByJobThenName)
 													.slice(0, 50)
 													.map((emp) => {
 														const selected =
@@ -1320,7 +1321,7 @@ export default function EmployeeAttendance() {
 															>
 																<td className="px-2 py-2">{emp.EMPNM || "-"}</td>
 																<td className="px-2 py-2 text-blue-900/80">
-																	{emp.JOB || "-"}
+																	{employeeJobTitle(emp) || "-"}
 																</td>
 															</tr>
 														);
@@ -1390,47 +1391,18 @@ export default function EmployeeAttendance() {
 
 								<div className="flex items-start gap-2">
 									<label className="w-24 shrink-0 rounded border border-blue-300 bg-blue-100 px-2 py-1.5 text-sm font-medium text-blue-900">
-										근무형태
-									</label>
-									<div className="flex flex-1 flex-wrap gap-2">
-										{JOBSH_OPTIONS.map((opt) => (
-											<label
-												key={opt.value}
-												className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-1.5 ${
-													createFormData.workType === opt.value
-														? "border-blue-500 bg-blue-50"
-														: "border-blue-300 bg-white hover:bg-blue-50"
-												}`}
-											>
-												<input
-													type="radio"
-													name="createWorkType"
-													value={opt.value}
-													checked={createFormData.workType === opt.value}
-													onChange={(e) =>
-														setCreateFormData((prev) => ({
-															...prev,
-															workType: e.target.value,
-														}))
-													}
-													className="rounded border-blue-300 text-blue-600"
-												/>
-												<span className="text-sm text-blue-900">{opt.label}</span>
-											</label>
-										))}
-									</div>
-								</div>
-
-								<div className="flex items-start gap-2">
-									<label className="w-24 shrink-0 rounded border border-blue-300 bg-blue-100 px-2 py-1.5 text-sm font-medium text-blue-900">
 										근무구분
 									</label>
 									<div className="flex-1">
-										<div className="grid grid-cols-4 gap-2">
+										<div className="grid grid-cols-3 gap-2">
 											{WORK_CLASSIFICATIONS.map((classification) => (
 												<label
 													key={classification}
-													className="flex cursor-pointer items-center gap-2 rounded border border-blue-300 bg-white px-2 py-1.5 hover:bg-blue-50"
+													className={`flex cursor-pointer items-center gap-2 rounded border px-2 py-1.5 ${
+														createFormData.workClassification === classification
+															? "border-blue-500 bg-blue-50"
+															: "border-blue-300 bg-white hover:bg-blue-50"
+													}`}
 												>
 													<input
 														type="radio"
@@ -1446,6 +1418,9 @@ export default function EmployeeAttendance() {
 																return {
 																	...prev,
 																	workClassification: next,
+																	workType: isWorkClassification(next)
+																		? jobshFromWorkClassification(next)
+																		: prev.workType,
 																	leaveReason:
 																		prev.leaveReason.trim() === "" ||
 																		prev.leaveReason ===

@@ -10,6 +10,7 @@
  */
 import React from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
+import { normalizeRoomNo } from '../../utils/roomNoFloor';
 import { formatDateTimeDisplay, toDateInputString, type MemberData } from './MemberInfoUtils';
 
 export type MemberInfoFormMode = 'create' | 'edit' | 'view' | 'placeholder';
@@ -365,6 +366,16 @@ export default function MemberInfoForm({
 
 						{/* 12행 */}
 						<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+							<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">생활실</label>
+							<input
+								type="text"
+								value={newMember.ROOM_NO ?? ''}
+								onChange={(e) => onNewMemberFieldChange?.('ROOM_NO', e.target.value)}
+								className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								placeholder="예: 101호"
+							/>
+						</div>
+						<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
 							<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">층수</label>
 							<input
 								type="number"
@@ -382,7 +393,7 @@ export default function MemberInfoForm({
 								placeholder="층수 (0 이상의 정수)"
 							/>
 						</div>
-						<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+						<div className="flex flex-col col-span-12 gap-1">
 							<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">비고</label>
 							<input
 								type="text"
@@ -821,6 +832,22 @@ export default function MemberInfoForm({
 						)}
 					</div>
 					<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+						<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">생활실</label>
+						{isEditing && editedMember ? (
+							<input
+								type="text"
+								value={editedMember.ROOM_NO ?? ''}
+								onChange={(e) => onFieldChange?.('ROOM_NO', e.target.value)}
+								className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded"
+								placeholder="예: 101호"
+							/>
+						) : (
+							<span className="w-full border-b border-blue-200 py-1">
+								{normalizeRoomNo(member.ROOM_NO) !== '' ? String(member.ROOM_NO) : '-'}
+							</span>
+						)}
+					</div>
+					<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
 						<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">층수</label>
 						{isEditing && editedMember ? (
 							<input
@@ -854,7 +881,7 @@ export default function MemberInfoForm({
 							</span>
 						)}
 					</div>
-					<div className="flex flex-col col-span-12 gap-1 md:col-span-6">
+					<div className="flex flex-col col-span-12 gap-1">
 						<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded">비고</label>
 						{isEditing && editedMember ? (
 							<input

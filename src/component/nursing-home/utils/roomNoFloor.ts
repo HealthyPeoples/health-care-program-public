@@ -8,6 +8,44 @@
  */
 export const NO_ROOM_VALUE = '__NO_ROOM__';
 
+export function roomNoSortKey(roomNo: unknown): number {
+	const s = normalizeRoomNo(roomNo);
+	if (!s) return Number.POSITIVE_INFINITY;
+	const digits = s.replace(/\D/g, '');
+	if (!digits) return Number.POSITIVE_INFINITY;
+	const n = Number(digits);
+	return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+}
+
+/** 생활실 오름차순 (101호 → 102호). 방번호 없음은 맨 뒤. */
+export function compareRoomNoAsc(a: unknown, b: unknown): number {
+	const na = roomNoSortKey(a);
+	const nb = roomNoSortKey(b);
+	if (na !== nb) return na - nb;
+	return normalizeRoomNo(a).localeCompare(normalizeRoomNo(b), 'ko');
+}
+
+export function compareNameKo(a: unknown, b: unknown): number {
+	return String(a ?? '').localeCompare(String(b ?? ''), 'ko');
+}
+
+export type VitalSortMode = 'room' | 'name';
+
+/** 생활실별: 방번호 오름차순 → 이름 가나다. 수급자별: 이름 가나다. */
+export function compareVitalRow(
+	a: { livingRoom?: string; beneficiaryName?: string; seq?: number },
+	b: { livingRoom?: string; beneficiaryName?: string; seq?: number },
+	mode: VitalSortMode
+): number {
+	if (mode === 'room') {
+		const byRoom = compareRoomNoAsc(a.livingRoom, b.livingRoom);
+		if (byRoom !== 0) return byRoom;
+	}
+	const byName = compareNameKo(a.beneficiaryName, b.beneficiaryName);
+	if (byName !== 0) return byName;
+	return (Number(a.seq) || 1) - (Number(b.seq) || 1);
+}
+
 export function normalizeRoomNo(roomNo: unknown): string {
 	const s = String(roomNo ?? '').trim();
 	// F14090 등에서 미배정을 '0'으로 넣는 경우가 있어 방번호 없음으로 취급
@@ -74,33 +112,17 @@ export function availableFloorsFromMembers<
 }
 
 /**
- * 최신 YYYYMM 기준 F14090에서 ROOM_NO를 가져와 members(주로 F10010) 데이터에 병합.
- * - key: PNUM (정규화, F14090는 세션 ANCD로 이미 제한됨)
+ * 생활실/층수는 F10010에서 조회합니다. 다른 테이블을 붙이지 않습니다.
  */
 export async function attachLatestRoomNoByPnum<T extends { PNUM?: unknown; ROOM_NO?: unknown }>(
 	members: T[]
 ): Promise<T[]> {
-	if (!Array.isArray(members) || members.length === 0) return members;
-	try {
-		const res = await fetch('/api/f14090');
-		const json = await res.json();
-		if (!json?.success || !Array.isArray(json.data)) return members;
+	return Array.isArray(members) ? members : [];
+}
 
-		const roomByPnum = new Map<string, unknown>();
-		json.data.forEach((row: any) => {
-			const pnumKey = normalizePnumKey(row?.PNUM);
-			if (!pnumKey) return;
-			roomByPnum.set(pnumKey, row?.ROOM_NO ?? null);
-		});
-
-		return members.map((m) => {
-			const pnumKey = normalizePnumKey((m as any)?.PNUM);
-			const roomNo = pnumKey ? roomByPnum.get(pnumKey) : undefined;
-			return { ...(m as any), ROOM_NO: roomNo ?? (m as any).ROOM_NO ?? null };
-		}) as T[];
-	} catch {
-		return members;
-	}
+/** 생활실은 F10010.ROOM_NO에 저장합니다. */
+export async function saveRoomNoByPnum(_pnum: unknown, _roomNo: unknown): Promise<void> {
+	return;
 }
 
 /**

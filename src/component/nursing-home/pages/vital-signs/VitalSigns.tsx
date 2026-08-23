@@ -8,26 +8,29 @@
  *
  * @module component/nursing-home/pages/vital-signs/VitalSigns
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-	parseBloodPressure,
 	toNullableNumber,
 	toNullableDecimal,
 } from '../../utils/f30120Fields';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 import {
+	availableFloorsFromMembers,
+	compareVitalRow,
 	extractFloorFromRoomNo,
-	fetchRoomNoMapFromF30112,
-	normalizePnumKey,
+	normalizeRoomNo,
+	type VitalSortMode,
 } from '../../utils/roomNoFloor';
 import { buildNursingLogAllHtml, buildNursingLogHtml, openPrintWindow } from '../../utils/v30030rPrint';
+import { EmployeeSearchInput } from '../../components/EmployeeSearchInput';
 
 interface VitalSignsData {
 	id: number;
 	status: string;
 	beneficiaryName: string;
 	livingRoom: string;
-	bloodPressure: string;
+	systolicBP: string;
+	diastolicBP: string;
 	fastingBloodSugar: string;
 	postMealBloodSugar: string;
 	pulse: string;
@@ -38,17 +41,20 @@ interface VitalSignsData {
 	author: string;
 	ancd?: string;
 	pnum?: string;
+	seq: number;
 }
 
 export default function VitalSigns() {
 	const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 	const [selectedStatus, setSelectedStatus] = useState<string>('입소');
 	const [selectedLivingRoom, setSelectedLivingRoom] = useState<string>('');
+	const [sortMode, setSortMode] = useState<VitalSortMode>('room');
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
 	const [editingBackup, setEditingBackup] = useState<VitalSignsData | null>(null);
 	const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
+	const [adding, setAdding] = useState(false);
 	const [vitalSignsData, setVitalSignsData] = useState<VitalSignsData[]>([]);
 	const [nextId, setNextId] = useState(1);
 	const [currentPage, setCurrentPage] = useState(1);
@@ -75,25 +81,20 @@ export default function VitalSigns() {
 			const result = await response.json();
 			
 			if (result.success && Array.isArray(result.data)) {
-				const roomMap = await fetchRoomNoMapFromF30112(result.data.map((item: any) => item.PNUM));
 				// F30120 데이터를 vitalSignsData 형식으로 변환
 				const transformedData: VitalSignsData[] = result.data
 					.map((item: any, index: number) => {
-					// 혈압 조합 (수축기/이완기)
-					const bloodPressure = item.SBDP && item.EBDP 
-						? `${item.SBDP}/${item.EBDP}` 
-						: item.SBDP || item.EBDP || '';
-					
 					// 현황 (P_ST: '1'=입소, '9'=퇴소)
 					const status = item.P_ST === '1' ? '입소' : item.P_ST === '9' ? '퇴소' : '';
-					const roomNo = roomMap.get(normalizePnumKey(item.PNUM)) || '';
+					const roomNo = normalizeRoomNo(item.ROOM_NO);
 					
 					return {
 						id: index + 1,
 						status: status,
 						beneficiaryName: item.P_NM || '',
 						livingRoom: roomNo,
-						bloodPressure: bloodPressure,
+						systolicBP: item.SBDP != null && item.SBDP !== '' ? String(item.SBDP) : '',
+						diastolicBP: item.EBDP != null && item.EBDP !== '' ? String(item.EBDP) : '',
 						fastingBloodSugar:
 							item.SBDS != null && item.SBDS !== '' ? String(item.SBDS) : '',
 						postMealBloodSugar:
@@ -106,10 +107,15 @@ export default function VitalSigns() {
 						nursingDetails: item.NUDES || '',
 						author: String(item.NS_WRITE_NAME || item.INEMPNM || ''),
 						ancd: item.ANCD || '',
-						pnum: item.PNUM || ''
+						pnum: item.PNUM != null ? String(item.PNUM) : '',
+						seq: Number(item.VS_SEQ) > 0 ? Number(item.VS_SEQ) : 1
 					};
 				})
-					.sort((a, b) => (a.beneficiaryName || '').localeCompare(b.beneficiaryName || '', 'ko'))
+					.sort((a, b) => {
+						const byName = (a.beneficiaryName || '').localeCompare(b.beneficiaryName || '', 'ko');
+						if (byName !== 0) return byName;
+						return (a.seq || 1) - (b.seq || 1);
+					})
 					.map((row, idx) => ({ ...row, id: idx + 1 }));
 				
 				setVitalSignsData(transformedData);
@@ -117,12 +123,14 @@ export default function VitalSigns() {
 				setEditingRowId(null);
 				setEditingBackup(null);
 				setNextId(transformedData.length > 0 ? Math.max(...transformedData.map(d => d.id)) + 1 : 1);
+				return transformedData;
 			} else {
 				setVitalSignsData([]);
 				setSelectedRowId(null);
 				setEditingRowId(null);
 				setEditingBackup(null);
 				setNextId(1);
+				return [] as VitalSignsData[];
 			}
 		} catch (err) {
 			console.error('활력증상 데이터 조회 오류:', err);
@@ -131,6 +139,7 @@ export default function VitalSigns() {
 			setEditingRowId(null);
 			setEditingBackup(null);
 			setNextId(1);
+			return [] as VitalSignsData[];
 		} finally {
 			setLoading(false);
 		}
@@ -176,15 +185,14 @@ export default function VitalSigns() {
 			}
 			setSaving(true);
 			try {
-				const { sbdp, ebdp } = parseBloodPressure(row.bloodPressure);
 				const payload = {
 					scope: 'daily',
 					rsdt: selectedDate,
 					pnum: row.pnum,
 					SBDS: toNullableNumber(row.fastingBloodSugar),
 					EBDS: toNullableNumber(row.postMealBloodSugar),
-					SBDP: sbdp,
-					EBDP: ebdp,
+					SBDP: toNullableNumber(row.systolicBP),
+					EBDP: toNullableNumber(row.diastolicBP),
 					TMPBD: toNullableDecimal(row.bodyTemperature),
 					PUCNT: toNullableNumber(row.pulse),
 					BRCNT: toNullableNumber(row.respiration),
@@ -192,6 +200,7 @@ export default function VitalSigns() {
 					NUDES: row.nursingDetails || '',
 					INEMPNM: row.author || null,
 					NS_WRITE_NAME: row.author || null,
+					vsSeq: row.seq || 1,
 				};
 				const res = await fetch('/api/f30120', {
 					method: 'PUT',
@@ -228,14 +237,98 @@ export default function VitalSigns() {
 		setEditingBackup(null);
 	};
 
-	// 삭제 함수
-	const handleDeleteClick = (id: number) => {
-		if (confirm('정말 삭제하시겠습니까?')) {
-			setVitalSignsData(prev => prev.filter(item => item.id !== id));
-			if (editingRowId === id) {
-				setEditingRowId(null);
-				setEditingBackup(null);
+	const handleAddExtraClick = async (id: number) => {
+		const row = vitalSignsData.find((r) => r.id === id);
+		if (!row?.pnum) {
+			alert('수급자 정보가 없어 추가할 수 없습니다.');
+			return;
+		}
+		if (editingRowId != null) {
+			alert('수정 중인 행을 먼저 저장하거나 취소해 주세요.');
+			return;
+		}
+		setAdding(true);
+		try {
+			const res = await fetch('/api/f30120', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					action: 'add',
+					rsdt: selectedDate,
+					pnum: row.pnum,
+					INEMPNM: row.author || null,
+					NS_WRITE_NAME: row.author || null,
+				}),
+			});
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`추가 실패: ${json?.error || '알 수 없는 오류'}`);
+				return;
 			}
+			const newSeq = Number(json.vsSeq) || 0;
+			const list = await fetchVitalSignsData(selectedDate);
+			const created = list.find((r) => String(r.pnum) === String(row.pnum) && r.seq === newSeq);
+			if (created) {
+				const visible = list
+					.filter((r) => {
+						if (selectedStatus && r.status !== selectedStatus) return false;
+						if (selectedLivingRoom) {
+							const floorMatch = /^(\d+)층$/.exec(selectedLivingRoom);
+							if (floorMatch) {
+								if (extractFloorFromRoomNo(r.livingRoom) !== Number(floorMatch[1])) return false;
+							} else if (r.livingRoom !== selectedLivingRoom) {
+								return false;
+							}
+						}
+						return true;
+					})
+					.sort((a, b) => compareVitalRow(a, b, sortMode));
+				const visibleIndex = visible.findIndex((r) => r.id === created.id);
+				if (visibleIndex >= 0) {
+					setCurrentPage(Math.floor(visibleIndex / itemsPerPage) + 1);
+				}
+				setSelectedRowId(created.id);
+				setEditingRowId(created.id);
+				setEditingBackup(JSON.parse(JSON.stringify(created)) as VitalSignsData);
+			}
+		} catch (e) {
+			console.error(e);
+			alert('추가 중 오류가 발생했습니다.');
+		} finally {
+			setAdding(false);
+		}
+	};
+
+	// 삭제 함수
+	const handleDeleteClick = async (id: number) => {
+		const row = vitalSignsData.find((r) => r.id === id);
+		if (!row) return;
+		const sameCount = vitalSignsData.filter((r) => String(r.pnum || '') === String(row.pnum || '')).length;
+		if (sameCount <= 1) {
+			alert('당일 기본 행은 삭제할 수 없습니다. 추가 측정 행만 삭제할 수 있습니다.');
+			return;
+		}
+		if (!row.pnum) {
+			alert('수급자 정보가 없어 삭제할 수 없습니다.');
+			return;
+		}
+		if (!confirm('추가 측정 행을 삭제하시겠습니까?')) return;
+		try {
+			const params = new URLSearchParams({
+				rsdt: selectedDate,
+				pnum: String(row.pnum),
+				vsSeq: String(row.seq || 1),
+			});
+			const res = await fetch(`/api/f30120?${params.toString()}`, { method: 'DELETE' });
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`삭제 실패: ${json?.error || '알 수 없는 오류'}`);
+				return;
+			}
+			await fetchVitalSignsData(selectedDate);
+		} catch (e) {
+			console.error(e);
+			alert('삭제 중 오류가 발생했습니다.');
 		}
 	};
 
@@ -246,7 +339,8 @@ export default function VitalSigns() {
 			status: '',
 			beneficiaryName: '',
 			livingRoom: '',
-			bloodPressure: '',
+			systolicBP: '',
+			diastolicBP: '',
 			fastingBloodSugar: '',
 			postMealBloodSugar: '',
 			pulse: '',
@@ -254,7 +348,8 @@ export default function VitalSigns() {
 			respiration: '',
 			oxygenSaturation: '',
 			nursingDetails: '',
-			author: ''
+			author: '',
+			seq: 1
 		};
 		
 		setVitalSignsData(prev => [...prev, newRow]);
@@ -284,11 +379,18 @@ export default function VitalSigns() {
 		return true;
 	});
 
+	const availableFloors = useMemo(
+		() => availableFloorsFromMembers(vitalSignsData.map((row) => ({ ROOM_NO: row.livingRoom }))),
+		[vitalSignsData]
+	);
+
+	const sortedData = [...filteredData].sort((a, b) => compareVitalRow(a, b, sortMode));
+
 	// 페이지네이션 계산
-	const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+	const totalPages = Math.ceil(sortedData.length / itemsPerPage);
 	const startIndex = (currentPage - 1) * itemsPerPage;
 	const endIndex = startIndex + itemsPerPage;
-	const paginatedData = filteredData.slice(startIndex, endIndex);
+	const paginatedData = sortedData.slice(startIndex, endIndex);
 
 	// 페이지 변경 함수
 	const handlePageChange = (page: number) => {
@@ -298,7 +400,7 @@ export default function VitalSigns() {
 	// 필터 변경 시 첫 페이지로 이동
 	useEffect(() => {
 		setCurrentPage(1);
-	}, [selectedStatus, selectedLivingRoom]);
+	}, [selectedStatus, selectedLivingRoom, sortMode]);
 
 	// 날짜 포맷팅 (yyyy-mm-dd -> yyyy. mm. dd)
 	const formatDate = (dateStr: string) => {
@@ -537,38 +639,100 @@ export default function VitalSigns() {
 
 					{/* 우측 메인 테이블 */}
 					<div className="flex-1 border border-blue-300 rounded-lg bg-white shadow-sm">
-						<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
+						<div className="bg-blue-100 border-b border-blue-300 px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
 							<h2 className="text-lg font-semibold text-blue-900">활력증상 등록(일상)</h2>
+							<div className="flex items-center gap-4 flex-wrap">
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-blue-900">층별</span>
+									<button
+										type="button"
+										onClick={() => setSelectedLivingRoom('')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											selectedLivingRoom === ''
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										전체
+									</button>
+									{availableFloors.map((floor) => {
+										const value = `${floor}층`;
+										return (
+											<button
+												key={floor}
+												type="button"
+												onClick={() => setSelectedLivingRoom(value)}
+												className={`px-3 py-1 text-xs border rounded font-medium ${
+													selectedLivingRoom === value
+														? 'border-blue-500 bg-blue-500 text-white'
+														: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+												}`}
+											>
+												{value}
+											</button>
+										);
+									})}
+								</div>
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-blue-900">정렬</span>
+									<button
+										type="button"
+										onClick={() => setSortMode('room')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											sortMode === 'room'
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										생활실별
+									</button>
+									<button
+										type="button"
+										onClick={() => setSortMode('name')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											sortMode === 'name'
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										수급자별
+									</button>
+								</div>
+							</div>
 						</div>
 						<div className="overflow-x-auto w-full min-w-0">
 							<table className="w-full text-sm">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">현황</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">수급자명</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">생활실</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">혈압(mmHg)</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">공복혈당</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">식후혈당</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">맥박(/분)</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">체온(℃)</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">호흡(회)</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-24">산소포화도(%SpO2)</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-80">간호내역</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">작성자</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold w-32">작업</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">현황</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">수급자명</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">생활실</th>
+										<th colSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-b border-blue-200">혈압(mmHg)</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">맥박(분)</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">호흡(회)</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">체온(℃)</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">공복혈당</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">식후혈당</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-24">산소포화도(%SpO2)</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-80">간호내역</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">작성자</th>
+										<th rowSpan={2} className="text-center px-3 py-2 text-blue-900 font-semibold w-40">작업</th>
+									</tr>
+									<tr>
+										<th className="text-center px-3 py-1.5 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">수축기</th>
+										<th className="text-center px-3 py-1.5 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">이완기</th>
 									</tr>
 								</thead>
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={13} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={14} className="text-center px-3 py-4 text-blue-900/60">
 												로딩 중...
 											</td>
 										</tr>
 									) : vitalSignsData.length === 0 ? (
 										<tr>
-											<td colSpan={13} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={14} className="text-center px-3 py-4 text-blue-900/60">
 												데이터가 없습니다
 											</td>
 										</tr>
@@ -593,61 +757,52 @@ export default function VitalSigns() {
 												/>
 											</td>
 											<td className="text-center px-3 py-3 border-r border-blue-100">
-												<input
-													type="text"
-													value={row.beneficiaryName}
-													onChange={(e) => handleDataChange(row.id, 'beneficiaryName', e.target.value)}
-													disabled={editingRowId !== row.id}
-													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-													}`}
-												/>
+												<div className="flex items-center justify-center gap-1">
+													<input
+														type="text"
+														value={row.beneficiaryName}
+														onChange={(e) => handleDataChange(row.id, 'beneficiaryName', e.target.value)}
+														disabled={editingRowId !== row.id}
+														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
+															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+														}`}
+													/>
+													{row.seq > 1 ? (
+														<span className="shrink-0 text-[10px] text-blue-700 whitespace-nowrap">
+															{row.seq}회
+														</span>
+													) : null}
+												</div>
+											</td>
+											<td className="text-center px-3 py-3 border-r border-blue-100">
+												<span className="block w-full px-2 py-1 text-center">
+													{row.livingRoom || '-'}
+												</span>
 											</td>
 											<td className="text-center px-3 py-3 border-r border-blue-100">
 												<input
 													type="text"
-													value={row.livingRoom}
-													onChange={(e) => handleDataChange(row.id, 'livingRoom', e.target.value)}
+													inputMode="numeric"
+													value={row.systolicBP}
+													onChange={(e) => handleDataChange(row.id, 'systolicBP', e.target.value)}
 													disabled={editingRowId !== row.id}
 													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
 														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 													}`}
-												/>
-											</td>
-											<td className="text-center px-3 py-3 border-r border-blue-100">
-												<input
-													type="text"
-													value={row.bloodPressure}
-													onChange={(e) => handleDataChange(row.id, 'bloodPressure', e.target.value)}
-													disabled={editingRowId !== row.id}
-													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-													}`}
-													placeholder="예: 120/80"
+													placeholder="수축"
 												/>
 											</td>
 											<td className="text-center px-3 py-3 border-r border-blue-100">
 												<input
 													type="text"
 													inputMode="numeric"
-													value={row.fastingBloodSugar}
-													onChange={(e) => handleDataChange(row.id, 'fastingBloodSugar', e.target.value)}
+													value={row.diastolicBP}
+													onChange={(e) => handleDataChange(row.id, 'diastolicBP', e.target.value)}
 													disabled={editingRowId !== row.id}
 													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
 														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 													}`}
-												/>
-											</td>
-											<td className="text-center px-3 py-3 border-r border-blue-100">
-												<input
-													type="text"
-													inputMode="numeric"
-													value={row.postMealBloodSugar}
-													onChange={(e) => handleDataChange(row.id, 'postMealBloodSugar', e.target.value)}
-													disabled={editingRowId !== row.id}
-													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-													}`}
+													placeholder="이완"
 												/>
 											</td>
 											<td className="text-center px-3 py-3 border-r border-blue-100">
@@ -655,6 +810,17 @@ export default function VitalSigns() {
 													type="text"
 													value={row.pulse}
 													onChange={(e) => handleDataChange(row.id, 'pulse', e.target.value)}
+													disabled={editingRowId !== row.id}
+													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
+														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+													}`}
+												/>
+											</td>
+											<td className="text-center px-3 py-3 border-r border-blue-100">
+												<input
+													type="text"
+													value={row.respiration}
+													onChange={(e) => handleDataChange(row.id, 'respiration', e.target.value)}
 													disabled={editingRowId !== row.id}
 													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
 														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
@@ -675,8 +841,21 @@ export default function VitalSigns() {
 											<td className="text-center px-3 py-3 border-r border-blue-100">
 												<input
 													type="text"
-													value={row.respiration}
-													onChange={(e) => handleDataChange(row.id, 'respiration', e.target.value)}
+													inputMode="numeric"
+													value={row.fastingBloodSugar}
+													onChange={(e) => handleDataChange(row.id, 'fastingBloodSugar', e.target.value)}
+													disabled={editingRowId !== row.id}
+													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
+														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
+													}`}
+												/>
+											</td>
+											<td className="text-center px-3 py-3 border-r border-blue-100">
+												<input
+													type="text"
+													inputMode="numeric"
+													value={row.postMealBloodSugar}
+													onChange={(e) => handleDataChange(row.id, 'postMealBloodSugar', e.target.value)}
 													disabled={editingRowId !== row.id}
 													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
 														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
@@ -710,22 +889,24 @@ export default function VitalSigns() {
 												)}
 											</td>
 											<td className="text-center px-3 py-3 border-r border-blue-100">
-												<input
-													type="text"
+												<EmployeeSearchInput
 													value={row.author}
-													onChange={(e) => handleDataChange(row.id, 'author', e.target.value)}
+													onChange={(name) => handleDataChange(row.id, 'author', name)}
 													disabled={editingRowId !== row.id}
-													className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
+													placeholder="직원 검색"
+													inputClassName={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
 														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 													}`}
-													placeholder="작성자 입력"
 												/>
 											</td>
 											<td className="text-center px-3 py-3">
-												<div className="flex justify-center gap-2">
+												<div className="flex justify-center gap-1 flex-wrap">
 													<button
-														onClick={() => handleEditClick(row.id)}
-														disabled={saving}
+														onClick={(e) => {
+															e.stopPropagation();
+															void handleEditClick(row.id);
+														}}
+														disabled={saving || adding}
 														className={`px-3 py-1 text-xs border rounded font-medium disabled:opacity-50 ${
 															editingRowId === row.id
 																? 'border-green-400 bg-green-200 hover:bg-green-300 text-green-900'
@@ -737,19 +918,38 @@ export default function VitalSigns() {
 													{editingRowId === row.id ? (
 														<button
 															type="button"
-															onClick={() => handleCancelEdit(row.id)}
+															onClick={(e) => {
+																e.stopPropagation();
+																handleCancelEdit(row.id);
+															}}
 															className="px-3 py-1 text-xs border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
 														>
 															취소
 														</button>
 													) : (
-														<button
-															type="button"
-															onClick={() => handleDeleteClick(row.id)}
-															className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
-														>
-															삭제
-														</button>
+														<>
+															<button
+																type="button"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	void handleAddExtraClick(row.id);
+																}}
+																disabled={adding || saving}
+																className="px-3 py-1 text-xs border border-amber-400 rounded bg-amber-200 hover:bg-amber-300 text-amber-900 font-medium disabled:opacity-50"
+															>
+																{adding ? '추가중' : '추가'}
+															</button>
+															<button
+																type="button"
+																onClick={(e) => {
+																	e.stopPropagation();
+																	void handleDeleteClick(row.id);
+																}}
+																className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
+															>
+																삭제
+															</button>
+														</>
 													)}
 												</div>
 											</td>
@@ -811,21 +1011,21 @@ export default function VitalSigns() {
 									&gt;&gt;
 								</button>
 								<span className="ml-4 text-xs text-blue-900">
-									{filteredData.length > 0 ? `${startIndex + 1}-${Math.min(endIndex, filteredData.length)} / ${filteredData.length}` : '0 / 0'}
+									{sortedData.length > 0 ? `${startIndex + 1}-${Math.min(endIndex, sortedData.length)} / ${sortedData.length}` : '0 / 0'}
 								</span>
 							</div>
 						</div>
 					)}
 
 					{/* 하단 추가 버튼 */}
-					<div className="flex justify-center mt-4">
+					{/* <div className="flex justify-center mt-4">
 						<button
 							onClick={handleAddRow}
 							className="px-6 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 						>
 							추가
 						</button>
-					</div>
+					</div> */}
 				</div>
 			</div>
 

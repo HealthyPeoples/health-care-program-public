@@ -132,7 +132,8 @@ describe('MemberInfoContractCard — presentational', () => {
 	it('View가 카드와 placeholder를 모두 사용', () => {
 		const view = fs.readFileSync(VIEW_TSX, 'utf8');
 		assert.match(view, /import MemberInfoContractCard from '\.\/MemberInfoContractCard'/);
-		assert.match(view, /<MemberInfoContractCard\s*\n\s*isEditing=\{isEditing\}/);
+		assert.match(view, /!isEditing && \(/);
+		assert.match(view, /<MemberInfoContractCard selectedMember=\{selectedMember\} \/>/);
 		assert.match(view, /<MemberInfoContractCard placeholder \/>/);
 	});
 });

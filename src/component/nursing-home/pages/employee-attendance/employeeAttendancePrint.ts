@@ -6,6 +6,8 @@
  *
  * @module component/nursing-home/pages/employee-attendance/employeeAttendancePrint
  */
+import { compareByJobThenName, employeeJobTitle } from "../../utils/employeeJobList";
+
 export interface AttendancePrintRow {
 	EMPNM?: string;
 	WDT?: string;
@@ -13,6 +15,8 @@ export interface AttendancePrintRow {
 	HODES?: string;
 	STM?: string;
 	ETM?: string;
+	JOB?: string;
+	JOBLIST?: number | string | null;
 	JOBADD?: string;
 	JOBSH?: string;
 }
@@ -38,15 +42,46 @@ function nbsp(v: string): string {
 	return t ? escapeHtml(t) : "&nbsp;";
 }
 
+/** F02010.JOBSH — 1=주간, 2=야간, 3=심야 */
+export function normalizeAttendanceJobsh(value?: string | null): string {
+	const v = String(value ?? "").trim();
+	if (v === "1" || v === "2" || v === "3") return v;
+	if (v === "주간" || /day/i.test(v)) return "1";
+	if (v === "야간" || /night/i.test(v)) return "2";
+	if (v === "심야" || v === "저녁") return "3";
+	return "";
+}
+
+export function workShiftLabel(jobsh?: string | null): string {
+	const code = normalizeAttendanceJobsh(jobsh);
+	if (code === "2") return "근무(야간)";
+	if (code === "3") return "근무(심야)";
+	return "근무(주간)";
+}
+
+export function isWorkClassification(text: string): boolean {
+	const t = String(text ?? "").trim();
+	return t === "근무" || t === "근무(주간)" || t === "근무(야간)" || t === "근무(심야)";
+}
+
+export function jobshFromWorkClassification(text: string, fallback = "1"): string {
+	const t = String(text ?? "").trim();
+	if (t === "근무(야간)") return "2";
+	if (t === "근무(심야)") return "3";
+	if (t === "근무(주간)" || t === "근무") return "1";
+	return fallback;
+}
+
 /** 목록·출력용 근무구분 텍스트
  * WGU: 1=근무, 2=연차, 3=월차, 4=정기휴무, 5=대휴, 6=병가, 7=경조사, 9=결근
+ * 근무(WGU=1)는 F02010.JOBSH로 주간/야간/심야를 붙여 표시한다.
  */
 export function classifyAttendanceDisplay(row: AttendancePrintRow): string {
 	const wgu = String(row.WGU ?? "").trim();
 	const hodes = String(row.HODES ?? "").trim();
 	if (hodes === "휴직") return "휴직";
 	if (hodes === "퇴직") return "퇴직";
-	if (!wgu || wgu === "1") return "근무";
+	if (!wgu || wgu === "1") return workShiftLabel(row.JOBSH);
 	if (wgu === "2") return "연차";
 	if (wgu === "3") return "월차";
 	if (wgu === "4") return "정기휴무";
@@ -62,13 +97,13 @@ export function classifyAttendanceDisplay(row: AttendancePrintRow): string {
 	if (/경조/.test(hodes)) return "경조사";
 	if (/결근/.test(hodes)) return "결근";
 	if (/정기/.test(hodes)) return "정기휴무";
-	return "근무";
+	return workShiftLabel(row.JOBSH);
 }
 
-/** 하단 집계용 (출근 = 근무) */
+/** 하단 집계용 (출근 = 근무/근무(주간)/근무(야간)/근무(심야)) */
 function classifyAttendanceSummary(row: AttendancePrintRow): string {
 	const label = classifyAttendanceDisplay(row);
-	if (label === "근무") return "출근";
+	if (label === "근무" || label.startsWith("근무(")) return "출근";
 	return label;
 }
 
@@ -87,9 +122,7 @@ export function buildDailyAttendancePrintHtml(
 	dayOfWeek: string,
 	rows: AttendancePrintRow[],
 ): string {
-	const sorted = [...rows].sort((a, b) =>
-		String(a.EMPNM ?? "").localeCompare(String(b.EMPNM ?? ""), "ko"),
-	);
+	const sorted = [...rows].sort(compareByJobThenName);
 	const counts = buildSummaryCounts(sorted);
 
 	const bodyRows = sorted
@@ -97,15 +130,16 @@ export function buildDailyAttendancePrintHtml(
 			const cls = classifyAttendanceDisplay(row);
 			const stm = String(row.STM ?? "").trim();
 			const etm = String(row.ETM ?? "").trim();
+			const job = employeeJobTitle(row);
 			return `<tr>
         <td class="c-name">${nbsp(String(row.EMPNM ?? ""))}</td>
+        <td class="c-job">${nbsp(job)}</td>
         <td class="c-cls">${nbsp(cls)}</td>
         <td class="c-time">${nbsp(stm)}</td>
         <td class="c-tilde">~</td>
         <td class="c-time">${nbsp(etm)}</td>
         <td class="c-reason">${nbsp(String(row.HODES ?? ""))}</td>
-        <td class="c-loc">${nbsp(String(row.JOBADD ?? ""))}</td>
-        <td class="c-type">${nbsp(String(row.JOBSH ?? ""))}</td>
+        <td class="c-sign">&nbsp;</td>
       </tr>`;
 		})
 		.join("");
@@ -180,19 +214,20 @@ export function buildDailyAttendancePrintHtml(
     }
     table.main tbody td {
       border-bottom: 1px solid #000;
-      padding: 5px 4px;
+      padding: 6px 3px;
       text-align: center;
       font-size: 10.5pt;
       vertical-align: middle;
       word-break: break-word;
+      height: 28px;
     }
-    table.main .c-name { width: 12%; }
-    table.main .c-cls { width: 10%; }
-    table.main .c-time { width: 10%; }
-    table.main .c-tilde { width: 4%; }
+    table.main .c-name { width: 14%; }
+    table.main .c-job { width: 14%; }
+    table.main .c-cls { width: 12%; }
+    table.main .c-time { width: 8%; padding-left: 1px; padding-right: 1px; }
+    table.main .c-tilde { width: 2%; padding: 6px 0; }
     table.main .c-reason { width: 16%; }
-    table.main .c-loc { width: 22%; }
-    table.main .c-type { width: 16%; }
+    table.main .c-sign { width: 18%; }
     .summary {
       margin-top: 10px;
       padding-top: 6px;
@@ -223,13 +258,13 @@ export function buildDailyAttendancePrintHtml(
       <thead>
         <tr>
           <th>직원명</th>
+          <th>직책</th>
           <th>근무구분</th>
           <th>출근시간</th>
           <th>~</th>
           <th>퇴근시간</th>
           <th>휴무사유</th>
-          <th>근무위치</th>
-          <th>근무형태</th>
+          <th>서명</th>
         </tr>
       </thead>
       <tbody>

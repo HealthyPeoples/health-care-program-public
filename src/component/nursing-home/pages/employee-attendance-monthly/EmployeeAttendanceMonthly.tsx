@@ -22,6 +22,12 @@ import {
 	workStatusFromEmployee,
 	workStatusText,
 } from "../../utils/employeeWorkStatus";
+import {
+	JOB_LIST_OPTIONS,
+	compareByJobThenName,
+	employeeJobTitle,
+	formatNameWithJob,
+} from "../../utils/employeeJobList";
 
 interface Employee {
 	ANCD: number;
@@ -29,6 +35,7 @@ interface Employee {
 	EMPNM: string;
 	EMPHP?: string;
 	JOB?: string;
+	JOBLIST?: number | string | null;
 	JOBST?: string;
 	EDT?: string;
 	HSDT?: string;
@@ -151,22 +158,29 @@ export default function EmployeeAttendanceMonthly() {
 		classifyAttendanceDisplay(row);
 
 	// 필터링된 사원 목록 (EmployeeBasicInfo와 동일 로직)
-	const filteredEmployees = employeeList.filter((employee) => {
-		const employeeName = String(employee.EMPNM || "").trim();
-		if (!employeeName || employeeName === "") return false;
-		if (selectedJob && selectedJob !== "") {
-			const employeeJob = String(employee.JOB || "").trim();
-			if (employeeJob !== selectedJob) return false;
-		}
-		if (selectedWorkStatus && selectedWorkStatus !== "") {
-			if (!hasWorkStatusInRange(employee, selectedWorkStatus, startDateStr, endDateStr)) return false;
-		}
-		return true;
-	});
+	const filteredEmployees = employeeList
+		.filter((employee) => {
+			const employeeName = String(employee.EMPNM || "").trim();
+			if (!employeeName || employeeName === "") return false;
+			if (selectedJob && selectedJob !== "") {
+				if (employeeJobTitle(employee) !== selectedJob) return false;
+			}
+			if (selectedWorkStatus && selectedWorkStatus !== "") {
+				if (!hasWorkStatusInRange(employee, selectedWorkStatus, startDateStr, endDateStr)) return false;
+			}
+			return true;
+		})
+		.sort(compareByJobThenName);
 
-	const uniqueJobs = Array.from(
-		new Set(employeeList.map((emp) => emp.JOB).filter((job) => job && String(job).trim() !== ""))
+	const standardJobLabels: string[] = JOB_LIST_OPTIONS.map((o) => o.label);
+	const leftoverJobs = Array.from(
+		new Set(
+			employeeList
+				.map((emp) => employeeJobTitle(emp))
+				.filter((job) => job && !standardJobLabels.includes(job))
+		)
 	).sort();
+	const uniqueJobs = [...standardJobLabels, ...leftoverJobs];
 
 	const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
 	const startIndex = (currentPage - 1) * itemsPerPage;
@@ -566,7 +580,7 @@ export default function EmployeeAttendanceMonthly() {
 													/>
 												</td>
 												<td className="border-r border-blue-100 px-2 py-2 text-center">
-													{employee.EMPNM || "-"}
+													{formatNameWithJob(employee.EMPNM, employee)}
 												</td>
 												<td className="border-r border-blue-100 px-2 py-2 text-center">
 													{workStatusText(workStatusFromEmployee(employee))}

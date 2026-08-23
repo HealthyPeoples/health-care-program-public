@@ -97,3 +97,33 @@ export function toNullableNumber(v: unknown): number | null {
 export function toNullableDecimal(v: unknown): number | null {
 	return toNullableNumber(v);
 }
+
+/** 활력증상(주기) 문제행동 7종 */
+export const PROBLEM_BEHAVIOR_ITEMS = [
+	'망상',
+	'배회',
+	'이식',
+	'공격성',
+	'불결행위',
+	'케어거부',
+	'불안',
+] as const;
+
+export type ProblemBehaviorItem = (typeof PROBLEM_BEHAVIOR_ITEMS)[number];
+
+export function parseProblemBehaviors(raw: unknown): ProblemBehaviorItem[] {
+	const tokens = String(raw ?? '')
+		.split(/[,|]/)
+		.map((s) => s.trim())
+		.filter(Boolean);
+	return PROBLEM_BEHAVIOR_ITEMS.filter((item) => tokens.includes(item));
+}
+
+export function serializeProblemBehaviors(items: readonly string[]): string {
+	const set = new Set(items.map((s) => String(s).trim()));
+	return PROBLEM_BEHAVIOR_ITEMS.filter((item) => set.has(item)).join(',');
+}
+
+export function formatProblemBehaviorsDisplay(raw: unknown): string {
+	return parseProblemBehaviors(raw).join(', ');
+}

@@ -153,24 +153,13 @@ export default function MemberInfoView() {
 												/>
 											</div>
 
-											{/* 하단 2컬럼 카드: 계약정보 / 보호자 정보 */}
-											<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-												{/* 계약정보 */}
-												<MemberInfoContractCard
-													isEditing={isEditing}
-													selectedMember={selectedMember}
-													editedMember={editedMember}
-													onFieldChange={handleFieldChange}
-												/>
-
-												{/* 보호자 정보 */}
-												<MemberInfoGuardianCard
-													isEditing={isEditing}
-													selectedMember={selectedMember}
-													editedMember={editedMember}
-													onFieldChange={handleFieldChange}
-												/>
-											</div>
+											{/* 계약정보 / 보호자 정보는 조회 화면에만 표시 */}
+											{!isEditing && (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													<MemberInfoContractCard selectedMember={selectedMember} />
+													<MemberInfoGuardianCard selectedMember={selectedMember} />
+												</div>
+											)}
 
 											{/* 질병내역 (F30030) — 읽기 전용 */}
 											<MemberInfoDiseaseCard selectedMember={selectedMember} />

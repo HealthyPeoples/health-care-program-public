@@ -4,7 +4,8 @@
  * @description
  * 식사·케어 필드 MERGE, 전체추가(generate), 외박복귀(returnFromOvernight),
  * 입퇴소 급여50% 동기화(syncAdmitDischargePay), 간식일괄(bulkSnack)을 처리합니다.
- * F14020 생성·저장 시 활력증상(F30120) 공란 명단도 함께 보장합니다.
+ * F14020 생성·저장 시 활력증상(F30120) 공란 명단도 함께 보장하고,
+ * 등록 직원을 활력증상 작성자 기본값으로 넣습니다.
  * 모든 핸들러는 `assertAnCdMatchesSession`으로 세션 ANCD를 검사합니다.
  *
  * @actions
@@ -18,7 +19,7 @@
  * @see DailyBeneficiaryPerformance.tsx
  */
 import { connPool, sql } from '../../../config/server';
-import { assertAnCdMatchesSession } from '../../../config/sessionServer';
+import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 
@@ -27,7 +28,11 @@ const {
 	syncOutingOnF14020Delete
 } = require('../../../lib/outingF14020Sync');
 
-const { ensureF30120FromF14020 } = require('../../../lib/ensureF30120FromF14020');
+const {
+	ensureF30120FromF14020,
+	resolveSessionEmployee,
+	stampF14020Registrar
+} = require('../../../lib/ensureF30120FromF14020');
 const { applyMealSnackByPresence } = require('../../../lib/applyMealSnackByPresence');
 
 /** @type {string[]} 일일 케어(요양·간호·재활 등) 컬럼 — DailyLongtermCare와 공유 */
@@ -189,6 +194,75 @@ function toSvdtIso(dateStr) {
 	return '';
 }
 
+/** 입소일~퇴소일(당일 포함)만 서비스 제공일로 봅니다. 퇴소(P_ST=9)인데 퇴소일이 없으면 제외. */
+function isInServicePeriod(svdtIso, pSdt, pEdt, pSt) {
+	const day = toSvdtIso(svdtIso);
+	const admit = toSvdtIso(pSdt);
+	if (!day || !admit || day < admit) return false;
+	const discharge = toSvdtIso(pEdt);
+	if (discharge) return day <= discharge;
+	return String(pSt ?? '').trim() !== '9';
+}
+
+/** F10010 별칭 기준 서비스 제공일 SQL. @SVDT 와 함께 사용. */
+function sqlInServicePeriod(memberAlias) {
+	const m = memberAlias || 'm';
+	return `(
+		${m}.[P_SDT] IS NOT NULL
+		AND CAST(@SVDT AS date) >= CONVERT(date, ${m}.[P_SDT])
+		AND (
+			(${m}.[P_EDT] IS NOT NULL AND CAST(@SVDT AS date) <= CONVERT(date, ${m}.[P_EDT]))
+			OR (${m}.[P_EDT] IS NULL AND CAST(ISNULL(${m}.[P_ST], '') AS VARCHAR) <> '9')
+		)
+	)`;
+}
+
+async function loadMemberStay(pool, ancd, pnum) {
+	const result = await pool
+		.request()
+		.input('ANCD', ancd)
+		.input('PNUM', String(pnum))
+		.query(`
+			SELECT TOP 1 [P_ST], [P_SDT], [P_EDT]
+			FROM [돌봄시설DB].[dbo].[F10010]
+			WHERE [ANCD] = @ANCD
+			  AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+		`);
+	return result.recordset?.[0] || null;
+}
+
+async function assertMemberInServicePeriod(pool, ancd, pnum, svdtIso) {
+	const member = await loadMemberStay(pool, ancd, pnum);
+	if (!member) {
+		return { ok: false, error: '수급자 정보를 찾을 수 없습니다.' };
+	}
+	if (!isInServicePeriod(svdtIso, member.P_SDT, member.P_EDT, member.P_ST)) {
+		return { ok: false, error: '입·퇴소 기간(서비스 제공일)이 아닌 날에는 등록·저장할 수 없습니다.' };
+	}
+	return { ok: true, member };
+}
+
+/** 전체추가 SP가 만든 입·퇴소 기간 밖 행을 당일자에서 제거합니다. */
+async function deleteOutOfServiceF14020Rows(pool, ancd, svdtIso) {
+	const request = pool.request();
+	request.input('ANCD', ancd);
+	request.input('SVDT', svdtIso);
+	const result = await request.query(`
+		DELETE f
+		FROM [돌봄시설DB].[dbo].[F14020] f
+		INNER JOIN [돌봄시설DB].[dbo].[F10010] m
+			ON f.[ANCD] = m.[ANCD]
+			AND CAST(f.[PNUM] AS VARCHAR) = CAST(m.[PNUM] AS VARCHAR)
+		WHERE f.[ANCD] = @ANCD
+			AND f.[SVDT] = CAST(@SVDT AS date)
+			AND NOT ${sqlInServicePeriod('m')}
+	`);
+	const deleted = Array.isArray(result.rowsAffected)
+		? result.rowsAffected.reduce((a, b) => a + (Number(b) || 0), 0)
+		: Number(result.rowsAffected) || 0;
+	return deleted;
+}
+
 function pickRowValue(r, key) {
 	if (r == null) return undefined;
 	if (Object.prototype.hasOwnProperty.call(r, key)) return r[key];
@@ -281,6 +355,8 @@ async function fetchOvernightPending(pool, ancd, svdtIso) {
 				AND today.[SVDT] = CAST(@SVDT AS date)
 				AND LTRIM(RTRIM(CAST(today.[GYN] AS VARCHAR(10)))) = '2'
 				AND today.[IO_TM_INFO] LIKE 'ON:%'
+				AND f10010.[PNUM] IS NOT NULL
+				AND ${sqlInServicePeriod('f10010')}
 		),
 		prev_pending AS (
 			SELECT
@@ -299,6 +375,8 @@ async function fetchOvernightPending(pool, ancd, svdtIso) {
 				AND prev.[PNUM] = f10010.[PNUM]
 			WHERE prev.rn = 1
 				AND LTRIM(RTRIM(CAST(prev.[GYN] AS VARCHAR(10)))) = '2'
+				AND f10010.[PNUM] IS NOT NULL
+				AND ${sqlInServicePeriod('f10010')}
 				AND NOT EXISTS (
 					SELECT 1
 					FROM [돌봄시설DB].[dbo].[F14020] today
@@ -413,6 +491,21 @@ async function upsertOvernightOngoingRow(pool, ancd, svdtIso, pendingRow) {
 	return { pnum, leaveDate, leaveTime, ioTmInfo };
 }
 
+/**
+ * 일 급여실적 등록 직원을 F14020·F30120에 반영합니다.
+ * 이미 있는 작성자/등록직원은 덮어쓰지 않습니다.
+ */
+async function seedVitalSignsFromF14020(pool, req, ancd, svdtIso, pnums) {
+	const session = getSessionFromRequest(req);
+	const registrar = await resolveSessionEmployee(pool, ancd, session?.uid);
+	try {
+		await stampF14020Registrar(pool, ancd, svdtIso, pnums, registrar);
+	} catch (stampErr) {
+		console.warn('F14020 등록직원 기록 경고:', stampErr);
+	}
+	return ensureF30120FromF14020(pool, ancd, svdtIso, pnums, registrar);
+}
+
 function padTime5Server(t) {
 	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
 	if (!m) return '';
@@ -491,6 +584,7 @@ export async function GET(req) {
         f14020.*,
         f10010.[P_NM],
         f10010.[P_BRDT],
+        f10010.[P_ST],
         f10010.[P_SDT],
         f10010.[P_SDT_TM],
         f10010.[P_EDT],
@@ -592,12 +686,26 @@ export async function POST(req) {
 				.input('pv_svdt', sql.Date, svdtIso)
 				.execute('[돌봄시설DB].[dbo].[Usp_P14020]');
 
+			let outOfServiceRemoved = 0;
+			try {
+				outOfServiceRemoved = await deleteOutOfServiceF14020Rows(pool, gate.sessionAncd, svdtIso);
+			} catch (rangeErr) {
+				console.warn('전체추가 후 입·퇴소 기간 밖 행 정리 경고:', rangeErr);
+			}
+
 			// SP 이후에도 당일 행이 없는 외박중 수급자를 50%·외박중으로 등록
 			const overnightPendingBefore = await fetchOvernightPending(pool, gate.sessionAncd, svdtIso);
 			const registered = [];
 			for (const row of overnightPendingBefore) {
 				if (Number(row.FROM_TODAY) === 1) continue; // 이미 당일 외박중
 				try {
+					const stay = await assertMemberInServicePeriod(
+						pool,
+						gate.sessionAncd,
+						row.PNUM,
+						svdtIso
+					);
+					if (!stay.ok) continue;
 					const r = await upsertOvernightOngoingRow(pool, gate.sessionAncd, svdtIso, row);
 					if (r) registered.push({ ...row, ...r });
 				} catch (e) {
@@ -618,7 +726,7 @@ export async function POST(req) {
 			// 당일 급여실적 명단 → 활력증상(F30120) 공란 명단 보장
 			let vitalSeed = { ok: false, inserted: 0 };
 			try {
-				vitalSeed = await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso);
+				vitalSeed = await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso);
 			} catch (vitalErr) {
 				console.warn('전체추가 후 F30120 공란 생성 경고:', vitalErr);
 			}
@@ -631,6 +739,7 @@ export async function POST(req) {
 				overnightPending,
 				overnightPendingCount: overnightPending.length,
 				overnightRegisteredCount: registered.length,
+				outOfServiceRemoved,
 				mealSnackUpdated: mealSnackApplied.updated,
 				vitalSignsSeeded: vitalSeed.inserted
 			});
@@ -662,6 +771,11 @@ export async function POST(req) {
 				const prev = pendingByPnum.get(pnum);
 				if (!prev) {
 					results.push({ index: i, pnum, ok: false, error: '외박 복귀 대상이 아님' });
+					continue;
+				}
+				const stay = await assertMemberInServicePeriod(pool, gate.sessionAncd, pnum, svdtIso);
+				if (!stay.ok) {
+					results.push({ index: i, pnum, ok: false, error: stay.error });
 					continue;
 				}
 
@@ -725,7 +839,7 @@ export async function POST(req) {
 
 			const okPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
 			try {
-				await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, okPnums);
+				await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso, okPnums);
 			} catch (vitalErr) {
 				console.warn('외박복귀 후 F30120 공란 생성 경고:', vitalErr);
 			}
@@ -758,6 +872,11 @@ export async function POST(req) {
 					results.push({ index: i, pnum, ok: false, error: 'pnum/kind(admit|discharge)/time 필요' });
 					continue;
 				}
+				const stay = await assertMemberInServicePeriod(pool, gate.sessionAncd, pnum, svdtIso);
+				if (!stay.ok) {
+					results.push({ index: i, pnum, ok: false, error: stay.error });
+					continue;
+				}
 
 				const payComGu = kind === 'admit' ? calcAdmitPayComGu(time) : calcDischargePayComGu(time);
 
@@ -786,7 +905,7 @@ export async function POST(req) {
 
 			const okPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
 			try {
-				await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, okPnums);
+				await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso, okPnums);
 			} catch (vitalErr) {
 				console.warn('입·퇴소 동기화 후 F30120 공란 생성 경고:', vitalErr);
 			}
@@ -872,6 +991,11 @@ export async function POST(req) {
 			const r = rows[i] || {};
 			const pnum = r.pnum ?? r.PNUM;
 			if (!pnum) continue;
+
+			const stay = await assertMemberInServicePeriod(pool, gate.sessionAncd, pnum, svdtIso);
+			if (!stay.ok) {
+				return jsonError({ success: false, error: stay.error, pnum: String(pnum) }, 400);
+			}
 
 			const request = pool.request();
 			request.input('ANCD', gate.sessionAncd);
@@ -969,7 +1093,7 @@ export async function POST(req) {
 
 		const savedPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
 		try {
-			await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, savedPnums);
+			await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso, savedPnums);
 		} catch (vitalErr) {
 			console.warn('F14020 저장 후 F30120 공란 생성 경고:', vitalErr);
 		}

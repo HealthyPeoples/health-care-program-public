@@ -129,6 +129,7 @@ export function buildMemberForEdit(m: MemberData): MemberData {
 		selectedANCD: String(m.ANCD ?? ''),
 		P_GRD: normalizePGrdForSelect(m.P_GRD),
 		P_FLOOR: floorStr,
+		ROOM_NO: m.ROOM_NO == null ? '' : String(m.ROOM_NO),
 		P_BRDT: toDateInputString(m.P_BRDT),
 		P_YYDT: toDateInputString(m.P_YYDT),
 		P_CTDT: toDateInputString(m.P_CTDT),

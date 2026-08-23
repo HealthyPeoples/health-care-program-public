@@ -8,50 +8,41 @@
  *
  * @module component/nursing-home/pages/vital-signs-periodic/VitalSignsPeriodic
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
+	PROBLEM_BEHAVIOR_ITEMS,
 	bjdgToLabel,
 	bjynToBool,
 	boolToBjyn,
-	boolToFlag01,
 	boolToFlagNy,
-	flag01ToBool,
-	flagNyToBool,
 	labelToBjdg,
+	parseProblemBehaviors,
+	serializeProblemBehaviors,
 	toNullableDecimal,
-	toNullableNumber,
 } from '../../utils/f30120Fields';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 import {
+	availableFloorsFromMembers,
+	compareVitalRow,
 	extractFloorFromRoomNo,
-	fetchRoomNoMapFromF30112,
-	normalizePnumKey,
+	normalizeRoomNo,
+	type VitalSortMode,
 } from '../../utils/roomNoFloor';
 import { buildHealthRecordAllHtml, buildHealthRecordHtml, openPrintWindow } from '../../utils/v30030rPrint';
+import { EmployeeSearchInput } from '../../components/EmployeeSearchInput';
 
 interface VitalSignsPeriodicData {
 	id: number;
 	status: string;
 	beneficiaryName: string;
 	weight: string;
-	waterIntake: string;
 	livingRoom: string;
 	edema: boolean;
 	edemaArea: string;
 	edemaDegree: string;
-	bedsore: boolean;
-	bedsoreArea: string;
-	medication: boolean;
-	injection: boolean;
-	incontinence: boolean;
-	dressing: boolean;
 	painVAS: string;
-	nursingHistory: string;
 	author: string;
-	fall: boolean;
-	dehydration: boolean;
-	delirium: boolean;
-	problemBehavior: boolean;
+	problemBehaviors: string[];
 	ancd?: string;
 	pnum?: string;
 }
@@ -60,6 +51,7 @@ export default function VitalSignsPeriodic() {
 	const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 	const [selectedStatus, setSelectedStatus] = useState<string>('입소');
 	const [selectedLivingRoom, setSelectedLivingRoom] = useState<string>('');
+	const [sortMode, setSortMode] = useState<VitalSortMode>('room');
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
 	const [editingBackup, setEditingBackup] = useState<VitalSignsPeriodicData | null>(null);
 	const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
@@ -68,7 +60,7 @@ export default function VitalSignsPeriodic() {
 	const [vitalSignsData, setVitalSignsData] = useState<VitalSignsPeriodicData[]>([]);
 	const [nextId, setNextId] = useState(1);
 	const [currentPage, setCurrentPage] = useState(1);
-	const itemsPerPage = 5;
+	const itemsPerPage = 8;
 
 	// 출력 모달 관련 상태
 	const [showPrintModal, setShowPrintModal] = useState(false);
@@ -86,43 +78,28 @@ export default function VitalSignsPeriodic() {
 	const fetchVitalSignsData = async (rsdt: string) => {
 		setLoading(true);
 		try {
-			const url = `/api/f30120?rsdt=${encodeURIComponent(rsdt)}`;
+			const url = `/api/f30120?rsdt=${encodeURIComponent(rsdt)}&scope=periodic`;
 			const response = await fetch(url);
 			const result = await response.json();
 			
 			if (result.success && Array.isArray(result.data)) {
-				const roomMap = await fetchRoomNoMapFromF30112(result.data.map((item: any) => item.PNUM));
 				const transformedData: VitalSignsPeriodicData[] = result.data
 					.map((item: any, index: number) => {
 					const status = item.P_ST === '1' ? '입소' : item.P_ST === '9' ? '퇴소' : '';
 					const pain = String(item.NS_PAN_CHK ?? '').trim();
-					const roomNo = roomMap.get(normalizePnumKey(item.PNUM)) || '';
+					const roomNo = normalizeRoomNo(item.ROOM_NO);
 					return {
 						id: index + 1,
 						status,
 						beneficiaryName: item.P_NM || '',
 						weight: item.WEIGHT != null && item.WEIGHT !== '' ? String(item.WEIGHT) : '',
-						waterIntake:
-							item.WATER_INTAKE != null && item.WATER_INTAKE !== ''
-								? String(item.WATER_INTAKE)
-								: '',
 						livingRoom: roomNo,
 						edema: bjynToBool(item.BJYN),
 						edemaArea: String(item.BJPA ?? ''),
 						edemaDegree: bjdgToLabel(item.BJDG),
-						bedsore: flag01ToBool(item.NS_SORE_MNG),
-						bedsoreArea: String(item.NS_SORE_DESC ?? ''),
-						medication: flag01ToBool(item.NS_MEDI_CHK),
-						injection: flag01ToBool(item.NS_JUSA_CHK),
-						incontinence: flagNyToBool(item.NS_DNG_CHK),
-						dressing: flagNyToBool(item.DRESSING_FLAG),
 						painVAS: pain,
-						nursingHistory: String(item.NUDES ?? ''),
 						author: String(item.NS_WRITE_NAME || item.INEMPNM || ''),
-						fall: flagNyToBool(item.NS_FAL_CHK),
-						dehydration: flagNyToBool(item.NS_DRY_CHK),
-						delirium: flagNyToBool(item.NS_DLM_CHK),
-						problemBehavior: flagNyToBool(item.NS_ACT_CHK),
+						problemBehaviors: parseProblemBehaviors(item.NS_ACT_ITEMS),
 						ancd: item.ANCD != null ? String(item.ANCD) : '',
 						pnum: item.PNUM != null ? String(item.PNUM) : ''
 					};
@@ -179,6 +156,19 @@ export default function VitalSignsPeriodic() {
 		));
 	};
 
+	const toggleProblemBehavior = (id: number, item: string) => {
+		setVitalSignsData((prev) =>
+			prev.map((row) => {
+				if (row.id !== id) return row;
+				const has = row.problemBehaviors.includes(item);
+				const next = has
+					? row.problemBehaviors.filter((x) => x !== item)
+					: [...row.problemBehaviors, item];
+				return { ...row, problemBehaviors: next };
+			})
+		);
+	};
+
 	// 수정 모드 토글 (+ 저장 시 F30120 주기 필드 업데이트)
 	const handleEditClick = async (id: number) => {
 		if (editingRowId === id) {
@@ -195,29 +185,21 @@ export default function VitalSignsPeriodic() {
 			setSaving(true);
 			try {
 				const pain = String(row.painVAS ?? '').trim();
+				const actItems = serializeProblemBehaviors(row.problemBehaviors);
 				const payload = {
 					scope: 'periodic',
 					rsdt: selectedDate,
 					pnum: row.pnum,
 					WEIGHT: toNullableDecimal(row.weight),
-					WATER_INTAKE: toNullableNumber(row.waterIntake),
 					BJYN: boolToBjyn(!!row.edema),
 					BJDG: labelToBjdg(row.edemaDegree),
 					BJPA: row.edemaArea || null,
-					NS_SORE_MNG: boolToFlag01(!!row.bedsore),
-					NS_SORE_DESC: row.bedsoreArea || null,
-					NS_MEDI_CHK: boolToFlag01(!!row.medication),
-					NS_JUSA_CHK: boolToFlag01(!!row.injection),
-					NS_DNG_CHK: boolToFlagNy(!!row.incontinence),
-					DRESSING_FLAG: boolToFlagNy(!!row.dressing),
 					NS_PAN_CHK: pain ? pain.slice(0, 1) : null,
-					NS_FAL_CHK: boolToFlagNy(!!row.fall),
-					NS_DRY_CHK: boolToFlagNy(!!row.dehydration),
-					NS_DLM_CHK: boolToFlagNy(!!row.delirium),
-					NS_ACT_CHK: boolToFlagNy(!!row.problemBehavior),
-					NUDES: row.nursingHistory || '',
+					NS_ACT_ITEMS: actItems || null,
+					NS_ACT_CHK: boolToFlagNy(row.problemBehaviors.length > 0),
 					INEMPNM: row.author || null,
 					NS_WRITE_NAME: row.author || null,
+					vsSeq: 1,
 				};
 				const res = await fetch('/api/f30120', {
 					method: 'PUT',
@@ -285,11 +267,18 @@ export default function VitalSignsPeriodic() {
 		return true;
 	});
 
+	const availableFloors = useMemo(
+		() => availableFloorsFromMembers(vitalSignsData.map((row) => ({ ROOM_NO: row.livingRoom }))),
+		[vitalSignsData]
+	);
+
+	const sortedData = [...filteredData].sort((a, b) => compareVitalRow(a, b, sortMode));
+
 	// 페이지네이션 계산
-	const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+	const totalPages = Math.ceil(sortedData.length / itemsPerPage);
 	const startIndex = (currentPage - 1) * itemsPerPage;
 	const endIndex = startIndex + itemsPerPage;
-	const paginatedData = filteredData.slice(startIndex, endIndex);
+	const paginatedData = sortedData.slice(startIndex, endIndex);
 
 	// 페이지 변경 함수
 	const handlePageChange = (page: number) => {
@@ -299,7 +288,7 @@ export default function VitalSignsPeriodic() {
 	// 필터 변경 시 첫 페이지로 이동
 	useEffect(() => {
 		setCurrentPage(1);
-	}, [selectedStatus, selectedLivingRoom]);
+	}, [selectedStatus, selectedLivingRoom, sortMode]);
 
 	// 행 추가 함수
 	const handleAddRow = () => {
@@ -308,24 +297,13 @@ export default function VitalSignsPeriodic() {
 			status: '',
 			beneficiaryName: '',
 			weight: '',
-			waterIntake: '',
 			livingRoom: '',
 			edema: false,
 			edemaArea: '',
 			edemaDegree: '',
-			bedsore: false,
-			bedsoreArea: '',
-			medication: false,
-			injection: false,
-			incontinence: false,
-			dressing: false,
 			painVAS: '',
-			nursingHistory: '',
 			author: '',
-			fall: false,
-			dehydration: false,
-			delirium: false,
-			problemBehavior: false
+			problemBehaviors: [],
 		};
 		
 		setVitalSignsData(prev => [...prev, newRow]);
@@ -558,44 +536,90 @@ export default function VitalSignsPeriodic() {
 
 					{/* 우측 메인 테이블 */}
 					<div className="flex-1 border border-blue-300 rounded-lg bg-white shadow-sm">
-						<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
+						<div className="bg-blue-100 border-b border-blue-300 px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
 							<h2 className="text-lg font-semibold text-blue-900">활력증상 등록(주기)</h2>
+							<div className="flex items-center gap-4 flex-wrap">
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-blue-900">층별</span>
+									<button
+										type="button"
+										onClick={() => setSelectedLivingRoom('')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											selectedLivingRoom === ''
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										전체
+									</button>
+									{availableFloors.map((floor) => {
+										const value = `${floor}층`;
+										return (
+											<button
+												key={floor}
+												type="button"
+												onClick={() => setSelectedLivingRoom(value)}
+												className={`px-3 py-1 text-xs border rounded font-medium ${
+													selectedLivingRoom === value
+														? 'border-blue-500 bg-blue-500 text-white'
+														: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+												}`}
+											>
+												{value}
+											</button>
+										);
+									})}
+								</div>
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-blue-900">정렬</span>
+									<button
+										type="button"
+										onClick={() => setSortMode('room')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											sortMode === 'room'
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										생활실별
+									</button>
+									<button
+										type="button"
+										onClick={() => setSortMode('name')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											sortMode === 'name'
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										수급자별
+									</button>
+								</div>
+							</div>
 						</div>
 						<div className="overflow-x-auto w-full min-w-0">
 							<table className="w-full text-sm">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">현황</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">수급자명</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">생활실</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">체중</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">물 섭취량</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종 부위</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종 정도</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">욕창</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">욕창 부위</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">약물투여</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">주사제투여</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">소변/대변실금</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">드레싱 실시</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">통증 (VAS)</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">낙상</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">탈수</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">섬망</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold">문제행동</th>
 									</tr>
 								</thead>
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={19} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={7} className="text-center px-3 py-4 text-blue-900/60">
 												로딩 중...
 											</td>
 										</tr>
 									) : vitalSignsData.length === 0 ? (
 										<tr>
-											<td colSpan={19} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={7} className="text-center px-3 py-4 text-blue-900/60">
 												데이터가 없습니다
 											</td>
 										</tr>
@@ -611,30 +635,8 @@ export default function VitalSignsPeriodic() {
 												<td className="text-center px-3 py-3 border-r border-blue-100">
 													<input
 														type="text"
-														value={row.status}
-														onChange={(e) => handleDataChange(row.id, 'status', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
 														value={row.beneficiaryName}
 														onChange={(e) => handleDataChange(row.id, 'beneficiaryName', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
-														value={row.livingRoom}
-														onChange={(e) => handleDataChange(row.id, 'livingRoom', e.target.value)}
 														disabled={editingRowId !== row.id}
 														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
 															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
@@ -651,18 +653,6 @@ export default function VitalSignsPeriodic() {
 															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 														}`}
 														placeholder="체중 입력"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
-														value={row.waterIntake}
-														onChange={(e) => handleDataChange(row.id, 'waterIntake', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-														placeholder="ml"
 													/>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
@@ -701,62 +691,6 @@ export default function VitalSignsPeriodic() {
 													</select>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.bedsore}
-														onChange={(e) => handleDataChange(row.id, 'bedsore', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
-														value={row.bedsoreArea}
-														onChange={(e) => handleDataChange(row.id, 'bedsoreArea', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.medication}
-														onChange={(e) => handleDataChange(row.id, 'medication', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.injection}
-														onChange={(e) => handleDataChange(row.id, 'injection', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.incontinence}
-														onChange={(e) => handleDataChange(row.id, 'incontinence', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.dressing}
-														onChange={(e) => handleDataChange(row.id, 'dressing', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
 													<div className="flex items-center justify-center gap-1">
 														<input
 															type="text"
@@ -770,78 +704,58 @@ export default function VitalSignsPeriodic() {
 														/>
 													</div>
 												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.fall}
-														onChange={(e) => handleDataChange(row.id, 'fall', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.dehydration}
-														onChange={(e) => handleDataChange(row.id, 'dehydration', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.delirium}
-														onChange={(e) => handleDataChange(row.id, 'delirium', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3">
-													<input
-														type="checkbox"
-														checked={row.problemBehavior}
-														onChange={(e) => handleDataChange(row.id, 'problemBehavior', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
+												<td className="text-left px-3 py-3">
+													<div className="flex flex-wrap gap-x-3 gap-y-1">
+														{PROBLEM_BEHAVIOR_ITEMS.map((item) => {
+															const checked = row.problemBehaviors.includes(item);
+															const isEditing = editingRowId === row.id;
+															return (
+															<label
+																key={item}
+																className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${
+																	isEditing ? 'cursor-pointer' : 'pointer-events-none'
+																} ${checked ? 'text-blue-700 font-medium' : 'text-blue-900/70'}`}
+															>
+																<input
+																	type="checkbox"
+																	checked={checked}
+																	onChange={() => {
+																		if (!isEditing) return;
+																		toggleProblemBehavior(row.id, item);
+																	}}
+																	tabIndex={isEditing ? 0 : -1}
+																	className="h-3.5 w-3.5 accent-blue-600"
+																/>
+																{item}
+															</label>
+															);
+														})}
+													</div>
 												</td>
 											</tr>
-											{/* 두 번째 줄: 작성자, 간호내역, 작업 */}
+											{/* 두 번째 줄: 작성자, 작업 */}
 											<tr
 												onClick={() => setSelectedRowId(row.id)}
 												className={`border-b border-blue-50 cursor-pointer ${
 													selectedRowId === row.id ? 'bg-blue-100' : 'bg-blue-25'
 												}`}
 											>
-												<td colSpan={19} className="px-3 py-2">
+												<td colSpan={7} className="px-3 py-2">
 													<div className="flex items-center gap-4 w-full">
 													<div className="flex items-center gap-2 flex-shrink-0">
 														<label className="text-xs text-blue-900 font-medium whitespace-nowrap">작성자</label>
-														<input
-															type="text"
+														<EmployeeSearchInput
 															value={row.author}
-															onChange={(e) => handleDataChange(row.id, 'author', e.target.value)}
+															onChange={(name) => handleDataChange(row.id, 'author', name)}
 															disabled={editingRowId !== row.id}
-															className={`px-2 py-1 text-xs border border-blue-300 rounded ${
+															placeholder="직원 검색"
+															className="w-36"
+															inputClassName={`w-full px-2 py-1 text-xs border border-blue-300 rounded ${
 																editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 															}`}
-															placeholder="작성자 입력"
 														/>
 													</div>
-														<div className="flex items-center gap-2 flex-1">
-															<label className="text-xs text-blue-900 font-medium whitespace-nowrap flex-shrink-0">간호내역</label>
-															<textarea
-																value={row.nursingHistory}
-																onChange={(e) => handleDataChange(row.id, 'nursingHistory', e.target.value)}
-																disabled={editingRowId !== row.id}
-																className={`w-full px-2 py-1 text-xs border border-blue-300 rounded ${
-																	editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-																}`}
-																rows={2}
-															/>
-														</div>
-														<div className="flex items-center gap-2 flex-shrink-0">
+														<div className="flex items-center gap-2 flex-shrink-0 ml-auto">
 															<div className="flex gap-2">
 																<button
 																	onClick={() => handleEditClick(row.id)}
@@ -934,21 +848,21 @@ export default function VitalSignsPeriodic() {
 									&gt;&gt;
 								</button>
 								<span className="ml-4 text-xs text-blue-900">
-									{filteredData.length > 0 ? `${startIndex + 1}-${Math.min(endIndex, filteredData.length)} / ${filteredData.length}` : '0 / 0'}
+									{sortedData.length > 0 ? `${startIndex + 1}-${Math.min(endIndex, sortedData.length)} / ${sortedData.length}` : '0 / 0'}
 								</span>
 							</div>
 						</div>
 					)}
 
 					{/* 하단 추가 버튼 */}
-					<div className="flex justify-center mt-4">
+					{/* <div className="flex justify-center mt-4">
 						<button
 							onClick={handleAddRow}
 							className="px-6 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 						>
 							추가
 						</button>
-					</div>
+					</div> */}
 				</div>
 			</div>
 

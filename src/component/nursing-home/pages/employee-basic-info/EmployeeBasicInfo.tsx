@@ -15,6 +15,11 @@ import {
 	workStatusFromEmployee,
 	workStatusText,
 } from '../../utils/employeeWorkStatus';
+import {
+	JOB_LIST_OPTIONS,
+	employeeJobTitle,
+	jobListCodeOrEmpty,
+} from '../../utils/employeeJobList';
 
 interface Employee {
 	ANCD: number;
@@ -22,6 +27,7 @@ interface Employee {
 	EMPNM: string;
 	EMPHP?: string;
 	JOB?: string;
+	JOBLIST?: number | string | null;
 	JOBST?: string;
 	JOBADD?: string;
 	JOBSH?: string;
@@ -42,6 +48,7 @@ interface EmployeeForm {
 	name: string;
 	yearsOfService: string;
 	job: string;
+	jobList: string;
 	workLocation: string;
 	workType: string;
 	hireDate: string;
@@ -60,6 +67,7 @@ const initialForm: EmployeeForm = {
 	name: "",
 	yearsOfService: "",
 	job: "",
+	jobList: "",
 	workLocation: "",
 	workType: "",
 	hireDate: "",
@@ -78,6 +86,7 @@ interface EmployeeCreateForm {
 	name: string;
 	yearsOfService: string;
 	job: string;
+	jobList: string;
 	workStatus: string;
 	hireDate: string;
 	leaveStartDate: string;
@@ -101,10 +110,34 @@ function parseIntOrZero(v: string): number {
 	return Number.isFinite(n) ? n : 0;
 }
 
+function parseYmdLocal(ymd: string): Date | null {
+	const s = String(ymd || "").trim().slice(0, 10);
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+	if (!m) return null;
+	const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+	return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** 취업일 기준 현재 년차. 입사 당해=1년차, 다음 입사기념일부터 +1. 퇴직일이 오늘보다 이전이면 퇴직일 기준. */
+function calcYearsOfService(hireDate: string, retirementDate?: string): string {
+	const hire = parseYmdLocal(hireDate);
+	if (!hire) return "";
+	const today = parseYmdLocal(todayYmd());
+	if (!today) return "";
+	const retire = parseYmdLocal(retirementDate || "");
+	const asOf = retire && retire < today ? retire : today;
+	if (asOf < hire) return "";
+	let years = asOf.getFullYear() - hire.getFullYear();
+	const md = (d: Date) => d.getMonth() * 100 + d.getDate();
+	if (md(asOf) < md(hire)) years -= 1;
+	return String(Math.max(1, years + 1));
+}
+
 const initialCreateForm = (): EmployeeCreateForm => ({
 	name: "",
-	yearsOfService: "",
+	yearsOfService: calcYearsOfService(todayYmd()),
 	job: "",
+	jobList: "",
 	workStatus: "1",
 	hireDate: todayYmd(),
 	leaveStartDate: "",
@@ -196,12 +229,13 @@ export default function EmployeeBasicInfo() {
 
 	const employeeToForm = (employee: Employee): EmployeeForm => ({
 		name: employee.EMPNM || "",
-		yearsOfService: employee.YRNT ? String(employee.YRNT) : "",
 		job: employee.JOB || "",
+		jobList: jobListCodeOrEmpty(employee.JOBLIST),
 		workLocation: employee.JOBADD || "",
 		workType: employee.JOBSH || "",
 		hireDate: formatDate(employee.SDT),
 		retirementDate: formatDate(employee.EDT),
+		yearsOfService: calcYearsOfService(formatDate(employee.SDT), formatDate(employee.EDT)),
 		leaveStartDate: formatDate(employee.HSDT),
 		leaveEndDate: formatDate(employee.HEDT),
 		homePhone: employee.EMPTEL || "",
@@ -234,8 +268,7 @@ export default function EmployeeBasicInfo() {
 		}
 		// 직책 필터
 		if (selectedJob && selectedJob !== "") {
-			const employeeJob = String(employee.JOB || "").trim();
-			if (employeeJob !== selectedJob) {
+			if (employeeJobTitle(employee) !== selectedJob) {
 				return false;
 			}
 		}
@@ -248,10 +281,15 @@ export default function EmployeeBasicInfo() {
 		return true;
 	});
 
-	// 고유한 직책 목록 추출
-	const uniqueJobs = Array.from(
-		new Set(employeeList.map((emp) => emp.JOB).filter((job) => job && job.trim() !== ""))
+	const standardJobLabels = JOB_LIST_OPTIONS.map((o) => o.label);
+	const leftoverJobs = Array.from(
+		new Set(
+			employeeList
+				.map((emp) => employeeJobTitle(emp))
+				.filter((job) => job && !standardJobLabels.includes(job))
+		)
 	).sort();
+	const uniqueJobs = [...standardJobLabels, ...leftoverJobs];
 
 	// 페이지네이션 계산
 	const totalPages = Math.ceil(filteredEmployees.length / itemsPerPage);
@@ -331,6 +369,7 @@ export default function EmployeeBasicInfo() {
 					EMPNM: createForm.name.trim(),
 					YRNT: createForm.yearsOfService,
 					JOB: createForm.job,
+					JOBLIST: createForm.jobList || null,
 					JOBST: getFormWorkStatus(createForm),
 					JOBADD: createForm.workLocation,
 					JOBSH: createForm.workType,
@@ -362,6 +401,7 @@ export default function EmployeeBasicInfo() {
 				EMPNO: json.empno,
 				EMPNM: json.EMPNM || createForm.name.trim(),
 				JOB: createForm.job,
+				JOBLIST: createForm.jobList || null,
 				JOBST: getFormWorkStatus(createForm),
 				JOBADD: createForm.workLocation,
 				JOBSH: createForm.workType,
@@ -472,6 +512,7 @@ export default function EmployeeBasicInfo() {
 		EMPNM: formData.name.trim(),
 		YRNT: formData.yearsOfService,
 		JOB: formData.job,
+		JOBLIST: formData.jobList || null,
 		JOBST: getFormWorkStatus(formData),
 		JOBADD: formData.workLocation,
 		JOBSH: formData.workType,
@@ -511,6 +552,7 @@ export default function EmployeeBasicInfo() {
 				EMPNM: formData.name.trim(),
 				YRNT: parseIntOrZero(formData.yearsOfService),
 				JOB: formData.job,
+				JOBLIST: formData.jobList || null,
 				JOBST: getFormWorkStatus(formData),
 				JOBADD: formData.workLocation,
 				JOBSH: formData.workType,
@@ -620,7 +662,7 @@ export default function EmployeeBasicInfo() {
 												>
 													<td className="px-2 py-2">{employee.EMPNM || "-"}</td>
 													<td className="px-2 py-2">{employee.EMPHP || "-"}</td>
-													<td className="px-2 py-2">{employee.JOB || "-"}</td>
+													<td className="px-2 py-2">{employeeJobTitle(employee) || "-"}</td>
 													<td className="px-2 py-2">{workStatusText(getEmployeeWorkStatus(employee))}</td>
 												</tr>
 											))
@@ -805,15 +847,11 @@ export default function EmployeeBasicInfo() {
 									</label>
 									<input
 										type="text"
+										readOnly
 										value={formData.yearsOfService}
-										onChange={(e) =>
-											setFormData((prev) => ({
-												...prev,
-												yearsOfService: e.target.value,
-											}))
-										}
-										placeholder="년차"
-										className="w-20 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+										placeholder="취업일자 기준"
+										title="취업일자 기준으로 자동 계산됩니다"
+										className="w-20 rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-sm text-blue-900"
 									/>
 									<label className="w-24 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900 ml-4">
 										근무위치
@@ -836,14 +874,29 @@ export default function EmployeeBasicInfo() {
 									<label className="w-24 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900">
 										직책
 									</label>
-									<input
-										type="text"
-										value={formData.job}
-										onChange={(e) =>
-											setFormData((prev) => ({ ...prev, job: e.target.value }))
-										}
-										className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
-									/>
+									{formLocked ? (
+										<input
+											type="text"
+											readOnly
+											value={employeeJobTitle({ JOBLIST: formData.jobList, JOB: formData.job })}
+											className="flex-1 rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-sm text-blue-900"
+										/>
+									) : (
+										<select
+											value={formData.jobList}
+											onChange={(e) =>
+												setFormData((prev) => ({ ...prev, jobList: e.target.value }))
+											}
+											className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+										>
+											<option value="">선택</option>
+											{JOB_LIST_OPTIONS.map((opt) => (
+												<option key={opt.value} value={String(opt.value)}>
+													{opt.value}. {opt.label}
+												</option>
+											))}
+										</select>
+									)}
 								</div>
 
 								{/* Row 3: 직위 + 취업일자 + 퇴직일자 */}
@@ -865,9 +918,14 @@ export default function EmployeeBasicInfo() {
 									<input
 										type="date"
 										value={formData.hireDate}
-										onChange={(e) =>
-											setFormData((prev) => ({ ...prev, hireDate: e.target.value }))
-										}
+										onChange={(e) => {
+											const hireDate = e.target.value;
+											setFormData((prev) => ({
+												...prev,
+												hireDate,
+												yearsOfService: calcYearsOfService(hireDate, prev.retirementDate),
+											}));
+										}}
 										className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
 									/>
 									<label className="w-20 shrink-0 px-2 py-1.5 text-sm font-medium bg-blue-100 border border-blue-300 rounded text-blue-900 ml-4">
@@ -876,12 +934,14 @@ export default function EmployeeBasicInfo() {
 									<input
 										type="date"
 										value={formData.retirementDate}
-										onChange={(e) =>
+										onChange={(e) => {
+											const retirementDate = e.target.value;
 											setFormData((prev) => ({
 												...prev,
-												retirementDate: e.target.value,
-											}))
-										}
+												retirementDate,
+												yearsOfService: calcYearsOfService(prev.hireDate, retirementDate),
+											}));
+										}}
 										className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
 									/>
 								</div>
@@ -1035,23 +1095,31 @@ export default function EmployeeBasicInfo() {
 							</div>
 
 							<div className="flex items-center gap-2">
-								<label className={modalLabelCls}>연차일수</label>
+								<label className={modalLabelCls}>년차</label>
 								<input
 									type="text"
+									readOnly
 									value={createForm.yearsOfService}
-									onChange={(e) => setCreateForm((f) => ({ ...f, yearsOfService: e.target.value }))}
-									className="w-24 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+									placeholder="취업일자 기준"
+									title="취업일자 기준으로 자동 계산됩니다"
+									className="w-24 rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-sm text-blue-900"
 								/>
 							</div>
 
 							<div className="flex items-center gap-2">
 								<label className={modalLabelCls}>직책</label>
-								<input
-									type="text"
-									value={createForm.job}
-									onChange={(e) => setCreateForm((f) => ({ ...f, job: e.target.value }))}
+								<select
+									value={createForm.jobList}
+									onChange={(e) => setCreateForm((f) => ({ ...f, jobList: e.target.value }))}
 									className={modalFieldCls}
-								/>
+								>
+									<option value="">선택</option>
+									{JOB_LIST_OPTIONS.map((opt) => (
+										<option key={opt.value} value={String(opt.value)}>
+											{opt.value}. {opt.label}
+										</option>
+									))}
+								</select>
 							</div>
 
 							<div className="flex items-center gap-2">
@@ -1069,7 +1137,14 @@ export default function EmployeeBasicInfo() {
 								<input
 									type="date"
 									value={createForm.hireDate}
-									onChange={(e) => setCreateForm((f) => ({ ...f, hireDate: e.target.value }))}
+									onChange={(e) => {
+										const hireDate = e.target.value;
+										setCreateForm((f) => ({
+											...f,
+											hireDate,
+											yearsOfService: calcYearsOfService(hireDate, f.retirementDate),
+										}));
+									}}
 									className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
 								/>
 								<label className={`${modalLabelCls} w-24`}>휴직시작일</label>
@@ -1090,7 +1165,14 @@ export default function EmployeeBasicInfo() {
 								<input
 									type="date"
 									value={createForm.retirementDate}
-									onChange={(e) => setCreateForm((f) => ({ ...f, retirementDate: e.target.value }))}
+									onChange={(e) => {
+										const retirementDate = e.target.value;
+										setCreateForm((f) => ({
+											...f,
+											retirementDate,
+											yearsOfService: calcYearsOfService(f.hireDate, retirementDate),
+										}));
+									}}
 									className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
 								/>
 							</div>
