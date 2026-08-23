@@ -22,6 +22,7 @@ const FORM_TSX = path.join(DIR, 'MemberInfoForm.tsx');
 const UTILS_TS = path.join(DIR, 'MemberInfoUtils.ts');
 const VIEW_TSX = path.join(DIR, 'MemberInfoView.tsx');
 const CARE_TS = path.join(DIR, '../../utils/careGrade.ts');
+const ROOM_TS = path.join(DIR, '../../utils/roomNoFloor.ts');
 
 const tempFiles = [];
 
@@ -92,10 +93,12 @@ describe('MemberInfoForm — presentational', () => {
 
 	before(() => {
 		const careOut = compile(CARE_TS);
+		const roomOut = compile(ROOM_TS);
 		const utilsOut = compile(UTILS_TS, { '../../utils/careGrade': careOut });
 		const mod = require(
 			compile(FORM_TSX, {
 				'../../utils/careGrade': careOut,
+				'../../utils/roomNoFloor': roomOut,
 				'./MemberInfoUtils': utilsOut,
 			})
 		);
@@ -122,6 +125,8 @@ describe('MemberInfoForm — presentational', () => {
 		assert.match(html, /주소 검색/);
 		assert.match(html, /value="101동 101호"/);
 		assert.match(html, /간호지시서정보/);
+		assert.match(html, /생활실/);
+		assert.match(html, /placeholder="예: 101호"/);
 		assert.match(html, /placeholder="층수 \(0 이상의 정수\)"/);
 	});
 

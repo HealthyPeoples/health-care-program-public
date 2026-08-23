@@ -246,15 +246,17 @@ export function buildRecipientCardPrintHtml(
     }
     .gridTable th, .gridTable td {
       border: 1px solid #000;
-      padding: 3px 5px;
+      padding: 3px 2px;
       vertical-align: middle;
+      overflow: hidden;
     }
     .gridTable th {
-      width: 18mm;
+      width: 24mm;
       background: #fff;
       font-weight: 700;
       text-align: center;
       white-space: nowrap;
+      font-size: 11px;
     }
     .gridTable td {
       height: 7.5mm;
@@ -345,13 +347,13 @@ export function buildRecipientCardPrintHtml(
 
     <table class="gridTable" aria-label="수급자카드">
       <colgroup>
-        <col style="width:18mm" />
-        <col style="width:54mm" />
-        <col style="width:18mm" />
-        <col style="width:30mm" />
-        <col style="width:22mm" />
-        <col style="width:34mm" />
-        <col style="width:18mm" />
+        <col style="width:24mm" />
+        <col style="width:46mm" />
+        <col style="width:24mm" />
+        <col style="width:24mm" />
+        <col style="width:24mm" />
+        <col style="width:28mm" />
+        <col style="width:24mm" />
         <col style="width:auto" />
       </colgroup>
       <tbody>

@@ -112,33 +112,17 @@ export function availableFloorsFromMembers<
 }
 
 /**
- * 최신 YYYYMM 기준 F14090에서 ROOM_NO를 가져와 members(주로 F10010) 데이터에 병합.
- * - key: PNUM (정규화, F14090는 세션 ANCD로 이미 제한됨)
+ * 생활실/층수는 F10010에서 조회합니다. 다른 테이블을 붙이지 않습니다.
  */
 export async function attachLatestRoomNoByPnum<T extends { PNUM?: unknown; ROOM_NO?: unknown }>(
 	members: T[]
 ): Promise<T[]> {
-	if (!Array.isArray(members) || members.length === 0) return members;
-	try {
-		const res = await fetch('/api/f14090');
-		const json = await res.json();
-		if (!json?.success || !Array.isArray(json.data)) return members;
+	return Array.isArray(members) ? members : [];
+}
 
-		const roomByPnum = new Map<string, unknown>();
-		json.data.forEach((row: any) => {
-			const pnumKey = normalizePnumKey(row?.PNUM);
-			if (!pnumKey) return;
-			roomByPnum.set(pnumKey, row?.ROOM_NO ?? null);
-		});
-
-		return members.map((m) => {
-			const pnumKey = normalizePnumKey((m as any)?.PNUM);
-			const roomNo = pnumKey ? roomByPnum.get(pnumKey) : undefined;
-			return { ...(m as any), ROOM_NO: roomNo ?? (m as any).ROOM_NO ?? null };
-		}) as T[];
-	} catch {
-		return members;
-	}
+/** 생활실은 F10010.ROOM_NO에 저장합니다. */
+export async function saveRoomNoByPnum(_pnum: unknown, _roomNo: unknown): Promise<void> {
+	return;
 }
 
 /**

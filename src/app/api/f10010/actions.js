@@ -78,14 +78,14 @@ const ACTIONS = {
         [P_YYNO], [P_YYDT], [P_ST], [P_CINFO],
         [P_CTDT], [P_SDT], [P_SDT_TM], [P_EDT], [P_EDT_TM],
         [HCANUM], [HCAINFO], [HSPT], [DTNM], [DTTEL],
-        [INDT], [ETC], [P_YYSDT], [P_YYEDT], [P_FLOOR]
+        [INDT], [ETC], [P_YYSDT], [P_YYEDT], [P_FLOOR], [ROOM_NO]
       ) VALUES (
         @ANCD, @PNUM, @P_NM, @P_BRDT, @P_NO, @P_SEX,
         @P_ZIP, @P_ADDR, @P_TEL, @P_HP, @P_GRD,
         @P_YYNO, @P_YYDT, @P_ST, @P_CINFO,
         @P_CTDT, @P_SDT, @P_SDT_TM, @P_EDT, @P_EDT_TM,
         @HCANUM, @HCAINFO, @HSPT, @DTNM, @DTTEL,
-        @INDT, @ETC, @P_YYSDT, @P_YYEDT, @P_FLOOR
+        @INDT, @ETC, @P_YYSDT, @P_YYEDT, @P_FLOOR, @ROOM_NO
       )`,
       [
         ['ANCD', sessionAncd],
@@ -118,6 +118,7 @@ const ACTIONS = {
         ['P_YYSDT', p.P_YYSDT ?? null],
         ['P_YYEDT', p.P_YYEDT ?? null],
         ['P_FLOOR', p.P_FLOOR ?? null],
+        ['ROOM_NO', p.ROOM_NO ?? null],
       ]
     );
   },
@@ -137,7 +138,7 @@ const ACTIONS = {
          [P_CINFO] = @P_CINFO, [P_CTDT] = @P_CTDT, [P_SDT] = @P_SDT, [P_SDT_TM] = @P_SDT_TM,
          [P_EDT] = @P_EDT, [P_EDT_TM] = @P_EDT_TM, [HCANUM] = @HCANUM, [HCAINFO] = @HCAINFO,
          [HSPT] = @HSPT, [DTNM] = @DTNM, [DTTEL] = @DTTEL, [ETC] = @ETC,
-         [P_YYSDT] = @P_YYSDT, [P_YYEDT] = @P_YYEDT, [P_FLOOR] = @P_FLOOR
+         [P_YYSDT] = @P_YYSDT, [P_YYEDT] = @P_YYEDT, [P_FLOOR] = @P_FLOOR, [ROOM_NO] = @ROOM_NO
        WHERE [ANCD] = @OLD_ANCD AND [PNUM] = @PNUM`,
       [
         ['OLD_ANCD', sessionAncd],
@@ -170,6 +171,7 @@ const ACTIONS = {
         ['P_YYSDT', p.P_YYSDT ?? null],
         ['P_YYEDT', p.P_YYEDT ?? null],
         ['P_FLOOR', p.P_FLOOR ?? null],
+        ['ROOM_NO', p.ROOM_NO ?? null],
       ]
     );
   },

@@ -11,7 +11,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
 	NO_ROOM_VALUE,
-	attachLatestRoomNoByPnum,
 	availableFloorsFromMembers,
 	extractMemberFloor,
 	normalizeRoomNo,
@@ -120,12 +119,11 @@ export function useMemberInfo() {
 			
 			if (result.success) {
 				const list = Array.isArray(result.data) ? (result.data as MemberData[]) : [];
-				const mergedMembers = await attachLatestRoomNoByPnum<MemberData>(list);
 
-				setMembers(mergedMembers);
+				setMembers(list);
 				setSelectedMember((prev) => {
 					if (!prev) return null;
-					const found = mergedMembers.find(
+					const found = list.find(
 						(m) =>
 							String(m.ANCD) === String(prev.ANCD) && String(m.PNUM) === String(prev.PNUM)
 					);
@@ -245,7 +243,8 @@ export function useMemberInfo() {
 				ETC: editedMember.ETC?.trim() || null,
 				P_YYSDT: formatDate(editedMember.P_YYSDT),
 				P_YYEDT: formatDate(editedMember.P_YYEDT),
-				P_FLOOR: editedMember.P_FLOOR && editedMember.P_FLOOR !== '' ? parseInt(editedMember.P_FLOOR) : null
+				P_FLOOR: editedMember.P_FLOOR && editedMember.P_FLOOR !== '' ? parseInt(editedMember.P_FLOOR) : null,
+				ROOM_NO: normalizeRoomNo(editedMember.ROOM_NO) || null,
 			};
 
 			const response = await fetch('/api/f10010', {
@@ -520,7 +519,8 @@ export function useMemberInfo() {
 				ETC: newMember.ETC?.trim() || null,
 				P_YYSDT: formatDate(newMember.P_YYSDT),
 				P_YYEDT: formatDate(newMember.P_YYEDT),
-				P_FLOOR: newMember.P_FLOOR && newMember.P_FLOOR !== '' ? parseInt(newMember.P_FLOOR) : null
+				P_FLOOR: newMember.P_FLOOR && newMember.P_FLOOR !== '' ? parseInt(newMember.P_FLOOR) : null,
+				ROOM_NO: normalizeRoomNo(newMember.ROOM_NO) || null,
 			};
 
 			const response = await fetch('/api/f10010', {

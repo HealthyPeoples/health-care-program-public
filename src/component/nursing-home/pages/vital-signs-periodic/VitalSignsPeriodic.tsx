@@ -26,8 +26,7 @@ import {
 	availableFloorsFromMembers,
 	compareVitalRow,
 	extractFloorFromRoomNo,
-	fetchRoomNoMapFromF30112,
-	normalizePnumKey,
+	normalizeRoomNo,
 	type VitalSortMode,
 } from '../../utils/roomNoFloor';
 import { buildHealthRecordAllHtml, buildHealthRecordHtml, openPrintWindow } from '../../utils/v30030rPrint';
@@ -96,12 +95,11 @@ export default function VitalSignsPeriodic() {
 			const result = await response.json();
 			
 			if (result.success && Array.isArray(result.data)) {
-				const roomMap = await fetchRoomNoMapFromF30112(result.data.map((item: any) => item.PNUM));
 				const transformedData: VitalSignsPeriodicData[] = result.data
 					.map((item: any, index: number) => {
 					const status = item.P_ST === '1' ? '입소' : item.P_ST === '9' ? '퇴소' : '';
 					const pain = String(item.NS_PAN_CHK ?? '').trim();
-					const roomNo = roomMap.get(normalizePnumKey(item.PNUM)) || '';
+					const roomNo = normalizeRoomNo(item.ROOM_NO);
 					return {
 						id: index + 1,
 						status,
@@ -702,15 +700,9 @@ export default function VitalSignsPeriodic() {
 													/>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
-														value={row.livingRoom}
-														onChange={(e) => handleDataChange(row.id, 'livingRoom', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-													/>
+													<span className="block w-full px-2 py-1 text-center">
+														{row.livingRoom || '-'}
+													</span>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
 													<input

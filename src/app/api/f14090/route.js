@@ -101,29 +101,93 @@ export async function GET(req) {
   }
 }
 
+function currentYyyymm() {
+	const d = new Date();
+	return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+async function upsertRoomNoOnly(pool, sessionAncd, pnum, yyyymmRaw, roomNo) {
+	const p = String(pnum || '').trim();
+	if (!p) {
+		return jsonError({ success: false, error: 'pnum이 필요합니다' }, 400);
+	}
+
+	let yyyymm = normalizeYyyymm(yyyymmRaw);
+	if (!yyyymm) {
+		const latestResult = await pool
+			.request()
+			.input('ANCD', sessionAncd)
+			.query(`
+				SELECT MAX(CAST([YYYYMM] AS INT)) AS LATEST_YYYYMM
+				FROM [돌봄시설DB].[dbo].[F14090]
+				WHERE [ANCD] = @ANCD
+			`);
+		const latest = latestResult?.recordset?.[0]?.LATEST_YYYYMM;
+		yyyymm = latest != null ? String(latest) : currentYyyymm();
+	}
+
+	const room = roomNo == null || String(roomNo).trim() === '' || String(roomNo).trim() === '0'
+		? null
+		: String(roomNo).trim();
+
+	await pool
+		.request()
+		.input('ANCD', sessionAncd)
+		.input('YYYYMM', String(yyyymm))
+		.input('PNUM', p)
+		.input('ROOM_NO', room)
+		.query(`
+			IF EXISTS (
+				SELECT 1
+				FROM [돌봄시설DB].[dbo].[F14090]
+				WHERE [ANCD] = @ANCD
+				  AND CAST([YYYYMM] AS VARCHAR) = CAST(@YYYYMM AS VARCHAR)
+				  AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+			)
+			BEGIN
+				UPDATE [돌봄시설DB].[dbo].[F14090]
+				SET [ROOM_NO] = @ROOM_NO
+				WHERE [ANCD] = @ANCD
+				  AND CAST([YYYYMM] AS VARCHAR) = CAST(@YYYYMM AS VARCHAR)
+				  AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+			END
+			ELSE
+			BEGIN
+				INSERT INTO [돌봄시설DB].[dbo].[F14090] ([ANCD],[YYYYMM],[PNUM],[ROOM_NO])
+				VALUES (@ANCD,@YYYYMM,@PNUM,@ROOM_NO)
+			END
+		`);
+
+	return jsonOk({ success: true, yyyymm });
+}
+
 // F14090 저장(업서트 - 화면에서 수정 가능한 항목)
 // POST /api/f14090?yyyymm=YYYYMM&pnum=PNUM
 // body: 수정 가능한 컬럼 일부(체크/바이탈/목욕/식사 등)
+// body.action === 'updateRoomNo' 이면 ROOM_NO만 반영 (다른 컬럼은 유지)
 export async function POST(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
-    const yyyymmRaw = searchParams.get('yyyymm');
-    const pnum = searchParams.get('pnum');
-    const ancd = searchParams.get('ancd'); // optional
+    const body = await req.json().catch(() => ({}));
+    const yyyymmRaw = searchParams.get('yyyymm') ?? body?.yyyymm ?? body?.YYYYMM ?? '';
+    const pnum = searchParams.get('pnum') ?? body?.pnum ?? body?.PNUM ?? '';
+    const ancd = searchParams.get('ancd') ?? body?.ancd ?? body?.ANCD ?? null;
 
     const gate = assertAnCdMatchesSession(req, ancd || null);
     if (!gate.ok) return gate.response;
 
-    const yyyymm = String(yyyymmRaw || '').replace(/\D/g, '');
-    if (!yyyymm || !/^\d{6}$/.test(yyyymm) || !pnum) {
-      return jsonError({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }, 400);
-    }
-
-    const body = await req.json().catch(() => ({}));
-
     const pool = await connPool;
     if (!pool) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+    }
+
+    if (String(body?.action || '') === 'updateRoomNo') {
+      return upsertRoomNoOnly(pool, gate.sessionAncd, pnum, yyyymmRaw, body?.ROOM_NO ?? body?.roomNo);
+    }
+
+    const yyyymm = String(yyyymmRaw || '').replace(/\D/g, '');
+    if (!yyyymm || !/^\d{6}$/.test(yyyymm) || !pnum) {
+      return jsonError({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }, 400);
     }
 
     const request = pool.request();

@@ -126,6 +126,7 @@ describe('MemberInfoUtils — pure helpers', () => {
 			ANCD: 190000,
 			P_GRD: '3등급',
 			P_FLOOR: 0,
+			ROOM_NO: '101호',
 			P_BRDT: '1950-01-01T00:00:00.000Z',
 			P_YYDT: null,
 			INSPER: 80,
@@ -134,6 +135,7 @@ describe('MemberInfoUtils — pure helpers', () => {
 		assert.equal(m.selectedANCD, '190000');
 		assert.equal(m.P_GRD, '3');
 		assert.equal(m.P_FLOOR, '0');
+		assert.equal(m.ROOM_NO, '101호');
 		assert.equal(m.P_BRDT, '1950-01-01');
 		assert.equal(m.P_YYDT, '');
 		assert.equal(m.INSPER, '80');

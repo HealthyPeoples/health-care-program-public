@@ -13,6 +13,7 @@ import { getSessionAncd } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 
 const { dispatchF10010Action } = require('./actions');
+const { ensureF10010RoomNo } = require('../../../lib/ensureF10010RoomNo');
 export async function GET(req) {
   try {
     const sessionAncd = getSessionAncd(req);
@@ -69,6 +70,7 @@ export async function GET(req) {
         f10010.[P_YYSDT],
         f10010.[P_YYEDT],
         f10010.[P_FLOOR],
+        f10010.[ROOM_NO],
         f10110.[SVSDT],
         f10110.[SVEDT],
         f10110.[INSPER],
@@ -128,6 +130,8 @@ export async function GET(req) {
                AND f10010.[PNUM] = f10020.[PNUM]
                AND f10020.rn = 1
     `;
+
+    await ensureF10010RoomNo(pool, sessionAncd);
 
     const request = pool.request();
     request.input('sessionAncd', sessionAncd);
@@ -204,6 +208,7 @@ export async function POST(req) {
       return jsonError({ success: false, error: 'action이 필요합니다.' }, 400);
     }
 
+    await ensureF10010RoomNo(pool, sessionAncd);
     const result = await dispatchF10010Action(pool, sessionAncd, action, params);
     return jsonOk(result);
   } catch (err) {

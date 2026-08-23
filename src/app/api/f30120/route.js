@@ -11,6 +11,7 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 
 const { ensureF30120FromF14020, ensureF30120VsSeq } = require('../../../lib/ensureF30120FromF14020');
+const { ensureF10010RoomNo } = require('../../../lib/ensureF10010RoomNo');
 
 const F30120_SELECT = `
         f30120.[ANCD],
@@ -50,7 +51,9 @@ const F30120_SELECT = `
         ISNULL(f30120.[VS_SEQ], 1) AS [VS_SEQ],
         f10010.[P_NM],
         f10010.[P_ST],
-        f10010.[P_BRDT]
+        f10010.[P_BRDT],
+        f10010.[ROOM_NO],
+        f10010.[P_FLOOR]
 `;
 
 let ensureO2SatPromise = null;
@@ -108,6 +111,7 @@ export async function GET(req) {
 		}
 		await ensureO2SatColumn(pool);
 		await ensureF30120VsSeq(pool);
+		await ensureF10010RoomNo(pool, gate.sessionAncd);
 
 		let query = `
       SELECT 
