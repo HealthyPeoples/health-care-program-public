@@ -11,6 +11,23 @@ import { NextRequest } from 'next/server';
 import { getSessionAncd, ancdEquals } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
+
+async function ensureF01010JobListColumn(pool) {
+	await pool.request().query(`
+		IF NOT EXISTS (
+			SELECT 1
+			FROM [돌봄시설DB].sys.columns c
+			INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
+			INNER JOIN [돌봄시설DB].sys.schemas s ON t.schema_id = s.schema_id
+			WHERE s.name = N'dbo' AND t.name = N'F01010' AND c.name = N'JOBLIST'
+		)
+		BEGIN
+			ALTER TABLE [돌봄시설DB].[dbo].[F01010]
+			ADD [JOBLIST] INT NULL;
+		END
+	`);
+}
+
 export async function GET(req) {
   try {
     const sessionAncd = getSessionAncd(req);
@@ -32,6 +49,12 @@ export async function GET(req) {
     const endDate = searchParams.get('endDate') || '';
     const empnoParam = searchParams.get('empno');
 
+    try {
+      await ensureF01010JobListColumn(pool);
+    } catch (colErr) {
+      console.warn('F01010 JOBLIST 컬럼 확인 경고:', colErr?.message || colErr);
+    }
+
     const baseSelect = `
       SELECT 
         f02010.[ANCD],
@@ -44,7 +67,9 @@ export async function GET(req) {
         f02010.[STM],
         f02010.[ETM],
         f02010.[INDT],
-        f01010.[EMPNM]
+        f01010.[EMPNM],
+        f01010.[JOB],
+        f01010.[JOBLIST]
       FROM [돌봄시설DB].[dbo].[F02010] f02010
       LEFT JOIN [돌봄시설DB].[dbo].[F01010] f01010
         ON f02010.[ANCD] = f01010.[ANCD]

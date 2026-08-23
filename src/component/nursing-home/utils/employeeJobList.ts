@@ -41,3 +41,31 @@ export function employeeJobTitle(row: { JOBLIST?: unknown; JOB?: unknown }): str
 	if (fromList) return fromList;
 	return String(row.JOB ?? "").trim();
 }
+
+/** 대표(1) → 운전원(12) 순서. 목록에 없는 직책은 맨 뒤. */
+export function jobListSortKey(row: { JOBLIST?: unknown; JOB?: unknown }): number {
+	const n = Number(row.JOBLIST);
+	if (Number.isFinite(n) && JOB_LIST_OPTIONS.some((o) => o.value === n)) return n;
+	const title = employeeJobTitle(row);
+	const found = JOB_LIST_OPTIONS.find((o) => o.label === title);
+	return found ? found.value : 999;
+}
+
+export function compareByJobThenName(
+	a: { JOBLIST?: unknown; JOB?: unknown; EMPNM?: unknown },
+	b: { JOBLIST?: unknown; JOB?: unknown; EMPNM?: unknown }
+): number {
+	const ka = jobListSortKey(a);
+	const kb = jobListSortKey(b);
+	if (ka !== kb) return ka - kb;
+	return String(a.EMPNM ?? "").localeCompare(String(b.EMPNM ?? ""), "ko");
+}
+
+export function formatNameWithJob(
+	name: unknown,
+	row: { JOBLIST?: unknown; JOB?: unknown }
+): string {
+	const nm = String(name ?? "").trim() || "-";
+	const job = employeeJobTitle(row);
+	return job ? `${nm} (${job})` : nm;
+}
