@@ -37,6 +37,7 @@ const F30120_SELECT = `
         f30120.[NS_MEDI_CHK],
         f30120.[NS_JUSA_CHK],
         f30120.[NS_ACT_CHK],
+        f30120.[NS_ACT_ITEMS],
         f30120.[NS_FAL_CHK],
         f30120.[NS_DRY_CHK],
         f30120.[NS_DNG_CHK],
@@ -57,6 +58,35 @@ const F30120_SELECT = `
 `;
 
 let ensureO2SatPromise = null;
+let ensureNsActItemsPromise = null;
+
+async function ensureNsActItemsColumn(pool) {
+	if (!pool) return;
+	if (!ensureNsActItemsPromise) {
+		ensureNsActItemsPromise = pool
+			.request()
+			.query(
+				`
+      IF NOT EXISTS (
+        SELECT 1
+        FROM [돌봄시설DB].sys.columns c
+        INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
+        INNER JOIN [돌봄시설DB].sys.schemas s ON t.schema_id = s.schema_id
+        WHERE s.name = N'dbo' AND t.name = N'F30120' AND c.name = N'NS_ACT_ITEMS'
+      )
+      BEGIN
+        ALTER TABLE [돌봄시설DB].[dbo].[F30120]
+        ADD [NS_ACT_ITEMS] NVARCHAR(200) NULL;
+      END
+    `
+			)
+			.catch((err) => {
+				ensureNsActItemsPromise = null;
+				throw err;
+			});
+	}
+	await ensureNsActItemsPromise;
+}
 
 async function ensureO2SatColumn(pool) {
 	if (!pool) return;
@@ -111,6 +141,7 @@ export async function GET(req) {
 		}
 		await ensureO2SatColumn(pool);
 		await ensureF30120VsSeq(pool);
+		await ensureNsActItemsColumn(pool);
 		await ensureF10010RoomNo(pool, gate.sessionAncd);
 
 		let query = `
@@ -347,6 +378,7 @@ export async function PUT(req) {
 		}
 		await ensureO2SatColumn(pool);
 		await ensureF30120VsSeq(pool);
+		await ensureNsActItemsColumn(pool);
 
 		const body = await req.json();
 		const rsdtRaw = body?.rsdt ?? body?.RSDT;
@@ -406,19 +438,9 @@ export async function PUT(req) {
 			request.input('BJYN', sql.Char(1), body.BJYN ?? null);
 			request.input('BJDG', sql.Char(1), body.BJDG ?? null);
 			request.input('BJPA', sql.NVarChar(100), body.BJPA ?? null);
-			request.input('NS_SORE_MNG', sql.Char(1), body.NS_SORE_MNG ?? null);
-			request.input('NS_SORE_DESC', sql.NVarChar(500), body.NS_SORE_DESC ?? null);
-			request.input('NS_MEDI_CHK', sql.Char(1), body.NS_MEDI_CHK ?? null);
-			request.input('NS_JUSA_CHK', sql.Char(1), body.NS_JUSA_CHK ?? null);
-			request.input('WATER_INTAKE', sql.Int, body.WATER_INTAKE ?? null);
-			request.input('NS_DNG_CHK', sql.Char(1), body.NS_DNG_CHK ?? null);
-			request.input('DRESSING_FLAG', sql.Char(1), body.DRESSING_FLAG ?? null);
 			request.input('NS_PAN_CHK', sql.Char(1), body.NS_PAN_CHK ?? null);
-			request.input('NS_FAL_CHK', sql.Char(1), body.NS_FAL_CHK ?? null);
-			request.input('NS_DRY_CHK', sql.Char(1), body.NS_DRY_CHK ?? null);
-			request.input('NS_DLM_CHK', sql.Char(1), body.NS_DLM_CHK ?? null);
+			request.input('NS_ACT_ITEMS', sql.NVarChar(200), body.NS_ACT_ITEMS ?? null);
 			request.input('NS_ACT_CHK', sql.Char(1), body.NS_ACT_CHK ?? null);
-			request.input('NUDES', sql.NVarChar(2000), body.NUDES ?? '');
 			request.input('INEMPNM', sql.VarChar(100), body.INEMPNM ?? null);
 			request.input('NS_WRITE_NAME', sql.NVarChar(20), body.NS_WRITE_NAME ?? body.INEMPNM ?? null);
 			setClauses = [
@@ -426,19 +448,9 @@ export async function PUT(req) {
 				'[BJYN] = @BJYN',
 				'[BJDG] = @BJDG',
 				'[BJPA] = @BJPA',
-				'[NS_SORE_MNG] = @NS_SORE_MNG',
-				'[NS_SORE_DESC] = @NS_SORE_DESC',
-				'[NS_MEDI_CHK] = @NS_MEDI_CHK',
-				'[NS_JUSA_CHK] = @NS_JUSA_CHK',
-				'[WATER_INTAKE] = @WATER_INTAKE',
-				'[NS_DNG_CHK] = @NS_DNG_CHK',
-				'[DRESSING_FLAG] = @DRESSING_FLAG',
 				'[NS_PAN_CHK] = @NS_PAN_CHK',
-				'[NS_FAL_CHK] = @NS_FAL_CHK',
-				'[NS_DRY_CHK] = @NS_DRY_CHK',
-				'[NS_DLM_CHK] = @NS_DLM_CHK',
+				'[NS_ACT_ITEMS] = @NS_ACT_ITEMS',
 				'[NS_ACT_CHK] = @NS_ACT_CHK',
-				'[NUDES] = @NUDES',
 				'[INEMPNM] = @INEMPNM',
 				'[NS_WRITE_NAME] = @NS_WRITE_NAME'
 			];

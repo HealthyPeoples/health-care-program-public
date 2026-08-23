@@ -10,16 +10,15 @@
  */
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+	PROBLEM_BEHAVIOR_ITEMS,
 	bjdgToLabel,
 	bjynToBool,
 	boolToBjyn,
-	boolToFlag01,
 	boolToFlagNy,
-	flag01ToBool,
-	flagNyToBool,
 	labelToBjdg,
+	parseProblemBehaviors,
+	serializeProblemBehaviors,
 	toNullableDecimal,
-	toNullableNumber,
 } from '../../utils/f30120Fields';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 import {
@@ -37,24 +36,13 @@ interface VitalSignsPeriodicData {
 	status: string;
 	beneficiaryName: string;
 	weight: string;
-	waterIntake: string;
 	livingRoom: string;
 	edema: boolean;
 	edemaArea: string;
 	edemaDegree: string;
-	bedsore: boolean;
-	bedsoreArea: string;
-	medication: boolean;
-	injection: boolean;
-	incontinence: boolean;
-	dressing: boolean;
 	painVAS: string;
-	nursingHistory: string;
 	author: string;
-	fall: boolean;
-	dehydration: boolean;
-	delirium: boolean;
-	problemBehavior: boolean;
+	problemBehaviors: string[];
 	ancd?: string;
 	pnum?: string;
 }
@@ -72,7 +60,7 @@ export default function VitalSignsPeriodic() {
 	const [vitalSignsData, setVitalSignsData] = useState<VitalSignsPeriodicData[]>([]);
 	const [nextId, setNextId] = useState(1);
 	const [currentPage, setCurrentPage] = useState(1);
-	const itemsPerPage = 5;
+	const itemsPerPage = 8;
 
 	// 출력 모달 관련 상태
 	const [showPrintModal, setShowPrintModal] = useState(false);
@@ -105,27 +93,13 @@ export default function VitalSignsPeriodic() {
 						status,
 						beneficiaryName: item.P_NM || '',
 						weight: item.WEIGHT != null && item.WEIGHT !== '' ? String(item.WEIGHT) : '',
-						waterIntake:
-							item.WATER_INTAKE != null && item.WATER_INTAKE !== ''
-								? String(item.WATER_INTAKE)
-								: '',
 						livingRoom: roomNo,
 						edema: bjynToBool(item.BJYN),
 						edemaArea: String(item.BJPA ?? ''),
 						edemaDegree: bjdgToLabel(item.BJDG),
-						bedsore: flag01ToBool(item.NS_SORE_MNG),
-						bedsoreArea: String(item.NS_SORE_DESC ?? ''),
-						medication: flag01ToBool(item.NS_MEDI_CHK),
-						injection: flag01ToBool(item.NS_JUSA_CHK),
-						incontinence: flagNyToBool(item.NS_DNG_CHK),
-						dressing: flagNyToBool(item.DRESSING_FLAG),
 						painVAS: pain,
-						nursingHistory: String(item.NUDES ?? ''),
 						author: String(item.NS_WRITE_NAME || item.INEMPNM || ''),
-						fall: flagNyToBool(item.NS_FAL_CHK),
-						dehydration: flagNyToBool(item.NS_DRY_CHK),
-						delirium: flagNyToBool(item.NS_DLM_CHK),
-						problemBehavior: flagNyToBool(item.NS_ACT_CHK),
+						problemBehaviors: parseProblemBehaviors(item.NS_ACT_ITEMS),
 						ancd: item.ANCD != null ? String(item.ANCD) : '',
 						pnum: item.PNUM != null ? String(item.PNUM) : ''
 					};
@@ -182,6 +156,19 @@ export default function VitalSignsPeriodic() {
 		));
 	};
 
+	const toggleProblemBehavior = (id: number, item: string) => {
+		setVitalSignsData((prev) =>
+			prev.map((row) => {
+				if (row.id !== id) return row;
+				const has = row.problemBehaviors.includes(item);
+				const next = has
+					? row.problemBehaviors.filter((x) => x !== item)
+					: [...row.problemBehaviors, item];
+				return { ...row, problemBehaviors: next };
+			})
+		);
+	};
+
 	// 수정 모드 토글 (+ 저장 시 F30120 주기 필드 업데이트)
 	const handleEditClick = async (id: number) => {
 		if (editingRowId === id) {
@@ -198,27 +185,18 @@ export default function VitalSignsPeriodic() {
 			setSaving(true);
 			try {
 				const pain = String(row.painVAS ?? '').trim();
+				const actItems = serializeProblemBehaviors(row.problemBehaviors);
 				const payload = {
 					scope: 'periodic',
 					rsdt: selectedDate,
 					pnum: row.pnum,
 					WEIGHT: toNullableDecimal(row.weight),
-					WATER_INTAKE: toNullableNumber(row.waterIntake),
 					BJYN: boolToBjyn(!!row.edema),
 					BJDG: labelToBjdg(row.edemaDegree),
 					BJPA: row.edemaArea || null,
-					NS_SORE_MNG: boolToFlag01(!!row.bedsore),
-					NS_SORE_DESC: row.bedsoreArea || null,
-					NS_MEDI_CHK: boolToFlag01(!!row.medication),
-					NS_JUSA_CHK: boolToFlag01(!!row.injection),
-					NS_DNG_CHK: boolToFlagNy(!!row.incontinence),
-					DRESSING_FLAG: boolToFlagNy(!!row.dressing),
 					NS_PAN_CHK: pain ? pain.slice(0, 1) : null,
-					NS_FAL_CHK: boolToFlagNy(!!row.fall),
-					NS_DRY_CHK: boolToFlagNy(!!row.dehydration),
-					NS_DLM_CHK: boolToFlagNy(!!row.delirium),
-					NS_ACT_CHK: boolToFlagNy(!!row.problemBehavior),
-					NUDES: row.nursingHistory || '',
+					NS_ACT_ITEMS: actItems || null,
+					NS_ACT_CHK: boolToFlagNy(row.problemBehaviors.length > 0),
 					INEMPNM: row.author || null,
 					NS_WRITE_NAME: row.author || null,
 					vsSeq: 1,
@@ -319,24 +297,13 @@ export default function VitalSignsPeriodic() {
 			status: '',
 			beneficiaryName: '',
 			weight: '',
-			waterIntake: '',
 			livingRoom: '',
 			edema: false,
 			edemaArea: '',
 			edemaDegree: '',
-			bedsore: false,
-			bedsoreArea: '',
-			medication: false,
-			injection: false,
-			incontinence: false,
-			dressing: false,
 			painVAS: '',
-			nursingHistory: '',
 			author: '',
-			fall: false,
-			dehydration: false,
-			delirium: false,
-			problemBehavior: false
+			problemBehaviors: [],
 		};
 		
 		setVitalSignsData(prev => [...prev, newRow]);
@@ -634,37 +601,25 @@ export default function VitalSignsPeriodic() {
 							<table className="w-full text-sm">
 								<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 									<tr>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">현황</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">수급자명</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">생활실</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">체중</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">물 섭취량</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종 부위</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">부종 정도</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">욕창</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">욕창 부위</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">약물투여</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">주사제투여</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">소변/대변실금</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">드레싱 실시</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">통증 (VAS)</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">낙상</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">탈수</th>
-										<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 whitespace-nowrap">섬망</th>
 										<th className="text-center px-3 py-2 text-blue-900 font-semibold">문제행동</th>
 									</tr>
 								</thead>
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={19} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={7} className="text-center px-3 py-4 text-blue-900/60">
 												로딩 중...
 											</td>
 										</tr>
 									) : vitalSignsData.length === 0 ? (
 										<tr>
-											<td colSpan={19} className="text-center px-3 py-4 text-blue-900/60">
+											<td colSpan={7} className="text-center px-3 py-4 text-blue-900/60">
 												데이터가 없습니다
 											</td>
 										</tr>
@@ -680,17 +635,6 @@ export default function VitalSignsPeriodic() {
 												<td className="text-center px-3 py-3 border-r border-blue-100">
 													<input
 														type="text"
-														value={row.status}
-														onChange={(e) => handleDataChange(row.id, 'status', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
 														value={row.beneficiaryName}
 														onChange={(e) => handleDataChange(row.id, 'beneficiaryName', e.target.value)}
 														disabled={editingRowId !== row.id}
@@ -698,11 +642,6 @@ export default function VitalSignsPeriodic() {
 															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 														}`}
 													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<span className="block w-full px-2 py-1 text-center">
-														{row.livingRoom || '-'}
-													</span>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
 													<input
@@ -714,18 +653,6 @@ export default function VitalSignsPeriodic() {
 															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 														}`}
 														placeholder="체중 입력"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
-														value={row.waterIntake}
-														onChange={(e) => handleDataChange(row.id, 'waterIntake', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-														placeholder="ml"
 													/>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
@@ -764,62 +691,6 @@ export default function VitalSignsPeriodic() {
 													</select>
 												</td>
 												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.bedsore}
-														onChange={(e) => handleDataChange(row.id, 'bedsore', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="text"
-														value={row.bedsoreArea}
-														onChange={(e) => handleDataChange(row.id, 'bedsoreArea', e.target.value)}
-														disabled={editingRowId !== row.id}
-														className={`w-full px-2 py-1 border border-blue-300 rounded text-center ${
-															editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-														}`}
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.medication}
-														onChange={(e) => handleDataChange(row.id, 'medication', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.injection}
-														onChange={(e) => handleDataChange(row.id, 'injection', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.incontinence}
-														onChange={(e) => handleDataChange(row.id, 'incontinence', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.dressing}
-														onChange={(e) => handleDataChange(row.id, 'dressing', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
 													<div className="flex items-center justify-center gap-1">
 														<input
 															type="text"
@@ -833,51 +704,43 @@ export default function VitalSignsPeriodic() {
 														/>
 													</div>
 												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.fall}
-														onChange={(e) => handleDataChange(row.id, 'fall', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.dehydration}
-														onChange={(e) => handleDataChange(row.id, 'dehydration', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3 border-r border-blue-100">
-													<input
-														type="checkbox"
-														checked={row.delirium}
-														onChange={(e) => handleDataChange(row.id, 'delirium', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
-												</td>
-												<td className="text-center px-3 py-3">
-													<input
-														type="checkbox"
-														checked={row.problemBehavior}
-														onChange={(e) => handleDataChange(row.id, 'problemBehavior', e.target.checked)}
-														disabled={editingRowId !== row.id}
-														className="cursor-pointer"
-													/>
+												<td className="text-left px-3 py-3">
+													<div className="flex flex-wrap gap-x-3 gap-y-1">
+														{PROBLEM_BEHAVIOR_ITEMS.map((item) => {
+															const checked = row.problemBehaviors.includes(item);
+															const isEditing = editingRowId === row.id;
+															return (
+															<label
+																key={item}
+																className={`inline-flex items-center gap-1 text-xs whitespace-nowrap ${
+																	isEditing ? 'cursor-pointer' : 'pointer-events-none'
+																} ${checked ? 'text-blue-700 font-medium' : 'text-blue-900/70'}`}
+															>
+																<input
+																	type="checkbox"
+																	checked={checked}
+																	onChange={() => {
+																		if (!isEditing) return;
+																		toggleProblemBehavior(row.id, item);
+																	}}
+																	tabIndex={isEditing ? 0 : -1}
+																	className="h-3.5 w-3.5 accent-blue-600"
+																/>
+																{item}
+															</label>
+															);
+														})}
+													</div>
 												</td>
 											</tr>
-											{/* 두 번째 줄: 작성자, 간호내역, 작업 */}
+											{/* 두 번째 줄: 작성자, 작업 */}
 											<tr
 												onClick={() => setSelectedRowId(row.id)}
 												className={`border-b border-blue-50 cursor-pointer ${
 													selectedRowId === row.id ? 'bg-blue-100' : 'bg-blue-25'
 												}`}
 											>
-												<td colSpan={19} className="px-3 py-2">
+												<td colSpan={7} className="px-3 py-2">
 													<div className="flex items-center gap-4 w-full">
 													<div className="flex items-center gap-2 flex-shrink-0">
 														<label className="text-xs text-blue-900 font-medium whitespace-nowrap">작성자</label>
@@ -892,19 +755,7 @@ export default function VitalSignsPeriodic() {
 															}`}
 														/>
 													</div>
-														<div className="flex items-center gap-2 flex-1">
-															<label className="text-xs text-blue-900 font-medium whitespace-nowrap flex-shrink-0">간호내역</label>
-															<textarea
-																value={row.nursingHistory}
-																onChange={(e) => handleDataChange(row.id, 'nursingHistory', e.target.value)}
-																disabled={editingRowId !== row.id}
-																className={`w-full px-2 py-1 text-xs border border-blue-300 rounded ${
-																	editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-																}`}
-																rows={2}
-															/>
-														</div>
-														<div className="flex items-center gap-2 flex-shrink-0">
+														<div className="flex items-center gap-2 flex-shrink-0 ml-auto">
 															<div className="flex gap-2">
 																<button
 																	onClick={() => handleEditClick(row.id)}

@@ -8,6 +8,8 @@
  */
 /** V30030R 출력 HTML (간호일지 / 건강 관리 기록부) */
 
+import { bjdgToLabel, bjynToBool, formatProblemBehaviorsDisplay } from './f30120Fields';
+
 function esc(v: unknown): string {
 	return String(v ?? '')
 		.replace(/&/g, '&amp;')
@@ -40,6 +42,21 @@ function cell(row: Record<string, unknown>, key: string): string {
 	const v = row[key];
 	if (v == null || v === '') return '';
 	return esc(v);
+}
+
+/** 출력: 항목명은 문제행동 하나, 칸에는 체크된 항목만 글자 */
+function problemBehaviorText(row: Record<string, unknown>): string {
+	return esc(formatProblemBehaviorsDisplay(row.NS_ACT_ITEMS ?? row['문제행동']));
+}
+
+function edemaText(row: Record<string, unknown>): string {
+	const raw = row.BJYN ?? row['부종'];
+	if (raw == null || raw === '') return '';
+	return bjynToBool(raw) ? '유' : '무';
+}
+
+function edemaDegreeText(row: Record<string, unknown>): string {
+	return esc(bjdgToLabel(row.BJDG ?? row['부종정도'] ?? row['부종 정도']));
 }
 
 function headerInfo(rows: Record<string, unknown>[], fallback?: Record<string, unknown>) {
@@ -186,6 +203,7 @@ function renderNursingLogPage(
       <td>${cell(item, '맥박수')}</td>
       <td>${cell(item, '호흡수')}</td>
       <td>${cell(item, '체중')}</td>
+      <td class="notes">${problemBehaviorText(item)}</td>
       <td class="notes">${cell(item, '간호내역')}</td>
     </tr>`
 		)
@@ -225,11 +243,12 @@ function renderNursingLogPage(
         <th style="width:5%">맥박수</th>
         <th style="width:5%">호흡수</th>
         <th style="width:5%">체중</th>
-        <th style="width:48%">간호내역</th>
+        <th style="width:16%">문제행동</th>
+        <th style="width:32%">간호내역</th>
       </tr>
     </thead>
     <tbody>
-      ${bodyRows || `<tr><td colspan="10" style="padding:20px;">데이터가 없습니다</td></tr>`}
+      ${bodyRows || `<tr><td colspan="11" style="padding:20px;">데이터가 없습니다</td></tr>`}
     </tbody>
   </table>
   <div class="footer">
@@ -321,47 +340,24 @@ ${COMMON_CSS}
   border-collapse: collapse;
   border-top: 3px double #000;
   border-bottom: 2px solid #000;
-  font-size: 8pt;
+  font-size: 9pt;
 }
 .main-table th,
 .main-table td {
   border: none;
-  border-bottom: 1px solid #999;
-  padding: 2px 2px;
+  border-bottom: 1px solid #000;
+  padding: 5px 4px;
   text-align: center;
   vertical-align: middle;
 }
 .main-table thead th {
   font-weight: bold;
-  border-bottom: none;
-  padding-top: 3px;
-  padding-bottom: 1px;
-}
-.main-table thead tr.head-bottom th {
   border-bottom: 3px double #000;
-  padding-top: 1px;
-  padding-bottom: 3px;
-}
-.main-table .date-cell {
-  font-weight: normal;
-  vertical-align: middle;
-  border-bottom: 1px solid #000;
-  width: 9%;
-}
-.main-table tr.data-bottom td {
-  border-bottom: 1px solid #000;
 }
 .main-table .notes {
   text-align: left;
-  padding-left: 4px;
+  padding-left: 6px;
   word-break: break-all;
-  vertical-align: top;
-  width: 18%;
-}
-.sub-label {
-  color: inherit;
-  font-size: inherit;
-  font-weight: bold;
 }
 `;
 
@@ -377,30 +373,15 @@ function renderHealthRecordPage(
 	const bodyRows = sortedRows
 		.map(
 			(item) => `
-    <tr class="data-top">
-      <td class="date-cell" rowspan="2">${esc(formatSurveyDate(item['조사일자']))}</td>
-      <td>${cell(item, '공복혈당')}</td>
-      <td>${cell(item, '식후혈당')}</td>
-      <td>${cell(item, '수축혈압')}</td>
-      <td>${cell(item, '이완혈압')}</td>
-      <td>${cell(item, '체온')}</td>
-      <td>${cell(item, '맥박수')}</td>
-      <td>${cell(item, '호흡수')}</td>
-      <td>${cell(item, '체중')}</td>
-      <td>${cell(item, 'NS_SORE_DESC') || cell(item, '욕창')}</td>
-      <td rowspan="2">${cell(item, '드레싱')}</td>
-      <td class="notes" rowspan="2">${cell(item, '간호내역')}</td>
-    </tr>
-    <tr class="data-bottom">
-      <td>${cell(item, '투약관리')}</td>
-      <td>${cell(item, '주사제관리')}</td>
-      <td>${cell(item, '문제행동')}</td>
-      <td>${cell(item, '낙상')}</td>
-      <td>${cell(item, '탈수')}</td>
-      <td>${cell(item, '대소변실금')}</td>
-      <td>${cell(item, '통증')}</td>
-      <td>${cell(item, '섬망')}</td>
-      <td>${cell(item, 'WATER_INTAKE')}</td>
+    <tr>
+      <td>${esc(formatSurveyDate(item['조사일자']))}</td>
+      <td>${cell(item, '체중') || cell(item, 'WEIGHT')}</td>
+      <td>${esc(edemaText(item))}</td>
+      <td>${cell(item, 'BJPA') || cell(item, '부종부위') || cell(item, '부종 부위')}</td>
+      <td>${edemaDegreeText(item)}</td>
+      <td>${cell(item, '통증') || cell(item, 'NS_PAN_CHK')}</td>
+      <td class="notes">${problemBehaviorText(item)}</td>
+      <td>${cell(item, '작성자') || cell(item, 'NS_WRITE_NAME')}</td>
     </tr>`
 		)
 		.join('');
@@ -430,33 +411,18 @@ function renderHealthRecordPage(
   <table class="main-table">
     <thead>
       <tr>
-        <th rowspan="2">조사일자</th>
-        <th>공복혈당</th>
-        <th>식후혈당</th>
-        <th>수축혈압</th>
-        <th>이완혈압</th>
-        <th>체온</th>
-        <th>맥박수</th>
-        <th>호흡수</th>
-        <th>체중</th>
-        <th>욕창 부위</th>
-        <th rowspan="2">드레싱</th>
-        <th rowspan="2">제공내역</th>
-      </tr>
-      <tr class="head-bottom">
-        <th class="sub-label">약물투여</th>
-        <th class="sub-label">주사제투여</th>
-        <th class="sub-label">문제행동</th>
-        <th class="sub-label">낙상</th>
-        <th class="sub-label">탈수</th>
-        <th class="sub-label">대소변실금</th>
-        <th class="sub-label">통증(VAS)</th>
-        <th class="sub-label">섬망</th>
-        <th class="sub-label">수분섭취(ml)</th>
+        <th style="width:12%">조사일자</th>
+        <th style="width:8%">체중</th>
+        <th style="width:7%">부종</th>
+        <th style="width:12%">부종 부위</th>
+        <th style="width:8%">부종 정도</th>
+        <th style="width:10%">통증(VAS)</th>
+        <th style="width:28%">문제행동</th>
+        <th style="width:15%">작성자</th>
       </tr>
     </thead>
     <tbody>
-      ${bodyRows || `<tr><td colspan="12" style="padding:20px;border-bottom:1px solid #000;">데이터가 없습니다</td></tr>`}
+      ${bodyRows || `<tr><td colspan="8" style="padding:20px;">데이터가 없습니다</td></tr>`}
     </tbody>
   </table>
   <div class="footer">
@@ -466,7 +432,7 @@ function renderHealthRecordPage(
   </div>`;
 }
 
-/** 주기 출력: 건강 관리 기록부 (2줄/일자) */
+/** 주기 출력: 건강 관리 기록부 (입력 화면과 동일 항목) */
 export function buildHealthRecordHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
 	return `<!DOCTYPE html>
 <html>
