@@ -141,6 +141,8 @@ interface PerformanceData {
 	dischargeDate?: string;
 	/** 퇴소시각 P_EDT_TM HH:mm */
 	dischargeTime?: string;
+	/** 입·퇴소 상태 P_ST (1=입소, 9=퇴소) */
+	pSt?: string;
 	/** 식사장소 ST_PLAC */
 	mealLocation: string;
 	/** 식사종류 PH_MEAL_KIND/ST_KIND: 1~7 ({@link MEAL_KIND_OPTIONS}) */
@@ -370,6 +372,19 @@ function getAdmitDischargeFlags(row: PerformanceData, dateYmd: string) {
 	return { isAdmitDay, isDischargeDay, isAdmitOrDischargeDay: isAdmitDay || isDischargeDay };
 }
 
+/** 입소일~퇴소일(당일 포함)만 서비스 제공일로 봅니다. */
+function isInServicePeriod(
+	row: { admitDate?: string; dischargeDate?: string; pSt?: string },
+	dateYmd: string
+): boolean {
+	const day = toYmd(dateYmd);
+	const admit = toYmd(row.admitDate);
+	if (!day || !admit || day < admit) return false;
+	const discharge = toYmd(row.dischargeDate);
+	if (discharge) return day <= discharge;
+	return String(row.pSt ?? '').trim() !== '9';
+}
+
 /** 외박중 표시 문구 (`외박중 YYYY-MM-DD HH:mm`). */
 function formatOvernightOngoingLabel(leaveDate?: string, leaveTime?: string): string {
 	const d = toYmd(leaveDate || '');
@@ -424,6 +439,7 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 		admitTime: toHm(item.P_SDT_TM),
 		dischargeDate: toYmd(item.P_EDT),
 		dischargeTime: toHm(item.P_EDT_TM),
+		pSt: item.P_ST != null ? String(item.P_ST).trim() : '',
 		mealLocation: item.ST_PLAC || '',
 		mealType: String(item.PH_MEAL_KIND || item.ST_KIND || '1').trim() || '1',
 		gyn,
@@ -742,6 +758,10 @@ export default function DailyBeneficiaryPerformance() {
 				alert('수급자를 선택해주세요.');
 				return;
 			}
+			if (!isInServicePeriod(row, selectedDate)) {
+				alert('입·퇴소 기간(서비스 제공일)이 아닌 날에는 저장할 수 없습니다.');
+				return;
+			}
 			if (row.gyn === '0' && (!row.gynStartTime || !row.gynEndTime)) {
 				alert('외출 시 시작·종료 시간을 입력해주세요.');
 				return;
@@ -787,6 +807,10 @@ export default function DailyBeneficiaryPerformance() {
 		} else {
 			// 수정 버튼: 진입 시 외출/외박 시각 기준으로 식사·간식 체크
 			const row = combinedData.find((r) => r.id === id);
+			if (row?.pnum && !isInServicePeriod(row, selectedDate)) {
+				alert('입·퇴소 기간(서비스 제공일)이 아닌 날에는 입력할 수 없습니다.');
+				return;
+			}
 			if (row) {
 				const adjusted = withAutoMealSnack(row);
 				setCombinedData((prev) => prev.map((r) => (r.id === id ? adjusted : r)));
@@ -1024,8 +1048,18 @@ export default function DailyBeneficiaryPerformance() {
 			const data = await response.json();
 			
 			if (data.success && data.data) {
-				setSearchResults(prev => ({ ...prev, [rowId]: data.data }));
-				setShowSearchResults(prev => ({ ...prev, [rowId]: data.data.length > 0 }));
+				const eligible = (data.data as any[]).filter((m) =>
+					isInServicePeriod(
+						{
+							admitDate: toYmd(m.P_SDT),
+							dischargeDate: toYmd(m.P_EDT),
+							pSt: m.P_ST != null ? String(m.P_ST).trim() : ''
+						},
+						selectedDate
+					)
+				);
+				setSearchResults(prev => ({ ...prev, [rowId]: eligible }));
+				setShowSearchResults(prev => ({ ...prev, [rowId]: eligible.length > 0 }));
 			} else {
 				setSearchResults(prev => ({ ...prev, [rowId]: [] }));
 				setShowSearchResults(prev => ({ ...prev, [rowId]: false }));
@@ -1746,6 +1780,15 @@ export default function DailyBeneficiaryPerformance() {
 
 	// 수급자 선택 함수
 	const handleSelectMember = (rowId: number, member: any) => {
+		const stay = {
+			admitDate: toYmd(member.P_SDT),
+			dischargeDate: toYmd(member.P_EDT),
+			pSt: member.P_ST != null ? String(member.P_ST).trim() : ''
+		};
+		if (!isInServicePeriod(stay, selectedDate)) {
+			alert('입·퇴소 기간(서비스 제공일)이 아닌 수급자는 추가할 수 없습니다.');
+			return;
+		}
 		setCombinedData(prev => prev.map(row => {
 			if (row.id === rowId) {
 				return {
@@ -1759,6 +1802,7 @@ export default function DailyBeneficiaryPerformance() {
 					admitTime: toHm(member.P_SDT_TM),
 					dischargeDate: toYmd(member.P_EDT),
 					dischargeTime: toHm(member.P_EDT_TM),
+					pSt: member.P_ST != null ? String(member.P_ST).trim() : '',
 				};
 			}
 			return row;
@@ -2243,7 +2287,8 @@ export default function DailyBeneficiaryPerformance() {
 											<div className="flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
 												<button
 													onClick={() => handleEditClick(row.id)}
-													className={`px-3 py-1 text-xs border rounded font-medium ${
+													disabled={!!row.pnum && !isInServicePeriod(row, selectedDate) && editingRowId !== row.id}
+													className={`px-3 py-1 text-xs border rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
 														editingRowId === row.id
 															? 'border-green-400 bg-green-200 hover:bg-green-300 text-green-900'
 															: 'border-blue-400 bg-blue-200 hover:bg-blue-300 text-blue-900'

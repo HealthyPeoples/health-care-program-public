@@ -35,6 +35,7 @@ export async function GET(req) {
         f10010.P_TEL,
         f10010.P_HP,
         f10010.P_SEX,
+        f10010.P_ST,
         f10010.P_SDT,
         f10010.P_SDT_TM,
         f10010.P_EDT,

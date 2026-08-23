@@ -341,9 +341,11 @@ table.data th {
 	font-size: 9pt;
 	line-height: 1.25;
 }
-td.dual { text-align: left; font-size: 9pt; }
-td.dual div { line-height: 1.35; min-height: 1.2em; }
-td.dual div:first-child {
+td.dual, th.dual { text-align: left; font-size: 9pt; }
+th.dual { text-align: center; }
+td.dual div, th.dual div { line-height: 1.35; min-height: 1.2em; }
+td.dual div:first-child,
+th.dual div:first-child {
 	border-bottom: 1px dashed #999;
 	padding-bottom: 3px;
 	margin-bottom: 3px;
@@ -385,10 +387,10 @@ td.name { font-weight: 600; }
 			<tr>
 				<th>수급자</th>
 				<th>생일</th>
-				<th>인정번호<br/>계약자성명</th>
-				<th>인정등급<br/>수급자와관계</th>
-				<th>인정유효기간<br/>자택전화번호</th>
-				<th>급여종류<br/>핸드폰번호</th>
+				<th class="dual"><div>인정번호</div><div>계약자성명</div></th>
+				<th class="dual"><div>인정등급</div><div>수급자와관계</div></th>
+				<th class="dual"><div>인정유효기간</div><div>자택전화번호</div></th>
+				<th class="dual"><div>급여종류</div><div>핸드폰번호</div></th>
 				<th>계약기간</th>
 			</tr>
 		</thead>
@@ -1836,12 +1838,6 @@ export default function MemberContractInfo() {
 											{burdenRow?.USRINFO?.trim() ? String(burdenRow.USRINFO) : '-'}
 										</span>
 									</div>
-									<div className="flex items-center gap-2">
-										<span className="w-24 text-blue-900/80">총급여</span>
-										<span className="flex-1 border-b border-blue-200">
-											{burdenRow ? `${careBenefitTotalWon(burdenRow).toLocaleString()}원` : '-'}
-										</span>
-									</div>
 								</div>
 							</div>
 
@@ -1863,9 +1859,11 @@ export default function MemberContractInfo() {
 									<div className="flex items-center gap-2">
 										<span className="w-24 text-blue-900/80">부담금액</span>
 										<span className="flex-1 border-b border-blue-200">
-											{recipientBurdenWon != null
-												? `${recipientBurdenWon.toLocaleString()}원 (총급여×본인부담률)`
-												: '-'}
+											{recipientBurdenWon == null
+												? '-'
+												: recipientBurdenWon === 0
+													? '(총급여×본인부담률)'
+													: `${recipientBurdenWon.toLocaleString()}원 (총급여×본인부담률)`}
 										</span>
 									</div>
 									{/* <div className="flex items-center gap-2">
