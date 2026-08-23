@@ -79,10 +79,40 @@ export async function GET(req) {
       ORDER BY [수급자성명] ASC, CAST([PNUM] AS VARCHAR) ASC, [조사일자] ASC
     `);
 
+		let facilityName = '';
+		let facilityCode = '';
+		try {
+			const fac = await pool
+				.request()
+				.input('sessionAncd', sql.Int, Number(gate.sessionAncd))
+				.query(`
+					SELECT TOP 1 [ANNM], [ANGH], [ANCD]
+					FROM [돌봄시설DB].[dbo].[F00110]
+					WHERE [ANCD] = @sessionAncd
+				`);
+			const row = fac.recordset?.[0] || {};
+			facilityName = row.ANNM != null ? String(row.ANNM).trim() : '';
+			facilityCode = row.ANGH != null ? String(row.ANGH).trim() : '';
+			if (!facilityCode && row.ANCD != null) facilityCode = String(row.ANCD).trim();
+		} catch (facErr) {
+			console.warn('V30030R 기관정보 조회 경고:', facErr?.message || facErr);
+		}
+
+		const data = (result.recordset || []).map((r) => {
+			const code = String(r['장기요양기관기호'] ?? r.ANGH ?? '').trim() || facilityCode;
+			const name = String(r['장기요양기관명'] ?? r.ANNM ?? '').trim() || facilityName;
+			return {
+				...r,
+				장기요양기관기호: code,
+				장기요양기관명: name,
+			};
+		});
+
 		return jsonOk({
 			success: true,
-			data: result.recordset || [],
-			count: result.recordset ? result.recordset.length : 0,
+			data,
+			count: data.length,
+			facility: { 장기요양기관기호: facilityCode, 장기요양기관명: facilityName },
 		});
 	} catch (err) {
 		console.error('V30030R GET 오류:', err);

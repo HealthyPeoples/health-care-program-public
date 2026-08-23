@@ -4,7 +4,8 @@
  * @description
  * 식사·케어 필드 MERGE, 전체추가(generate), 외박복귀(returnFromOvernight),
  * 입퇴소 급여50% 동기화(syncAdmitDischargePay), 간식일괄(bulkSnack)을 처리합니다.
- * F14020 생성·저장 시 활력증상(F30120) 공란 명단도 함께 보장합니다.
+ * F14020 생성·저장 시 활력증상(F30120) 공란 명단도 함께 보장하고,
+ * 등록 직원을 활력증상 작성자 기본값으로 넣습니다.
  * 모든 핸들러는 `assertAnCdMatchesSession`으로 세션 ANCD를 검사합니다.
  *
  * @actions
@@ -18,7 +19,7 @@
  * @see DailyBeneficiaryPerformance.tsx
  */
 import { connPool, sql } from '../../../config/server';
-import { assertAnCdMatchesSession } from '../../../config/sessionServer';
+import { assertAnCdMatchesSession, getSessionFromRequest } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 
@@ -27,7 +28,11 @@ const {
 	syncOutingOnF14020Delete
 } = require('../../../lib/outingF14020Sync');
 
-const { ensureF30120FromF14020 } = require('../../../lib/ensureF30120FromF14020');
+const {
+	ensureF30120FromF14020,
+	resolveSessionEmployee,
+	stampF14020Registrar
+} = require('../../../lib/ensureF30120FromF14020');
 const { applyMealSnackByPresence } = require('../../../lib/applyMealSnackByPresence');
 
 /** @type {string[]} 일일 케어(요양·간호·재활 등) 컬럼 — DailyLongtermCare와 공유 */
@@ -413,6 +418,21 @@ async function upsertOvernightOngoingRow(pool, ancd, svdtIso, pendingRow) {
 	return { pnum, leaveDate, leaveTime, ioTmInfo };
 }
 
+/**
+ * 일 급여실적 등록 직원을 F14020·F30120에 반영합니다.
+ * 이미 있는 작성자/등록직원은 덮어쓰지 않습니다.
+ */
+async function seedVitalSignsFromF14020(pool, req, ancd, svdtIso, pnums) {
+	const session = getSessionFromRequest(req);
+	const registrar = await resolveSessionEmployee(pool, ancd, session?.uid);
+	try {
+		await stampF14020Registrar(pool, ancd, svdtIso, pnums, registrar);
+	} catch (stampErr) {
+		console.warn('F14020 등록직원 기록 경고:', stampErr);
+	}
+	return ensureF30120FromF14020(pool, ancd, svdtIso, pnums, registrar);
+}
+
 function padTime5Server(t) {
 	const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || '').trim());
 	if (!m) return '';
@@ -618,7 +638,7 @@ export async function POST(req) {
 			// 당일 급여실적 명단 → 활력증상(F30120) 공란 명단 보장
 			let vitalSeed = { ok: false, inserted: 0 };
 			try {
-				vitalSeed = await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso);
+				vitalSeed = await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso);
 			} catch (vitalErr) {
 				console.warn('전체추가 후 F30120 공란 생성 경고:', vitalErr);
 			}
@@ -725,7 +745,7 @@ export async function POST(req) {
 
 			const okPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
 			try {
-				await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, okPnums);
+				await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso, okPnums);
 			} catch (vitalErr) {
 				console.warn('외박복귀 후 F30120 공란 생성 경고:', vitalErr);
 			}
@@ -786,7 +806,7 @@ export async function POST(req) {
 
 			const okPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
 			try {
-				await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, okPnums);
+				await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso, okPnums);
 			} catch (vitalErr) {
 				console.warn('입·퇴소 동기화 후 F30120 공란 생성 경고:', vitalErr);
 			}
@@ -969,7 +989,7 @@ export async function POST(req) {
 
 		const savedPnums = results.filter((x) => x.ok && x.pnum).map((x) => x.pnum);
 		try {
-			await ensureF30120FromF14020(pool, gate.sessionAncd, svdtIso, savedPnums);
+			await seedVitalSignsFromF14020(pool, req, gate.sessionAncd, svdtIso, savedPnums);
 		} catch (vitalErr) {
 			console.warn('F14020 저장 후 F30120 공란 생성 경고:', vitalErr);
 		}

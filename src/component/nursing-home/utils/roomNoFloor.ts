@@ -8,6 +8,44 @@
  */
 export const NO_ROOM_VALUE = '__NO_ROOM__';
 
+export function roomNoSortKey(roomNo: unknown): number {
+	const s = normalizeRoomNo(roomNo);
+	if (!s) return Number.POSITIVE_INFINITY;
+	const digits = s.replace(/\D/g, '');
+	if (!digits) return Number.POSITIVE_INFINITY;
+	const n = Number(digits);
+	return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+}
+
+/** 생활실 오름차순 (101호 → 102호). 방번호 없음은 맨 뒤. */
+export function compareRoomNoAsc(a: unknown, b: unknown): number {
+	const na = roomNoSortKey(a);
+	const nb = roomNoSortKey(b);
+	if (na !== nb) return na - nb;
+	return normalizeRoomNo(a).localeCompare(normalizeRoomNo(b), 'ko');
+}
+
+export function compareNameKo(a: unknown, b: unknown): number {
+	return String(a ?? '').localeCompare(String(b ?? ''), 'ko');
+}
+
+export type VitalSortMode = 'room' | 'name';
+
+/** 생활실별: 방번호 오름차순 → 이름 가나다. 수급자별: 이름 가나다. */
+export function compareVitalRow(
+	a: { livingRoom?: string; beneficiaryName?: string; seq?: number },
+	b: { livingRoom?: string; beneficiaryName?: string; seq?: number },
+	mode: VitalSortMode
+): number {
+	if (mode === 'room') {
+		const byRoom = compareRoomNoAsc(a.livingRoom, b.livingRoom);
+		if (byRoom !== 0) return byRoom;
+	}
+	const byName = compareNameKo(a.beneficiaryName, b.beneficiaryName);
+	if (byName !== 0) return byName;
+	return (Number(a.seq) || 1) - (Number(b.seq) || 1);
+}
+
 export function normalizeRoomNo(roomNo: unknown): string {
 	const s = String(roomNo ?? '').trim();
 	// F14090 등에서 미배정을 '0'으로 넣는 경우가 있어 방번호 없음으로 취급

@@ -46,8 +46,17 @@ function headerInfo(rows: Record<string, unknown>[], fallback?: Record<string, u
 	const first = rows[0] || {};
 	const fb = fallback || {};
 	return {
-		facilityCode: cell(first, '장기요양기관기호') || esc(fb.facilityCode) || '',
-		facilityName: cell(first, '장기요양기관명') || esc(fb.facilityName) || '',
+		facilityCode:
+			cell(first, '장기요양기관기호') ||
+			cell(first, 'ANGH') ||
+			cell(first, 'ANCD') ||
+			esc(fb.facilityCode) ||
+			'',
+		facilityName:
+			cell(first, '장기요양기관명') ||
+			cell(first, 'ANNM') ||
+			esc(fb.facilityName) ||
+			'',
 		grade: cell(first, '장기요양등급') || esc(fb.grade) || '',
 		name: cell(first, '수급자성명') || esc(fb.name) || '',
 		rrn: cell(first, '주민등록번호') || esc(fb.rrn) || '',

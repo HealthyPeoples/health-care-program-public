@@ -8,7 +8,7 @@
  *
  * @module component/nursing-home/pages/vital-signs-periodic/VitalSignsPeriodic
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
 	bjdgToLabel,
 	bjynToBool,
@@ -23,11 +23,15 @@ import {
 } from '../../utils/f30120Fields';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
 import {
+	availableFloorsFromMembers,
+	compareVitalRow,
 	extractFloorFromRoomNo,
 	fetchRoomNoMapFromF30112,
 	normalizePnumKey,
+	type VitalSortMode,
 } from '../../utils/roomNoFloor';
 import { buildHealthRecordAllHtml, buildHealthRecordHtml, openPrintWindow } from '../../utils/v30030rPrint';
+import { EmployeeSearchInput } from '../../components/EmployeeSearchInput';
 
 interface VitalSignsPeriodicData {
 	id: number;
@@ -60,6 +64,7 @@ export default function VitalSignsPeriodic() {
 	const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
 	const [selectedStatus, setSelectedStatus] = useState<string>('입소');
 	const [selectedLivingRoom, setSelectedLivingRoom] = useState<string>('');
+	const [sortMode, setSortMode] = useState<VitalSortMode>('room');
 	const [editingRowId, setEditingRowId] = useState<number | null>(null);
 	const [editingBackup, setEditingBackup] = useState<VitalSignsPeriodicData | null>(null);
 	const [selectedRowId, setSelectedRowId] = useState<number | null>(null);
@@ -86,7 +91,7 @@ export default function VitalSignsPeriodic() {
 	const fetchVitalSignsData = async (rsdt: string) => {
 		setLoading(true);
 		try {
-			const url = `/api/f30120?rsdt=${encodeURIComponent(rsdt)}`;
+			const url = `/api/f30120?rsdt=${encodeURIComponent(rsdt)}&scope=periodic`;
 			const response = await fetch(url);
 			const result = await response.json();
 			
@@ -218,6 +223,7 @@ export default function VitalSignsPeriodic() {
 					NUDES: row.nursingHistory || '',
 					INEMPNM: row.author || null,
 					NS_WRITE_NAME: row.author || null,
+					vsSeq: 1,
 				};
 				const res = await fetch('/api/f30120', {
 					method: 'PUT',
@@ -285,11 +291,18 @@ export default function VitalSignsPeriodic() {
 		return true;
 	});
 
+	const availableFloors = useMemo(
+		() => availableFloorsFromMembers(vitalSignsData.map((row) => ({ ROOM_NO: row.livingRoom }))),
+		[vitalSignsData]
+	);
+
+	const sortedData = [...filteredData].sort((a, b) => compareVitalRow(a, b, sortMode));
+
 	// 페이지네이션 계산
-	const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+	const totalPages = Math.ceil(sortedData.length / itemsPerPage);
 	const startIndex = (currentPage - 1) * itemsPerPage;
 	const endIndex = startIndex + itemsPerPage;
-	const paginatedData = filteredData.slice(startIndex, endIndex);
+	const paginatedData = sortedData.slice(startIndex, endIndex);
 
 	// 페이지 변경 함수
 	const handlePageChange = (page: number) => {
@@ -299,7 +312,7 @@ export default function VitalSignsPeriodic() {
 	// 필터 변경 시 첫 페이지로 이동
 	useEffect(() => {
 		setCurrentPage(1);
-	}, [selectedStatus, selectedLivingRoom]);
+	}, [selectedStatus, selectedLivingRoom, sortMode]);
 
 	// 행 추가 함수
 	const handleAddRow = () => {
@@ -558,8 +571,66 @@ export default function VitalSignsPeriodic() {
 
 					{/* 우측 메인 테이블 */}
 					<div className="flex-1 border border-blue-300 rounded-lg bg-white shadow-sm">
-						<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
+						<div className="bg-blue-100 border-b border-blue-300 px-4 py-2 flex items-center justify-between gap-3 flex-wrap">
 							<h2 className="text-lg font-semibold text-blue-900">활력증상 등록(주기)</h2>
+							<div className="flex items-center gap-4 flex-wrap">
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-blue-900">층별</span>
+									<button
+										type="button"
+										onClick={() => setSelectedLivingRoom('')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											selectedLivingRoom === ''
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										전체
+									</button>
+									{availableFloors.map((floor) => {
+										const value = `${floor}층`;
+										return (
+											<button
+												key={floor}
+												type="button"
+												onClick={() => setSelectedLivingRoom(value)}
+												className={`px-3 py-1 text-xs border rounded font-medium ${
+													selectedLivingRoom === value
+														? 'border-blue-500 bg-blue-500 text-white'
+														: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+												}`}
+											>
+												{value}
+											</button>
+										);
+									})}
+								</div>
+								<div className="flex items-center gap-2">
+									<span className="text-sm text-blue-900">정렬</span>
+									<button
+										type="button"
+										onClick={() => setSortMode('room')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											sortMode === 'room'
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										생활실별
+									</button>
+									<button
+										type="button"
+										onClick={() => setSortMode('name')}
+										className={`px-3 py-1 text-xs border rounded font-medium ${
+											sortMode === 'name'
+												? 'border-blue-500 bg-blue-500 text-white'
+												: 'border-blue-300 bg-white text-blue-900 hover:bg-blue-50'
+										}`}
+									>
+										수급자별
+									</button>
+								</div>
+							</div>
 						</div>
 						<div className="overflow-x-auto w-full min-w-0">
 							<table className="w-full text-sm">
@@ -818,15 +889,15 @@ export default function VitalSignsPeriodic() {
 													<div className="flex items-center gap-4 w-full">
 													<div className="flex items-center gap-2 flex-shrink-0">
 														<label className="text-xs text-blue-900 font-medium whitespace-nowrap">작성자</label>
-														<input
-															type="text"
+														<EmployeeSearchInput
 															value={row.author}
-															onChange={(e) => handleDataChange(row.id, 'author', e.target.value)}
+															onChange={(name) => handleDataChange(row.id, 'author', name)}
 															disabled={editingRowId !== row.id}
-															className={`px-2 py-1 text-xs border border-blue-300 rounded ${
+															placeholder="직원 검색"
+															className="w-36"
+															inputClassName={`w-full px-2 py-1 text-xs border border-blue-300 rounded ${
 																editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
 															}`}
-															placeholder="작성자 입력"
 														/>
 													</div>
 														<div className="flex items-center gap-2 flex-1">
@@ -934,21 +1005,21 @@ export default function VitalSignsPeriodic() {
 									&gt;&gt;
 								</button>
 								<span className="ml-4 text-xs text-blue-900">
-									{filteredData.length > 0 ? `${startIndex + 1}-${Math.min(endIndex, filteredData.length)} / ${filteredData.length}` : '0 / 0'}
+									{sortedData.length > 0 ? `${startIndex + 1}-${Math.min(endIndex, sortedData.length)} / ${sortedData.length}` : '0 / 0'}
 								</span>
 							</div>
 						</div>
 					)}
 
 					{/* 하단 추가 버튼 */}
-					<div className="flex justify-center mt-4">
+					{/* <div className="flex justify-center mt-4">
 						<button
 							onClick={handleAddRow}
 							className="px-6 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 						>
 							추가
 						</button>
-					</div>
+					</div> */}
 				</div>
 			</div>
 
