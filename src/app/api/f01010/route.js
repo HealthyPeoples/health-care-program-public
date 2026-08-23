@@ -15,6 +15,22 @@ const sql = require('mssql');
 const { normalizeYmdOrNull: normalizeYmd } = require('../../../utils/normalizeYmd');
 const TABLE = '[돌봄시설DB].[dbo].[F01010]';
 
+async function ensureJobListColumn(pool) {
+	await pool.request().query(`
+		IF NOT EXISTS (
+			SELECT 1
+			FROM [돌봄시설DB].sys.columns c
+			INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
+			INNER JOIN [돌봄시설DB].sys.schemas s ON t.schema_id = s.schema_id
+			WHERE s.name = N'dbo' AND t.name = N'F01010' AND c.name = N'JOBLIST'
+		)
+		BEGIN
+			ALTER TABLE [돌봄시설DB].[dbo].[F01010]
+			ADD [JOBLIST] INT NULL;
+		END
+	`);
+}
+
 
 function inputDate(request, name, ymd) {
 	const n = normalizeYmd(ymd);
@@ -72,6 +88,12 @@ export async function GET(req) {
     const access = await assertAnCdAccess(req, pool, urlAncd || null);
     if (!access.ok) return access.response;
 
+    try {
+      await ensureJobListColumn(pool);
+    } catch (colErr) {
+      console.warn('F01010 JOBLIST 컬럼 확인 경고:', colErr?.message || colErr);
+    }
+
     const searchParams = req.nextUrl.searchParams;
     const searchName = searchParams.get('name') || '';
     const uid = searchParams.get('uid') || '';
@@ -87,6 +109,7 @@ export async function GET(req) {
         [JMNO],
         [YRNT],
         [JOB],
+        [JOBLIST],
         [JOBST],
         [JOBADD],
         [JOBSH],
@@ -172,6 +195,7 @@ function bindEmployeeInputs(rq, body) {
 	rq.input('JMNO', sql.VarChar(20), truncNullable(body.JMNO ?? body.jmno, 20));
 	rq.input('YRNT', sql.Int, parseIntOrZero(body.YRNT ?? body.yrnt ?? body.yearsOfService));
 	rq.input('JOB', sql.VarChar(20), truncNullable(body.JOB ?? body.job, 20));
+	rq.input('JOBLIST', sql.Int, parseIntOrNull(body.JOBLIST ?? body.jobList ?? body.joblist));
 	rq.input('JOBST', sql.Char(1), pickJobst(body));
 	rq.input('JOBADD', sql.VarChar(50), truncNullable(body.JOBADD ?? body.jobadd ?? body.workLocation, 50));
 	rq.input('JOBSH', sql.VarChar(50), truncNullable(body.JOBSH ?? body.jobsh ?? body.workType, 50));
@@ -205,6 +229,12 @@ export async function POST(req) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
+		try {
+			await ensureJobListColumn(pool);
+		} catch (colErr) {
+			console.warn('F01010 JOBLIST 컬럼 확인 경고:', colErr?.message || colErr);
+		}
+
 		if (isUpdate) {
 			const empno = parseInt(String(body.EMPNO ?? body.empno ?? ''), 10);
 			if (Number.isNaN(empno)) {
@@ -223,6 +253,7 @@ export async function POST(req) {
           [JMNO] = @JMNO,
           [YRNT] = @YRNT,
           [JOB] = @JOB,
+          [JOBLIST] = @JOBLIST,
           [JOBST] = @JOBST,
           [JOBADD] = @JOBADD,
           [JOBSH] = @JOBSH,
@@ -283,11 +314,11 @@ export async function POST(req) {
 
 		await rq.query(`
       INSERT INTO ${TABLE} (
-        [ANCD], [EMPNO], [EMPNM], [JMNO], [YRNT], [JOB], [JOBST], [JOBADD], [JOBSH],
+        [ANCD], [EMPNO], [EMPNM], [JMNO], [YRNT], [JOB], [JOBLIST], [JOBST], [JOBADD], [JOBSH],
         [BK], [BKNO], [SDT], [EDT], [HSDT], [HEDT], [EMPHP], [EMPTEL], [EMPZIP], [EMPADD],
         [INDT], [ETC], [INEMPNO], [INEMPNM], [MNG_GU], [BASE_DT]
       ) VALUES (
-        @ANCD, @EMPNO, @EMPNM, @JMNO, @YRNT, @JOB, @JOBST, @JOBADD, @JOBSH,
+        @ANCD, @EMPNO, @EMPNM, @JMNO, @YRNT, @JOB, @JOBLIST, @JOBST, @JOBADD, @JOBSH,
         @BK, @BKNO, @SDT, @EDT, @HSDT, @HEDT, @EMPHP, @EMPTEL, @EMPZIP, @EMPADD,
         GETDATE(), @ETC, @INEMPNO, @INEMPNM, @MNG_GU, @BASE_DT
       )
