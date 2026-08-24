@@ -16,6 +16,7 @@ export type AnnualSchedulePrintItem = {
 	title: string;
 	content: string;
 	type: string;
+	done?: boolean;
 };
 
 export type AnnualSchedulePrintData = {
@@ -373,7 +374,7 @@ export function buildAnnualScheduleListPrintHtml(
 	const facility = nbsp(data.facilityName || "");
 	const rows =
 		filtered.length === 0
-			? `<tr><td colspan="4" style="text-align:center;padding:16px;">등록된 일정이 없습니다.</td></tr>`
+			? `<tr><td colspan="5" style="text-align:center;padding:16px;">등록된 일정이 없습니다.</td></tr>`
 			: filtered
 					.slice()
 					.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title))
@@ -381,9 +382,10 @@ export function buildAnnualScheduleListPrintHtml(
 						(s, i) => `<tr>
       <td class="c">${i + 1}</td>
       <td>${escapeHtml(formatPeriod(s.date, s.endDate))}</td>
+      <td class="c">${s.done ? "완료" : ""}</td>
       <td>${nbsp(s.type)}</td>
       <td>
-        <div class="t">${escapeHtml(s.title)}</div>
+        <div class="t${s.done ? " done" : ""}">${escapeHtml(s.title)}</div>
         ${s.content ? `<div class="d">${escapeHtml(s.content)}</div>` : ""}
       </td>
     </tr>`
@@ -414,6 +416,7 @@ export function buildAnnualScheduleListPrintHtml(
     th { background: #f0f4f8; font-weight: bold; text-align: center; }
     td.c { text-align: center; width: 40px; }
     .t { font-weight: 600; }
+    .t.done { text-decoration: line-through; }
     .d { margin-top: 4px; font-size: 9.5pt; color: #333; white-space: pre-wrap; }
   </style>
 </head>
@@ -428,6 +431,7 @@ export function buildAnnualScheduleListPrintHtml(
         <tr>
           <th style="width:40px">No</th>
           <th style="width:160px">기간</th>
+          <th style="width:52px">진행</th>
           <th style="width:70px">유형</th>
           <th>제목 / 내용</th>
         </tr>
