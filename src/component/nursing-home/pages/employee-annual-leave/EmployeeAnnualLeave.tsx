@@ -74,6 +74,7 @@ export default function EmployeeAnnualLeave() {
 	const [printingAll, setPrintingAll] = useState(false);
 	const [printingBaseYear, setPrintingBaseYear] = useState(false);
 	const [printingDetail, setPrintingDetail] = useState(false);
+	const [printingIndividualDetail, setPrintingIndividualDetail] = useState(false);
 	const [isGrantModalOpen, setIsGrantModalOpen] = useState(false);
 	const [grantModalMode, setGrantModalMode] = useState<"create" | "edit">("create");
 	const [grantForm, setGrantForm] = useState({ accrualDate: "", endDate: "", days: "" });
@@ -431,19 +432,107 @@ export default function EmployeeAnnualLeave() {
 		}
 	};
 
+	const toPrintTarget = (e: Employee): EmployeeForAnnualLeavePrint => ({
+		EMPNO: e.EMPNO,
+		EMPNM: String(e.EMPNM ?? ""),
+		JOB: e.JOB,
+		JOBST: e.JOBST,
+		SDT: e.SDT,
+		EDT: e.EDT,
+		BASE_DT: e.BASE_DT,
+		YRNT: e.YRNT,
+	});
+
 	const getPrintTargets = (): EmployeeForAnnualLeavePrint[] =>
 		filteredEmployees
 			.filter((e) => String(e.EMPNM ?? "").trim() !== "")
-			.map((e) => ({
-				EMPNO: e.EMPNO,
-				EMPNM: String(e.EMPNM ?? ""),
-				JOB: e.JOB,
-				JOBST: e.JOBST,
-				SDT: e.SDT,
-				EDT: e.EDT,
-				BASE_DT: e.BASE_DT,
-				YRNT: e.YRNT,
-			}));
+			.map(toPrintTarget);
+
+	const printDetailForTargets = async (
+		targets: EmployeeForAnnualLeavePrint[],
+		documentTitle?: string,
+	): Promise<boolean> => {
+		if (targets.length === 0) {
+			alert("출력할 사원이 없습니다.");
+			return false;
+		}
+
+		const grants = await fetchAllGrants();
+		const grantsByEmpno = groupGrantsByEmpno(grants);
+		const yearGrants: AnnualLeaveGrantRow[] = [];
+		for (const emp of targets) {
+			for (const g of grantsByEmpno.get(emp.EMPNO) ?? []) {
+				const ydt = String(g.YDT ?? "").slice(0, 4);
+				const yedt = String(g.YEDT ?? "").slice(0, 4);
+				if (ydt === String(baseYear) || (ydt <= String(baseYear) && yedt >= String(baseYear))) {
+					yearGrants.push(g);
+				}
+			}
+		}
+		const range = getAttendanceFetchRangeFromGrants(yearGrants);
+		if (!range) {
+			alert(`${baseYear}년에 생성된 년차가 없습니다.`);
+			return false;
+		}
+		const url = `/api/f02010?startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`;
+		const response = await fetch(url);
+		const result = await response.json();
+		if (!result.success || !Array.isArray(result.data)) {
+			alert(result.error || "근태 데이터를 불러오지 못했습니다.");
+			return false;
+		}
+
+		const attendanceByEmpno = groupAttendanceByEmpno(result.data);
+		const sections = buildAllDetailAnnualLeavePrintSectionsFromGrants(
+			targets,
+			attendanceByEmpno,
+			grantsByEmpno,
+			baseYear,
+		);
+		if (sections.length === 0) {
+			alert(`${baseYear}년 출력할 연차 상세 데이터가 없습니다.`);
+			return false;
+		}
+
+		const html = buildDetailAnnualLeavePrintHtml(
+			formatToday(),
+			baseYear,
+			sections,
+			documentTitle,
+		);
+		openPrintPreviewWindow(html);
+		return true;
+	};
+
+	const handlePrintDetail = async () => {
+		setPrintingDetail(true);
+		try {
+			await printDetailForTargets(getPrintTargets());
+		} catch {
+			alert("기준 상세 출력 중 오류가 발생했습니다.");
+		} finally {
+			setPrintingDetail(false);
+		}
+	};
+
+	const handlePrintIndividualDetail = async () => {
+		if (!selectedEmployee) {
+			alert("사원을 선택하세요.");
+			return;
+		}
+		setPrintingIndividualDetail(true);
+		try {
+			const name = String(selectedEmployee.EMPNM ?? "").trim();
+			await printDetailForTargets(
+				[toPrintTarget(selectedEmployee)],
+				name ? `${name} 년차 상세 보고서 ${baseYear}년` : undefined,
+			);
+		} catch {
+			alert("개별 상세 출력 중 오류가 발생했습니다.");
+		} finally {
+			setPrintingIndividualDetail(false);
+		}
+	};
 
 	const groupAttendanceByEmpno = (data: unknown[]): Map<number, F02010LeaveRow[]> => {
 		const attendanceByEmpno = new Map<number, F02010LeaveRow[]>();
@@ -508,61 +597,6 @@ export default function EmployeeAnnualLeave() {
 			alert("기준년도 출력 중 오류가 발생했습니다.");
 		} finally {
 			setPrintingBaseYear(false);
-		}
-	};
-
-	const handlePrintDetail = async () => {
-		const targets = getPrintTargets();
-		if (targets.length === 0) {
-			alert("출력할 사원이 없습니다.");
-			return;
-		}
-
-		setPrintingDetail(true);
-		try {
-			const grants = await fetchAllGrants();
-			const grantsByEmpno = groupGrantsByEmpno(grants);
-			const yearGrants: AnnualLeaveGrantRow[] = [];
-			for (const emp of targets) {
-				for (const g of grantsByEmpno.get(emp.EMPNO) ?? []) {
-					const ydt = String(g.YDT ?? "").slice(0, 4);
-					const yedt = String(g.YEDT ?? "").slice(0, 4);
-					if (ydt === String(baseYear) || (ydt <= String(baseYear) && yedt >= String(baseYear))) {
-						yearGrants.push(g);
-					}
-				}
-			}
-			const range = getAttendanceFetchRangeFromGrants(yearGrants);
-			if (!range) {
-				alert(`${baseYear}년에 생성된 년차가 없습니다.`);
-				return;
-			}
-			const url = `/api/f02010?startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`;
-			const response = await fetch(url);
-			const result = await response.json();
-			if (!result.success || !Array.isArray(result.data)) {
-				alert(result.error || "근태 데이터를 불러오지 못했습니다.");
-				return;
-			}
-
-			const attendanceByEmpno = groupAttendanceByEmpno(result.data);
-			const sections = buildAllDetailAnnualLeavePrintSectionsFromGrants(
-				targets,
-				attendanceByEmpno,
-				grantsByEmpno,
-				baseYear,
-			);
-			if (sections.length === 0) {
-				alert(`${baseYear}년 출력할 연차 상세 데이터가 없습니다.`);
-				return;
-			}
-
-			const html = buildDetailAnnualLeavePrintHtml(formatToday(), baseYear, sections);
-			openPrintPreviewWindow(html);
-		} catch {
-			alert("기준 상세 출력 중 오류가 발생했습니다.");
-		} finally {
-			setPrintingDetail(false);
 		}
 	};
 
@@ -1157,6 +1191,14 @@ export default function EmployeeAnnualLeave() {
 								className="rounded border border-blue-400 bg-blue-200 px-4 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:cursor-not-allowed disabled:opacity-60"
 							>
 								{printingDetail ? "출력 준비중..." : "기준상세출력"}
+							</button>
+							<button
+								type="button"
+								onClick={() => void handlePrintIndividualDetail()}
+								disabled={printingIndividualDetail || !selectedEmployee}
+								className="rounded border border-blue-400 bg-blue-200 px-4 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:cursor-not-allowed disabled:opacity-60"
+							>
+								{printingIndividualDetail ? "출력 준비중..." : "개별상세출력"}
 							</button>
 						</div>
 					</div>
