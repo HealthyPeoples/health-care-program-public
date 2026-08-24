@@ -239,5 +239,16 @@ export const initialForm: StatementForm = {
 	recipientName: "",
 	receiveContent: "소식지, 급여제공기록지, 급여비용명세서, 식단표, 프로그램계획표",
 	birthday: "",
-	deliverer: "너싱홈 해원",
+	deliverer: "",
 };
+
+const HARDCODED_DELIVERER_PLACEHOLDERS = new Set(["너싱홈 해원", "너싱홈 혜원"]);
+
+/** 전달자: 로그인 기관명(F00110.ANNM) 우선. 구 하드코딩 기본값은 쓰지 않는다. */
+export function loginFacilityDeliverer(facilityName: string, savedSnm?: string): string {
+	const facility = String(facilityName ?? "").trim();
+	if (facility) return facility;
+	const saved = String(savedSnm ?? "").trim();
+	if (saved && !HARDCODED_DELIVERER_PLACEHOLDERS.has(saved)) return saved;
+	return "";
+}

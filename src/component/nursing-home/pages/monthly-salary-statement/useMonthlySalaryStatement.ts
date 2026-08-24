@@ -21,7 +21,6 @@ import {
 	statementRowToV40100GFallback,
 	lastDayOfPayYearMonth,
 	normalizeSGu,
-	LEDGER_DEFAULT_DELIVERER,
 	LEDGER_DEFAULT_RECEIVE,
 	type V40100PrintRow,
 	type V40100DPrintRow,
@@ -38,6 +37,7 @@ import {
 	TABS,
 	TAB_TITLES,
 	initialForm,
+	loginFacilityDeliverer,
 	type StatementRow,
 	type StatementForm,
 	type F10010Row,
@@ -62,6 +62,7 @@ export function useMonthlySalaryStatement() {
 	const [facilityIssueDate, setFacilityIssueDate] = useState("");
 	const [issueDateModalOpen, setIssueDateModalOpen] = useState(false);
 	const [issueDateDraft, setIssueDateDraft] = useState("");
+	const [facilityName, setFacilityName] = useState("");
 
 	const tabTitle = activeTab ? TAB_TITLES[activeTab] : TAB_TITLES.ledger;
 
@@ -186,7 +187,7 @@ export function useMonthlySalaryStatement() {
 				list,
 				{
 					deliveryMethod: formData.deliveryMethod,
-					deliverer: formData.deliverer,
+					deliverer: loginFacilityDeliverer(facilityName, formData.deliverer),
 					recipientName: formData.recipientName,
 					receiveContent: formData.receiveContent,
 				},
@@ -197,7 +198,7 @@ export function useMonthlySalaryStatement() {
 			console.error(e);
 			alert(e instanceof Error ? e.message : "발부대장 출력 중 오류가 발생했습니다.");
 		}
-	}, [payYearMonth, recipientFilter, formData, facilityIssueDate]);
+	}, [payYearMonth, recipientFilter, formData, facilityIssueDate, facilityName]);
 
 	const printBenefitStatement = useCallback(async () => {
 		const selectedRows = statementRows.filter((r) => checkedPnums.has(r.pnum));
@@ -356,6 +357,9 @@ export function useMonthlySalaryStatement() {
 				if (k) byPnum.set(k, m);
 			}
 
+			const facilityNameFromRow = String(facilityRow?.ANNM ?? "").trim();
+			setFacilityName(facilityNameFromRow);
+
 			const merged = f401Rows.map((row) =>
 				mergeF40100FacilityFromF00110(mergeF40100WithF10010(row, byPnum), facilityRow)
 			);
@@ -363,8 +367,12 @@ export function useMonthlySalaryStatement() {
 			setStatementRows(merged.map((r) => f40100ToStatementRow(r)));
 			setSelectedPnum(null);
 			setCheckedPnums(new Set());
-			setFormData(initialForm);
-			setFormSnapshot(initialForm);
+			const blank: StatementForm = {
+				...initialForm,
+				deliverer: loginFacilityDeliverer(facilityNameFromRow),
+			};
+			setFormData(blank);
+			setFormSnapshot(blank);
 			setFormEditMode(false);
 		} catch (e) {
 			console.error(e);
@@ -494,8 +502,12 @@ export function useMonthlySalaryStatement() {
 						: r
 				)
 			);
-			setFormData(initialForm);
-			setFormSnapshot(initialForm);
+			const blank: StatementForm = {
+				...initialForm,
+				deliverer: loginFacilityDeliverer(facilityName),
+			};
+			setFormData(blank);
+			setFormSnapshot(blank);
 			setFormEditMode(false);
 			setSelectedPnum(null);
 			alert("삭제되었습니다.");
@@ -516,7 +528,7 @@ export function useMonthlySalaryStatement() {
 		const next: StatementForm = {
 			recipient: row.recipient,
 			birthday: row.birthday,
-			deliverer: row.snm || LEDGER_DEFAULT_DELIVERER,
+			deliverer: loginFacilityDeliverer(facilityName, row.snm),
 			deliveryMethod: row.sGu ? normalizeSGu(row.sGu) : "2",
 			recipientName: row.enm,
 			receiveContent: row.rdes || LEDGER_DEFAULT_RECEIVE,
@@ -542,7 +554,7 @@ export function useMonthlySalaryStatement() {
 			const next: StatementForm = {
 				recipient: row.recipient,
 				birthday: row.birthday,
-				deliverer: row.snm || LEDGER_DEFAULT_DELIVERER,
+				deliverer: loginFacilityDeliverer(facilityName, row.snm),
 				deliveryMethod: row.sGu ? normalizeSGu(row.sGu) : "2",
 				recipientName: row.enm,
 				receiveContent: row.rdes || LEDGER_DEFAULT_RECEIVE,

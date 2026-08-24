@@ -54,7 +54,7 @@ function baseProps(overrides = {}) {
 		formData: {
 			recipient: '홍길동',
 			birthday: '1950-01-01',
-			deliverer: '너싱홈 해원',
+			deliverer: '로아기관',
 			deliveryMethod: '2',
 			recipientName: '보호자',
 			receiveContent: '급여비용명세서',
@@ -90,7 +90,7 @@ describe('MonthlySalaryStatementForm — presentational', () => {
 		const html = renderToStaticMarkup(React.createElement(Form, baseProps()));
 		assert.match(html, /홍길동/);
 		assert.match(html, /1950-01-01/);
-		assert.match(html, /너싱홈 해원/);
+		assert.match(html, /로아기관/);
 		assert.match(html, /보호자/);
 		assert.match(html, /급여비용명세서/);
 		assert.match(html, /우편발송/);
