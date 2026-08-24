@@ -6,12 +6,71 @@
  *
  * @module app/api/f32010/route
  */
-import { connPool } from '../../../config/server';
+import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { normalizeYmdShort as normalizeYmd } from '../../../utils/normalizeYmd';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F32010]';
+
+/** 스키마: PCHK01~12, 21~26, 31~37 (13~20 없음). f32020 TCHK와 동일 */
+const PCHK_KEYS = [
+  ...Array.from({ length: 12 }, (_, i) => `PCHK${String(i + 1).padStart(2, '0')}`),
+  ...Array.from({ length: 6 }, (_, i) => `PCHK${String(i + 21)}`),
+  ...Array.from({ length: 7 }, (_, i) => `PCHK${String(i + 31)}`),
+];
+
+const VARCHAR_MAX = {
+  P_DIAG: 500,
+  P_PROBLEM: 500,
+  P_WAY: 500,
+  P_PLAN: 500,
+  P_JUDGE: 500,
+  P_TEXT_CNT: 100,
+  PETC_1: 100,
+  PETC_2: 100,
+  PETC_3: 100,
+  PETC_4: 100,
+  PETC_5: 100,
+  PD_NM: 100,
+};
+
+function truncNullable(v, max) {
+  if (v == null || v === '') return null;
+  const s = String(v);
+  return s.length <= max ? s : s.slice(0, max);
+}
+
+function parseIntOrNull(v) {
+  if (v == null || v === '') return null;
+  const s = String(v).trim();
+  if (!s || !/^-?\d+$/.test(s)) return null;
+  const n = parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function attachPlanRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    SDT: normalizeYmd(row.SDT),
+    EDT: normalizeYmd(row.EDT),
+    INDT: normalizeYmd(row.INDT),
+    JHEMPNM: row.JHEMPNM != null ? String(row.JHEMPNM).trim() : '',
+  };
+}
+
+const F32010_SELECT = `
+        f32010.*,
+        COALESCE(
+          NULLIF(LTRIM(RTRIM(f01010.[EMPNM])), ''),
+          NULLIF(LTRIM(RTRIM(f32010.[PD_NM])), '')
+        ) AS [JHEMPNM]
+      FROM ${TABLE_NAME} f32010
+      LEFT JOIN [돌봄시설DB].[dbo].[F01010] f01010
+        ON CAST(f32010.[ANCD] AS VARCHAR) = CAST(f01010.[ANCD] AS VARCHAR)
+       AND CAST(f32010.[JHEMP] AS VARCHAR) = CAST(f01010.[EMPNO] AS VARCHAR)
+`;
 
 
 function pickBody(body, k, fallback = null) {
@@ -60,35 +119,25 @@ export async function GET(req) {
       request.input('EDT', edt);
 
       const result = await request.query(`
-        SELECT *
-        FROM ${TABLE_NAME}
-        WHERE [ANCD] = @ANCD
-          AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
-          AND CONVERT(date, [SDT]) = CONVERT(date, @SDT)
-          AND CONVERT(date, [EDT]) = CONVERT(date, @EDT)
+        SELECT ${F32010_SELECT}
+        WHERE f32010.[ANCD] = @ANCD
+          AND CAST(f32010.[PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+          AND CONVERT(date, f32010.[SDT]) = CONVERT(date, @SDT)
+          AND CONVERT(date, f32010.[EDT]) = CONVERT(date, @EDT)
       `);
 
       const row = result?.recordset?.[0] || null;
-      const data = row
-        ? { ...row, SDT: normalizeYmd(row.SDT), EDT: normalizeYmd(row.EDT), INDT: normalizeYmd(row.INDT) }
-        : null;
-      return jsonOk({ success: true, data });
+      return jsonOk({ success: true, data: attachPlanRow(row) });
     }
 
     const result = await request.query(`
-      SELECT *
-      FROM ${TABLE_NAME}
-      WHERE [ANCD] = @ANCD
-        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
-      ORDER BY [SDT] DESC, [EDT] DESC, [INDT] DESC
+      SELECT ${F32010_SELECT}
+      WHERE f32010.[ANCD] = @ANCD
+        AND CAST(f32010.[PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+      ORDER BY f32010.[SDT] DESC, f32010.[EDT] DESC, f32010.[INDT] DESC
     `);
 
-    const data = (result.recordset || []).map((r) => ({
-      ...r,
-      SDT: normalizeYmd(r.SDT),
-      EDT: normalizeYmd(r.EDT),
-      INDT: normalizeYmd(r.INDT),
-    }));
+    const data = (result.recordset || []).map((r) => attachPlanRow(r));
 
     return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
@@ -99,7 +148,7 @@ export async function GET(req) {
 
 // F32010 저장(업서트)
 // POST /api/f32010
-// body: { PNUM, SDT, EDT, JHEMP?, P_DIAG?, P_PROBLEM?, P_WAY?, P_PLAN?, P_JUDGE?, P_TEXT_CNT?, PSTD01~20, PCHK01~37, PETC_1~5, ETC }
+// body: { PNUM, SDT, EDT, JHEMP?, JHEMPNM?/PD_NM?, P_DIAG?, P_PROBLEM?, P_WAY?, P_PLAN?, P_JUDGE?, P_TEXT_CNT?, PSTD01~20, PCHK01~12/21~26/31~37, PETC_1~5, ETC }
 export async function POST(req) {
   try {
     const searchParams = req.nextUrl.searchParams;
@@ -136,6 +185,7 @@ export async function POST(req) {
 
     const editableKeys = [
       'JHEMP',
+      'PD_NM',
       'P_DIAG',
       'P_PROBLEM',
       'P_WAY',
@@ -143,7 +193,7 @@ export async function POST(req) {
       'P_JUDGE',
       'P_TEXT_CNT',
       ...Array.from({ length: 20 }, (_, i) => `PSTD${String(i + 1).padStart(2, '0')}`),
-      ...Array.from({ length: 37 }, (_, i) => `PCHK${String(i + 1).padStart(2, '0')}`),
+      ...PCHK_KEYS,
       'PETC_1',
       'PETC_2',
       'PETC_3',
@@ -152,14 +202,36 @@ export async function POST(req) {
       'ETC',
     ];
 
+    const jhempRaw = pickBody(body, 'JHEMP', null);
+    let pdNm = pickBody(body, 'PD_NM', pickBody(body, 'JHEMPNM', null));
+    const jhempNo = parseIntOrNull(jhempRaw);
+    if (jhempNo == null && jhempRaw != null && String(jhempRaw).trim() && pdNm == null) {
+      pdNm = String(jhempRaw).trim();
+    }
+
     editableKeys.forEach((k) => {
-      const v = pickBody(body, k, null);
       if (k === 'JHEMP') {
-        const n = v == null || v === '' ? null : parseInt(String(v), 10);
-        request.input(k, Number.isNaN(n) ? null : n);
+        request.input(k, sql.Int, jhempNo);
         return;
       }
-      request.input(k, v == null ? null : String(v));
+      if (k === 'PD_NM') {
+        request.input(k, sql.VarChar(VARCHAR_MAX.PD_NM), truncNullable(pdNm, VARCHAR_MAX.PD_NM));
+        return;
+      }
+      if (k === 'ETC') {
+        const v = pickBody(body, k, null);
+        const s = v == null || v === '' ? null : String(v).slice(0, 1);
+        request.input(k, sql.NVarChar(1), s);
+        return;
+      }
+      const v = pickBody(body, k, null);
+      const max = VARCHAR_MAX[k];
+      if (max) {
+        request.input(k, sql.VarChar(max), truncNullable(v, max));
+        return;
+      }
+      const flag = v == null || v === '' ? '0' : String(v).slice(0, 1);
+      request.input(k, sql.Char(1), flag === '1' ? '1' : '0');
     });
 
     const setSql = editableKeys
