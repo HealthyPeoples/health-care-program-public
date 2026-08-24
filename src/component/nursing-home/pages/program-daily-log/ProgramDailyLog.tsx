@@ -701,7 +701,6 @@ function buildSingleProgramDailyLogSheetHtml(
 <div class="log-top">
 	<div class="log-title-block">
 		<h1 class="log-title">프로그램일지</h1>
-		<div class="log-org">기관명 : ${org}</div>
 	</div>
 	<table class="sign-table" aria-label="담당 검토 결재">
 		<tr><th>담당</th><th>검토</th><th>결재</th></tr>
@@ -740,7 +739,7 @@ function buildSingleProgramDailyLogSheetHtml(
 		<td class="cell-val cell-pre" colspan="3">${attendees}</td>
 	</tr>
 	<tr class="row-goal">
-		<td class="cell-label">프로그램 목표</td>
+		<td class="cell-label">프로그램<br/>목표</td>
 		<td class="cell-val cell-pre" colspan="3">${goal}</td>
 	</tr>
 	<tr class="row-mat">
@@ -748,7 +747,7 @@ function buildSingleProgramDailyLogSheetHtml(
 		<td class="cell-val cell-pre" colspan="3">${materials}</td>
 	</tr>
 	<tr class="row-process">
-		<td class="cell-label">프로그램 운영<br/>과정 및 내용</td>
+		<td class="cell-label">프로그램<br/>운영<br/>과정 및 내용</td>
 		<td class="cell-val cell-pre" colspan="3">${process}</td>
 	</tr>
 	<tr class="row-eval">
@@ -765,6 +764,7 @@ function buildSingleProgramDailyLogSheetHtml(
 	</tr>
 	</tbody>
 </table>
+${pageBreakAfter ? "" : `<div class="log-footer">기관명 : ${org}</div>`}
 </div>`;
 }
 
@@ -773,15 +773,22 @@ function wrapProgramDailyLogPrintDocument(sheetsInnerHtml: string): string {
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>프로그램일지</title>
+<title></title>
 <style>
-@page { size: A4 portrait; margin: 10mm; }
+@page { size: A4 portrait; margin: 0; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; }
-body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.5pt; color: #000; background: #fff; }
+html { margin: 0; padding: 0; }
+body {
+	font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+	font-size: 10.5pt;
+	color: #000;
+	background: #fff;
+	padding: 12mm 14mm;
+}
 .log-sheet {
-	width: 190mm;
-	min-height: 277mm;
+	width: 100%;
+	max-width: 100%;
+	min-height: calc(297mm - 24mm);
 	margin: 0 auto;
 	display: flex;
 	flex-direction: column;
@@ -797,29 +804,34 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.
 }
 .log-title-block { flex: 1; min-width: 0; }
 .log-title { text-align: center; font-size: 18pt; font-weight: 700; text-decoration: underline; margin: 0 0 6px 0; line-height: 1.2; }
-.log-org { text-align: left; font-size: 11pt; padding-left: 2mm; }
+.log-footer {
+	margin-top: auto;
+	padding-top: 6mm;
+	text-align: right;
+	font-size: 11pt;
+	flex: 0 0 auto;
+}
 .sign-table { border-collapse: collapse; border: 1px solid #000; font-size: 9pt; flex-shrink: 0; }
 .sign-table th, .sign-table td { border: 1px solid #000; width: 64px; min-width: 56px; text-align: center; vertical-align: middle; padding: 3px 2px; }
 .sign-table th { font-weight: 700; background: #f7f7f7; height: 22px; }
 .sign-table td { height: 28px; }
 .log-main {
 	width: 100%;
-	flex: 1 1 auto;
-	height: 100%;
+	flex: 0 0 auto;
 	border-collapse: collapse;
 	border: 2px solid #000;
 	table-layout: fixed;
 }
-.log-main td { border: 1px solid #000; padding: 5px 7px; vertical-align: middle; font-size: 10.5pt; }
-.cell-label { text-align: center; font-weight: 600; background: #fafafa; vertical-align: middle; }
+.log-main td { border: 1px solid #000; padding: 4px 7px; vertical-align: middle; font-size: 10.5pt; }
+.cell-label { text-align: center; font-weight: 600; background: #fafafa; vertical-align: middle; word-break: keep-all; line-height: 1.3; }
 .cell-val { text-align: left; word-break: break-word; }
 .cell-pre { white-space: pre-wrap; vertical-align: top; }
 .row-fixed { height: 7mm; }
-.row-attend { height: 12mm; }
-.row-goal { height: 14mm; }
-.row-mat { height: 10mm; }
-.row-process { height: 42mm; }
-.row-eval { height: 22mm; }
+.row-attend { height: 10mm; }
+.row-goal { height: 11mm; }
+.row-mat { height: 8mm; }
+.row-process { height: 24mm; }
+.row-eval { height: 14mm; }
 .row-indiv td { vertical-align: top; }
 .cell-indiv { padding: 4px 6px; }
 .eval-table { width: 100%; border-collapse: collapse; font-size: 9pt; table-layout: fixed; }
@@ -830,7 +842,7 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.
 .eval-rm { width: 58%; word-break: break-word; }
 .eval-empty { font-size: 9.5pt; color: #444; padding: 4px 0; }
 .row-photo { height: auto; }
-.row-photo td { height: 72mm; vertical-align: top; }
+.row-photo td { height: 40mm; vertical-align: top; }
 .cell-photo { padding: 4px; }
 .photo-grid {
 	display: flex;
@@ -839,13 +851,13 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.
 	gap: 4px;
 	width: 100%;
 	height: 100%;
-	min-height: 68mm;
+	min-height: 36mm;
 }
 .photo-item {
 	flex: 1 1 calc(50% - 4px);
 	max-width: calc(50% - 4px);
 	height: calc(50% - 2px);
-	min-height: 32mm;
+	min-height: 28mm;
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -858,10 +870,9 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10.
 	max-height: 100%;
 	object-fit: contain;
 }
-.photo-empty { width: 100%; height: 100%; min-height: 68mm; }
+.photo-empty { width: 100%; height: 100%; min-height: 36mm; }
 @media print {
-	body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-	.log-sheet { min-height: 277mm; }
+	html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 </style>
 </head>
