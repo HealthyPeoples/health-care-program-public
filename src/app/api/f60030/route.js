@@ -2,7 +2,8 @@
  * @file API /api/f60030 — 연간일정 F60030
  *
  * @description
- * 연간일정 F60030 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ * 공지사항 F60030 Next.js Route Handler.
+ * GET 목록은 자료실과 같이 로그인 세션만 검사하고, ancd는 기관 필터(전체 포함)로 사용합니다.
  *
  * @module app/api/f60030/route
  */
@@ -14,6 +15,45 @@ import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F60030]';
 const VIEWER_TABLE = '[돌봄시설DB].[dbo].[F60031]';
 
+
+function isAllFacilityFilter(raw) {
+  const v = String(raw || '').trim();
+  return v === 'all' || v === '전체' || v.toLowerCase() === 'all';
+}
+
+async function fetchFacilities(pool) {
+  try {
+    const fac = await pool.request().query(`
+      SELECT [ANCD], [ANNM]
+      FROM [돌봄시설DB].[dbo].[F00110]
+      WHERE (ISNULL([DEL], '') <> 'D')
+      ORDER BY [ANNM]
+    `);
+    return (fac.recordset || []).map((r) => ({
+      ancd: String(r.ANCD),
+      annm: String(r.ANNM || r.ANCD || ''),
+    }));
+  } catch (e) {
+    console.warn('공지 기관 목록 조회 실패:', e?.message || e);
+    return [];
+  }
+}
+
+function noticeVisibilitySql() {
+  return `
+    (
+      N.[ANCD] = @SESSION_ANCD
+      OR LTRIM(RTRIM(ISNULL(N.[MGU], '1'))) = '3'
+      OR (
+        LTRIM(RTRIM(ISNULL(N.[MGU], '1'))) = '2'
+        AND EXISTS (
+          SELECT 1 FROM ${VIEWER_TABLE} V
+          WHERE V.[SEQ] = N.[SEQ] AND V.[D_ANCD] = @SESSION_ANCD
+        )
+      )
+    )
+  `;
+}
 
 async function syncF60031(pool, seq, mgu, ancd, viewers) {
   const delReq = pool.request();
@@ -55,10 +95,9 @@ export async function GET(req) {
     const endDate = searchParams.get('endDate');
     const baseDate = searchParams.get('baseDate');
 
-    const gate = assertAnCdMatchesSession(req, ancdParam);
+    // 조회는 자료실과 같이 로그인만 검사. 기관(ancd)은 필터로만 사용한다.
+    const gate = assertAnCdMatchesSession(req, null);
     if (!gate.ok) return gate.response;
-
-    const ancd = ancdParam ?? gate.sessionAncd;
 
     const pool = await connPool;
     if (!pool) {
@@ -66,10 +105,23 @@ export async function GET(req) {
     }
 
     const request = pool.request();
-    request.input('ANCD', ancd);
+    request.input('SESSION_ANCD', gate.sessionAncd);
+    const filterAncdRaw = String(ancdParam || '').trim();
+    const filterAll = isAllFacilityFilter(filterAncdRaw);
+    if (!filterAll) {
+      const raw = filterAncdRaw || String(gate.sessionAncd ?? '');
+      const n = parseInt(raw, 10);
+      if (Number.isNaN(n)) {
+        return jsonError({ success: false, error: '기관 필터(ancd)가 올바르지 않습니다.' }, 400);
+      }
+      request.input('ANCD', n);
+    }
+
+    const visibility = noticeVisibilitySql();
 
     if (seqParam) {
       request.input('SEQ', parseInt(String(seqParam), 10));
+      const ancdClause = filterAll ? '' : ' AND N.[ANCD] = @ANCD';
       const detail = await request.query(`
         SELECT
           N.[SEQ],
@@ -86,7 +138,8 @@ export async function GET(req) {
           C.[ANNM]
         FROM ${TABLE_NAME} N
         LEFT JOIN [돌봄시설DB].[dbo].[F00110] C ON N.[ANCD] = C.[ANCD]
-        WHERE N.[SEQ] = @SEQ AND N.[ANCD] = @ANCD
+        WHERE N.[SEQ] = @SEQ${ancdClause}
+          AND ${visibility}
       `);
       const row = detail.recordset?.[0];
       if (!row) {
@@ -113,7 +166,9 @@ export async function GET(req) {
       return jsonOk({ success: true, data });
     }
 
-    let where = 'WHERE N.[ANCD] = @ANCD';
+    let where = filterAll
+      ? `WHERE ${visibility}`
+      : `WHERE N.[ANCD] = @ANCD AND ${visibility}`;
 
     const periodStart = startDate ? String(startDate).slice(0, 10) : null;
     const periodEnd = endDate ? String(endDate).slice(0, 10) : null;
@@ -165,7 +220,15 @@ export async function GET(req) {
       EDT: normalizeYmd(r.EDT),
     }));
 
-    return jsonOk({ success: true, data, count: data.length });
+    const facilities = await fetchFacilities(pool);
+
+    return jsonOk({
+      success: true,
+      data,
+      count: data.length,
+      facilities,
+      sessionAncd: gate.sessionAncd != null ? String(gate.sessionAncd) : null,
+    });
   } catch (err) {
     console.error('F60030 조회 오류:', err);
     return jsonError({ success: false, error: err.message, details: err.toString() });

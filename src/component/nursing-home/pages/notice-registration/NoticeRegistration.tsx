@@ -9,6 +9,9 @@
  * @module component/nursing-home/pages/notice-registration/NoticeRegistration
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import ShareFacilityPicker, {
+	type ShareFacilityValue,
+} from "../../components/ShareFacilityPicker";
 import {
 	buildNoticePrintHtml,
 	openPrintPreviewWindow,
@@ -24,7 +27,7 @@ interface NoticeRow {
 	content: string;
 	mgu: string;
 	etc: string;
-	viewerCodes: string;
+	shareAncds: string[];
 }
 
 interface F60030ListItem {
@@ -77,7 +80,7 @@ const emptyForm = (today: string, centerName = "", registrant = ""): NoticeRow =
 	content: "",
 	mgu: "1",
 	etc: "",
-	viewerCodes: "",
+	shareAncds: [],
 });
 
 function toText(v: unknown): string {
@@ -93,13 +96,6 @@ function formatDateYmd(v: unknown): string {
 	return s.length >= 10 ? s.slice(0, 10) : s;
 }
 
-function parseViewerCodes(text: string): number[] {
-	return String(text ?? "")
-		.split(/[,，、\s\n\r]+/)
-		.map((s) => parseInt(s.trim(), 10))
-		.filter((n) => !Number.isNaN(n));
-}
-
 function mapDetailToForm(row: F60030Detail, centerFallback: string): NoticeRow {
 	const viewers = Array.isArray(row.viewers) ? row.viewers : [];
 	return {
@@ -112,7 +108,7 @@ function mapDetailToForm(row: F60030Detail, centerFallback: string): NoticeRow {
 		content: toText(row.MDES),
 		mgu: toText(row.MGU) || "1",
 		etc: toText(row.ETC),
-		viewerCodes: viewers.map((v) => String(v.D_ANCD ?? "").trim()).filter(Boolean).join(", "),
+		shareAncds: viewers.map((v) => String(v.D_ANCD ?? "").trim()).filter(Boolean),
 	};
 }
 
@@ -128,6 +124,7 @@ export default function NoticeRegistration() {
 	const [sessionAncd, setSessionAncd] = useState<string | number | null>(null);
 	const [centerName, setCenterName] = useState("");
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+	const [facilities, setFacilities] = useState<{ ancd: string; annm: string }[]>([]);
 
 	const [notices, setNotices] = useState<F60030ListItem[]>([]);
 	const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
@@ -183,6 +180,14 @@ export default function NoticeRegistration() {
 		}
 		const list = Array.isArray(json.data) ? (json.data as F60030ListItem[]) : [];
 		setNotices(list);
+		if (Array.isArray(json.facilities) && json.facilities.length) {
+			setFacilities(
+				json.facilities.map((f: { ancd?: unknown; annm?: unknown }) => ({
+					ancd: String(f.ancd ?? ""),
+					annm: String(f.annm ?? f.ancd ?? ""),
+				})),
+			);
+		}
 		return list;
 	};
 
@@ -294,7 +299,10 @@ export default function NoticeRegistration() {
 	};
 
 	const buildPayload = (row: NoticeRow) => {
-		const viewers = row.mgu === "2" ? parseViewerCodes(row.viewerCodes) : [];
+		const viewers =
+			row.mgu === "2"
+				? row.shareAncds.map((s) => parseInt(s, 10)).filter((n) => !Number.isNaN(n))
+				: [];
 		return {
 			ANCD: sessionAncd ?? null,
 			MDOC: row.title || null,
@@ -315,8 +323,8 @@ export default function NoticeRegistration() {
 			alert("공지 기간을 입력해주세요.");
 			return;
 		}
-		if (modalForm.mgu === "2" && parseViewerCodes(modalForm.viewerCodes).length === 0) {
-			alert("조회자구분이 '다수'인 경우 조회 고객코드를 입력해주세요.");
+		if (modalForm.mgu === "2" && modalForm.shareAncds.length === 0) {
+			alert("공유할 기관을 선택해 주세요.");
 			return;
 		}
 
@@ -370,8 +378,8 @@ export default function NoticeRegistration() {
 			alert("공지시작일과 공지종료일을 입력해주세요.");
 			return;
 		}
-		if (form.mgu === "2" && parseViewerCodes(form.viewerCodes).length === 0) {
-			alert("조회자구분이 '다수'인 경우 조회 고객코드를 입력해주세요.");
+		if (form.mgu === "2" && form.shareAncds.length === 0) {
+			alert("공유할 기관을 선택해 주세요.");
 			return;
 		}
 
@@ -628,73 +636,45 @@ export default function NoticeRegistration() {
 									)}
 								</div>
 
-								<div className="grid grid-cols-12 gap-2 items-center">
-									<span className={`col-span-2 ${labelClass}`}>조회자구분</span>
-									{editable ? (
-										<select
-											value={form.mgu}
-											onChange={(e) =>
-												setForm((p) => ({ ...p, mgu: e.target.value }))
+								<div className="grid grid-cols-12 gap-2 items-start">
+									<span className={`col-span-2 ${labelClass} self-start`}>공유 기관</span>
+									<div className={`col-span-6 rounded border border-blue-300 bg-white px-3 py-2 ${!editable ? "bg-gray-50" : ""}`}>
+										<ShareFacilityPicker
+											facilities={facilities}
+											sessionAncd={sessionAncd != null ? String(sessionAncd) : ""}
+											value={{
+												scope: (form.mgu === "2" || form.mgu === "3" ? form.mgu : "1") as ShareFacilityValue["scope"],
+												ancds: form.shareAncds,
+											}}
+											onChange={
+												editable
+													? (next) =>
+															setForm((p) => ({
+																...p,
+																mgu: next.scope,
+																shareAncds: next.ancds,
+															}))
+													: undefined
 											}
-											className={`col-span-3 ${inputClass}`}
-										>
-											<option value="1">1 - 자체</option>
-											<option value="2">2 - 다수</option>
-											<option value="3">3 - 전체</option>
-										</select>
-									) : (
-										<span className={`col-span-3 ${readOnlyCls}`}>
-											{form.mgu === "1"
-												? "자체"
-												: form.mgu === "2"
-													? "다수"
-													: form.mgu === "3"
-														? "전체"
-														: form.mgu || "-"}
-										</span>
-									)}
-									<div className="col-span-1" />
-									<span className={`col-span-2 ${labelClass}`}>비고</span>
+											readOnly={!editable}
+											inputName="notice-edit-share"
+										/>
+									</div>
+									<span className={`col-span-1 ${labelClass}`}>비고</span>
 									{editable ? (
 										<input
 											value={form.etc}
 											onChange={(e) =>
 												setForm((p) => ({ ...p, etc: e.target.value }))
 											}
-											className={`col-span-4 ${inputClass}`}
+											className={`col-span-3 ${inputClass}`}
 										/>
 									) : (
-										<span className={`col-span-4 ${readOnlyCls}`}>
+										<span className={`col-span-3 ${readOnlyCls}`}>
 											{form.etc || "-"}
 										</span>
 									)}
 								</div>
-
-								{(editable ? form.mgu === "2" : form.mgu === "2") && (
-									<div className="grid grid-cols-12 gap-2 items-start">
-										<span className={`col-span-2 ${labelClass} self-start`}>
-											조회고객코드
-										</span>
-										{editable ? (
-											<textarea
-												value={form.viewerCodes}
-												onChange={(e) =>
-													setForm((p) => ({
-														...p,
-														viewerCodes: e.target.value,
-													}))
-												}
-												rows={2}
-												placeholder="F60031 — 콤마로 구분 (예: 101, 102)"
-												className={`col-span-10 ${inputClass} resize-y`}
-											/>
-										) : (
-											<div className={`col-span-10 ${readOnlyCls} min-h-[48px]`}>
-												{form.viewerCodes || "-"}
-											</div>
-										)}
-									</div>
-								)}
 
 								<div className="grid grid-cols-12 gap-2 items-center">
 									<span className={`col-span-2 ${labelClass}`}>공지제목</span>
@@ -869,6 +849,31 @@ export default function NoticeRegistration() {
 									}
 									className="w-40 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
 								/>
+							</div>
+
+							<div className="flex gap-2 items-start">
+								<label className={`${modalLabelCls} mt-1`}>공유 기관</label>
+								<div className={`${modalFieldCls} bg-white`}>
+									<ShareFacilityPicker
+										facilities={facilities}
+										sessionAncd={sessionAncd != null ? String(sessionAncd) : ""}
+										value={{
+											scope: (modalForm.mgu === "2" || modalForm.mgu === "3"
+												? modalForm.mgu
+												: "1") as ShareFacilityValue["scope"],
+											ancds: modalForm.shareAncds,
+										}}
+										onChange={(next) =>
+											setModalForm((f) => ({
+												...f,
+												mgu: next.scope,
+												shareAncds: next.ancds,
+											}))
+										}
+										disabled={modalSaveLoading}
+										inputName="notice-create-share"
+									/>
+								</div>
 							</div>
 
 							<div className="flex items-center gap-2">
