@@ -669,6 +669,7 @@ export default function ConnectionRecord() {
 			font-weight: bold;
 			width: 120px;
 			text-align: center;
+			line-height: 1.35;
 		}
 		.info-table td.value {
 			width: auto;
@@ -775,7 +776,7 @@ export default function ConnectionRecord() {
 
 		<table class="info-table">
 			<tr>
-				<td class="label">장기요양기관기호</td>
+				<td class="label">장기요양<br>기관기호</td>
 				<td class="value">${selectedMember.ANCD || '-'}</td>
 				<td class="label">장기요양기관명</td>
 				<td class="value">${institutionName}</td>
@@ -789,7 +790,7 @@ export default function ConnectionRecord() {
 			<tr>
 				<td class="label">주민등록번호</td>
 				<td class="value">${selectedMember.P_NO ? maskResidentNumber(selectedMember.P_NO) : '-'}</td>
-				<td class="label">장기요양인정번호</td>
+				<td class="label">장기요양<br>인정번호</td>
 				<td class="value">${selectedMember.P_YYNO || '-'}</td>
 			</tr>
 		</table>
