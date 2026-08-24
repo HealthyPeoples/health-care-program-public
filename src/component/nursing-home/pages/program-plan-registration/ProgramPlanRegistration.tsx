@@ -29,6 +29,42 @@ type F14040ProgramRow = {
 	PGMAN0?: string | null;
 };
 
+type CopyInfo = {
+	canCopy: boolean;
+	canCreate: boolean;
+	sourceAncd: number | null;
+	sourceAnnm: string;
+};
+
+type CopySourceRow = {
+	ANCD?: number;
+	PGSEQ?: number;
+	PGNM?: string | null;
+	PG_GU?: string | null;
+	DEL?: string | null;
+	alreadyCopied?: boolean;
+};
+
+const EMPTY_COPY_INFO: CopyInfo = {
+	canCopy: false,
+	canCreate: true,
+	sourceAncd: null,
+	sourceAnnm: '',
+};
+
+function parseCopyInfo(raw: unknown): CopyInfo {
+	if (!raw || typeof raw !== 'object') return EMPTY_COPY_INFO;
+	const o = raw as Record<string, unknown>;
+	const sourceAncd =
+		o.sourceAncd != null && o.sourceAncd !== '' ? Number(o.sourceAncd) : NaN;
+	return {
+		canCopy: o.canCopy === true,
+		canCreate: o.canCreate !== false,
+		sourceAncd: Number.isFinite(sourceAncd) ? sourceAncd : null,
+		sourceAnnm: String(o.sourceAnnm ?? '').trim(),
+	};
+}
+
 /** F14040.PG_GU — 프로그램 구분 코드 */
 const PG_GU_OPTIONS: { code: string; label: string }[] = [
 	{ code: '1', label: '인지기능강화' },
@@ -249,22 +285,27 @@ function buildProgramPlanPrintHtml(form: ProgramPlanFormState): string {
 	const cycle = form.executionCycle === '월' ? '월' : '주';
 	const pgGu = programGuPrintLabel(form.programGu);
 	const pgGuHtml = pgGu ? escapeHtml(pgGu) : '&nbsp;';
+	const pgNm = String(form.programName ?? '').trim();
+	const titleHtml = pgNm
+		? `프로그램 계획서 (${escapeHtml(pgNm)})`
+		: '프로그램 계획서';
 
 	return `<!DOCTYPE html>
 <html lang="ko">
 <head>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-	<title>프로그램 계획서</title>
+	<title></title>
 	<style>
-		@page { size: A4; margin: 14mm; }
+		@page { size: A4; margin: 0; }
 		* { margin: 0; padding: 0; box-sizing: border-box; }
-		body {
+		html, body {
 			font-family: 'Malgun Gothic', '맑은 고딕', Pretendard, sans-serif;
 			font-size: 11pt;
 			line-height: 1.45;
 			color: #000;
 			background: #fff;
+			padding: 14mm;
 		}
 		.print-wrap {
 			width: 100%;
@@ -277,16 +318,13 @@ function buildProgramPlanPrintHtml(form: ProgramPlanFormState): string {
 			font-weight: 700;
 			letter-spacing: 0.03em;
 			padding: 0 0 8px 0;
+			word-break: keep-all;
+			line-height: 1.35;
 		}
 		.print-title-line {
 			border: 0;
 			border-top: 4px solid #000;
 			margin: 0 0 12px 0;
-		}
-		.print-pgnm {
-			font-size: 11pt;
-			margin-bottom: 12px;
-			text-align: left;
 		}
 		.print-table {
 			width: 100%;
@@ -304,6 +342,12 @@ function buildProgramPlanPrintHtml(form: ProgramPlanFormState): string {
 			width: 17%;
 			text-align: center;
 			font-weight: 400;
+			word-break: keep-all;
+			overflow-wrap: normal;
+		}
+		.print-table td.lb-place {
+			white-space: normal;
+			line-height: 1.35;
 		}
 		.print-table td.val {
 			text-align: left;
@@ -321,7 +365,7 @@ function buildProgramPlanPrintHtml(form: ProgramPlanFormState): string {
 			min-height: 260px;
 		}
 		@media print {
-			body {
+			html, body {
 				-webkit-print-color-adjust: exact;
 				print-color-adjust: exact;
 			}
@@ -333,9 +377,8 @@ function buildProgramPlanPrintHtml(form: ProgramPlanFormState): string {
 </head>
 <body>
 	<div class="print-wrap">
-		<h1 class="print-title">프로그램 계획서</h1>
+		<h1 class="print-title">${titleHtml}</h1>
 		<hr class="print-title-line" />
-		<div class="print-pgnm">프로그램명: ${cellOrNbsp(form.programName)}</div>
 		<table class="print-table">
 			<tr>
 				<td class="lb">프로그램 구분</td>
@@ -350,7 +393,7 @@ function buildProgramPlanPrintHtml(form: ProgramPlanFormState): string {
 				<td class="val">${escapeHtml(cycle)}</td>
 				<td class="lb">횟수</td>
 				<td class="val">${cellOrNbsp(form.frequency)}</td>
-				<td class="lb">프로그램 장소</td>
+				<td class="lb lb-place">프로그램<br/>장소</td>
 				<td class="val">${cellOrNbsp(form.programLocation)}</td>
 			</tr>
 			<tr>
@@ -448,7 +491,18 @@ export default function ProgramPlanRegistration() {
 	const [createAsstEmpSuggest, setCreateAsstEmpSuggest] = useState<EmpSuggest[]>([]);
 	const [showCreateAsstEmpDd, setShowCreateAsstEmpDd] = useState(false);
 
+	const [copyInfo, setCopyInfo] = useState<CopyInfo>(EMPTY_COPY_INFO);
+	const [copyModalOpen, setCopyModalOpen] = useState(false);
+	const [copySourceRows, setCopySourceRows] = useState<CopySourceRow[]>([]);
+	const [copySelectedSeqs, setCopySelectedSeqs] = useState<Set<number>>(new Set());
+	const [copyLoading, setCopyLoading] = useState(false);
+	const [copySaving, setCopySaving] = useState(false);
+	const [copyError, setCopyError] = useState<string | null>(null);
+	const [copySearch, setCopySearch] = useState('');
+
 	const isView = formMode === 'view';
+	const canCreate = copyInfo.canCreate;
+	const canCopy = copyInfo.canCopy;
 	const fieldRoClass = isView
 		? 'cursor-default border-blue-200 bg-gray-50 text-gray-800'
 		: 'border-blue-300 bg-white';
@@ -465,6 +519,7 @@ export default function ProgramPlanRegistration() {
 			}
 			const list: F14040ProgramRow[] = Array.isArray(json.data) ? json.data : [];
 			setPrograms(list);
+			setCopyInfo(parseCopyInfo(json.copyInfo));
 			if (syncSelectionKey === false) return;
 			const found = list.find((r) => programRowKey(r) === syncSelectionKey);
 			if (found) {
@@ -497,6 +552,7 @@ export default function ProgramPlanRegistration() {
 				}
 				if (!cancelled) {
 					setPrograms(Array.isArray(json.data) ? json.data : []);
+					setCopyInfo(parseCopyInfo(json.copyInfo));
 				}
 			} catch (e) {
 				if (!cancelled) {
@@ -539,6 +595,17 @@ export default function ProgramPlanRegistration() {
 		const start = (listPage - 1) * LIST_PAGE_SIZE;
 		return filteredPrograms.slice(start, start + LIST_PAGE_SIZE);
 	}, [filteredPrograms, listPage]);
+
+	const filteredCopySource = useMemo(() => {
+		const q = copySearch.trim().toLowerCase();
+		if (!q) return copySourceRows;
+		return copySourceRows.filter((r) => String(r.PGNM ?? '').toLowerCase().includes(q));
+	}, [copySourceRows, copySearch]);
+
+	const copyableCount = useMemo(
+		() => copySourceRows.filter((r) => !r.alreadyCopied && r.PGSEQ != null).length,
+		[copySourceRows]
+	);
 
 	useEffect(() => {
 		setListPage(1);
@@ -827,6 +894,95 @@ export default function ProgramPlanRegistration() {
 		}, 250);
 	};
 
+	const closeCopyModal = () => {
+		if (copySaving) return;
+		setCopyModalOpen(false);
+		setCopyError(null);
+	};
+
+	const openCopyModal = async () => {
+		if (!canCopy) {
+			alert('복사할 관리자(원본) 기관이 설정되어 있지 않습니다.');
+			return;
+		}
+		setCopyModalOpen(true);
+		setCopyError(null);
+		setCopySearch('');
+		setCopySelectedSeqs(new Set());
+		setCopyLoading(true);
+		try {
+			const res = await fetch('/api/f14040?copySource=1', { cache: 'no-store' });
+			const json = await res.json();
+			if (!res.ok || !json?.success) {
+				throw new Error(json?.error || '관리자 프로그램 목록을 불러오지 못했습니다.');
+			}
+			if (json.copyInfo) setCopyInfo(parseCopyInfo(json.copyInfo));
+			const list: CopySourceRow[] = Array.isArray(json.data) ? json.data : [];
+			setCopySourceRows(list);
+			setCopySelectedSeqs(
+				new Set(
+					list
+						.filter((r) => !r.alreadyCopied && r.PGSEQ != null)
+						.map((r) => Number(r.PGSEQ))
+				)
+			);
+		} catch (e) {
+			setCopySourceRows([]);
+			setCopyError(e instanceof Error ? e.message : '관리자 프로그램 목록 조회 오류');
+		} finally {
+			setCopyLoading(false);
+		}
+	};
+
+	const handleCopySave = async () => {
+		const pgseqs: number[] = [];
+		copySelectedSeqs.forEach((n) => {
+			pgseqs.push(n);
+		});
+		if (!pgseqs.length) {
+			setCopyError('복사할 프로그램을 선택해 주세요.');
+			return;
+		}
+		if (
+			!window.confirm(
+				`선택한 프로그램 ${pgseqs.length}건을 이 센터 계획서로 복사할까요?`
+			)
+		) {
+			return;
+		}
+		setCopySaving(true);
+		setCopyError(null);
+		try {
+			const res = await fetch('/api/f14040', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'copy', pgseqs }),
+			});
+			const json = await res.json();
+			if (!res.ok || !json?.success) {
+				throw new Error(json?.error || '복사에 실패했습니다.');
+			}
+			const copied = Number(json.copied ?? 0);
+			const skipped = Number(json.skipped ?? 0);
+			alert(
+				copied
+					? `프로그램 계획서 ${copied}건을 복사했습니다.${skipped ? ` (건너뜀 ${skipped}건)` : ''}`
+					: json.message || '복사된 프로그램이 없습니다.'
+			);
+			setCopyModalOpen(false);
+			const created: number[] = Array.isArray(json.pgseqs) ? json.pgseqs.map(Number) : [];
+			const last = created.length ? created[created.length - 1] : null;
+			const syncKey =
+				last != null && json.ancd != null ? `${json.ancd}-${last}` : false;
+			await refreshList(syncKey);
+			if (syncKey) setFormMode('view');
+		} catch (e) {
+			setCopyError(e instanceof Error ? e.message : '복사 오류');
+		} finally {
+			setCopySaving(false);
+		}
+	};
+
 	const handleDelete = async () => {
 		if (!selectedRow || selectedRow.PGSEQ == null) return;
 		if (
@@ -875,13 +1031,15 @@ export default function ProgramPlanRegistration() {
 						<div className="border border-blue-300 rounded-lg overflow-hidden bg-white shadow-sm">
 							<div className="flex flex-wrap items-center justify-between gap-2 bg-blue-100 border-b border-blue-300 px-3 py-2">
 								<span className="text-blue-900 font-semibold">프로그램 목록</span>
-								<button
-									type="button"
-									onClick={openCreateModal}
-									className="shrink-0 rounded border border-blue-500 bg-blue-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-600"
-								>
-									생성
-								</button>
+								{!programsLoading && canCreate ? (
+									<button
+										type="button"
+										onClick={openCreateModal}
+										className="shrink-0 rounded border border-blue-500 bg-blue-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-600"
+									>
+										생성
+									</button>
+								) : null}
 							</div>
 							{/* 상단 상태/검색 영역 */}
 							<div className="px-3 py-2 border-b border-blue-100 space-y-2">
@@ -1019,10 +1177,26 @@ export default function ProgramPlanRegistration() {
 					{/* 우측: 프로그램 계획서 상세 영역 */}
 					<section className="flex-1 min-w-0 space-y-4">
 						{!selectedRow ? (
-							<div className="flex min-h-[360px] items-center justify-center rounded-lg border border-blue-200 bg-white p-8 shadow-sm">
-								<p className="text-center text-lg font-medium text-blue-900/85">
-									프로그램 목록에서 프로그램을 선택 해 주세요
-								</p>
+							<div className="space-y-3">
+								{canCopy ? (
+									<div className="flex justify-end">
+										<button
+											type="button"
+											disabled={copySaving}
+											onClick={() => void openCopyModal()}
+											className="px-4 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:cursor-not-allowed disabled:opacity-40"
+										>
+											프로그램계획서 복사
+										</button>
+									</div>
+								) : null}
+								<div className="flex min-h-[360px] items-center justify-center rounded-lg border border-blue-200 bg-white p-8 shadow-sm">
+									<p className="text-center text-lg font-medium text-blue-900/85">
+										{canCopy
+											? '관리자 계획서를 복사하거나, 목록에서 프로그램을 선택해 주세요'
+											: '프로그램 목록에서 프로그램을 선택 해 주세요'}
+									</p>
+								</div>
 							</div>
 						) : (
 							<>
@@ -1322,17 +1496,18 @@ export default function ProgramPlanRegistration() {
 							/>
 						</div>
 
-								{/* 하단 버튼 */}
+								{canCopy ? (
 								<div className="flex justify-end">
 									<button
 										type="button"
-										disabled={!isView}
-										onClick={() => alert('프로그램계획서 복사 기능은 개발 중입니다.')}
+										disabled={!isView || copySaving}
+										onClick={() => void openCopyModal()}
 										className="px-4 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:cursor-not-allowed disabled:opacity-40"
 									>
 										프로그램계획서 복사
 									</button>
 								</div>
+								) : null}
 							</>
 						)}
 					</section>
@@ -1604,6 +1779,158 @@ export default function ProgramPlanRegistration() {
 									rows={12}
 								/>
 							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		) : null}
+
+		{copyModalOpen ? (
+			<div
+				className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4"
+				role="presentation"
+				onClick={closeCopyModal}
+			>
+				<div
+					className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border-2 border-blue-300 bg-white shadow-xl"
+					role="dialog"
+					aria-modal="true"
+					aria-labelledby="copy-program-plan-title"
+					onClick={(e) => e.stopPropagation()}
+				>
+					<div className="relative border-b border-blue-200 bg-blue-50 px-4 py-3 pr-40">
+						<h2
+							id="copy-program-plan-title"
+							className="text-center text-lg font-semibold text-blue-900"
+						>
+							프로그램계획서 복사
+						</h2>
+						<p className="mt-1 text-center text-xs text-blue-900/70">
+							원본: {copyInfo.sourceAnnm || copyInfo.sourceAncd || '관리자'}
+						</p>
+						<div className="absolute right-3 top-1/2 flex -translate-y-1/2 gap-2">
+							<button
+								type="button"
+								disabled={copySaving || copyLoading || copySelectedSeqs.size === 0}
+								onClick={() => void handleCopySave()}
+								className="rounded border border-green-600 bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+							>
+								{copySaving ? '복사 중…' : '복사'}
+							</button>
+							<button
+								type="button"
+								disabled={copySaving}
+								onClick={closeCopyModal}
+								className="rounded border border-blue-400 bg-white px-3 py-1.5 text-sm font-medium text-blue-900 hover:bg-blue-100 disabled:opacity-50"
+							>
+								닫기
+							</button>
+						</div>
+					</div>
+
+					<div className="overflow-y-auto p-4">
+						{copyError ? (
+							<div className="mb-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+								{copyError}
+							</div>
+						) : null}
+
+						<div className="mb-3 flex flex-wrap items-center gap-2">
+							<input
+								value={copySearch}
+								onChange={(e) => setCopySearch(e.target.value)}
+								placeholder="프로그램명 검색"
+								className="min-w-0 flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-black"
+							/>
+							<label className="flex items-center gap-1.5 text-sm text-blue-900">
+								<input
+									type="checkbox"
+									checked={
+										copyableCount > 0 &&
+										copySourceRows
+											.filter((r) => !r.alreadyCopied && r.PGSEQ != null)
+											.every((r) => copySelectedSeqs.has(Number(r.PGSEQ)))
+									}
+									onChange={(e) => {
+										if (e.target.checked) {
+											setCopySelectedSeqs(
+												new Set(
+													copySourceRows
+														.filter((r) => !r.alreadyCopied && r.PGSEQ != null)
+														.map((r) => Number(r.PGSEQ))
+												)
+											);
+										} else {
+											setCopySelectedSeqs(new Set());
+										}
+									}}
+									className="h-4 w-4 accent-blue-600"
+								/>
+								미복사 전체선택
+							</label>
+						</div>
+
+						<div className="max-h-[52vh] overflow-auto rounded border border-blue-200">
+							<table className="w-full text-sm text-black">
+								<thead className="sticky top-0 bg-blue-50 border-b border-blue-200">
+									<tr>
+										<th className="w-10 px-2 py-2 text-center font-semibold text-black">선택</th>
+										<th className="px-2 py-2 text-left font-semibold text-black">프로그램명</th>
+										<th className="w-32 px-2 py-2 text-left font-semibold text-black">구분</th>
+										<th className="w-20 px-2 py-2 text-center font-semibold text-black">상태</th>
+									</tr>
+								</thead>
+								<tbody>
+									{copyLoading ? (
+										<tr>
+											<td colSpan={4} className="px-3 py-6 text-center text-black">
+												목록 불러오는 중…
+											</td>
+										</tr>
+									) : filteredCopySource.length === 0 ? (
+										<tr>
+											<td colSpan={4} className="px-3 py-6 text-center text-black">
+												복사할 관리자 프로그램이 없습니다.
+											</td>
+										</tr>
+									) : (
+										filteredCopySource.map((row) => {
+											const seq = Number(row.PGSEQ);
+											const copied = !!row.alreadyCopied;
+											const gu = programGuPrintLabel(String(row.PG_GU ?? ''));
+											return (
+												<tr
+													key={seq}
+													className={`border-b border-blue-50 text-black ${copied ? 'bg-gray-50' : 'hover:bg-blue-50/70'}`}
+												>
+													<td className="px-2 py-2 text-center">
+														<input
+															type="checkbox"
+															disabled={copied || copySaving}
+															checked={copied || copySelectedSeqs.has(seq)}
+															onChange={(e) => {
+																setCopySelectedSeqs((prev) => {
+																	const next = new Set(prev);
+																	if (e.target.checked) next.add(seq);
+																	else next.delete(seq);
+																	return next;
+																});
+															}}
+															className="h-4 w-4 accent-blue-600"
+															aria-label={`${row.PGNM ?? seq} 복사 선택`}
+														/>
+													</td>
+													<td className="px-2 py-2">{String(row.PGNM ?? '').trim() || `일련번호 ${seq}`}</td>
+													<td className="px-2 py-2">{gu || '-'}</td>
+													<td className="px-2 py-2 text-center">
+														{copied ? '복사됨' : '미복사'}
+													</td>
+												</tr>
+											);
+										})
+									)}
+								</tbody>
+							</table>
 						</div>
 					</div>
 				</div>
