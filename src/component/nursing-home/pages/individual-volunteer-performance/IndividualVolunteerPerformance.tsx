@@ -39,6 +39,7 @@ interface PerformanceRow {
 	startTime: string;
 	endTime: string;
 	content: PerformanceContent;
+	contentText: string;
 	etc: string;
 }
 
@@ -102,6 +103,7 @@ function mapPerformance(row: Record<string, unknown>): PerformanceRow | null {
 			other: flagOn(row.P_SRV09),
 			otherText: String(row.P_SRV09_NM ?? "").trim(),
 		},
+		contentText: String(row.P_SRV_NM ?? "").trim(),
 		etc: String(row.ETC ?? "").trim(),
 	};
 }
@@ -113,6 +115,7 @@ function emptyForm(today: string): PerformanceRow {
 		startTime: "",
 		endTime: "",
 		content: emptyContent(),
+		contentText: "",
 		etc: "",
 	};
 }
@@ -434,6 +437,7 @@ export default function IndividualVolunteerPerformance() {
 					P_SRV04: form.content.programOps ? "1" : "0",
 					P_SRV09: form.content.other ? "1" : "0",
 					P_SRV09_NM: form.content.other ? form.content.otherText.trim() || null : null,
+					P_SRV_NM: form.contentText.trim() || null,
 					ETC: form.etc.trim() || null,
 				}),
 			});
@@ -492,6 +496,7 @@ export default function IndividualVolunteerPerformance() {
 			startTime: p.startTime,
 			endTime: p.endTime,
 			services: { ...p.content },
+			contentText: p.contentText,
 			etc: p.etc,
 		};
 	};
@@ -817,7 +822,7 @@ export default function IndividualVolunteerPerformance() {
 							</div>
 
 							<div className="grid grid-cols-12 gap-2 items-start">
-								<span className={labelClass}>봉사내용</span>
+								<span className={labelClass}>봉사구분</span>
 								<div className="col-span-10 grid grid-cols-12 gap-2">
 									<label className="col-span-3 flex items-center gap-2 text-sm text-blue-900">
 										<input
@@ -902,6 +907,28 @@ export default function IndividualVolunteerPerformance() {
 										className={`col-span-10 ${inputClass} disabled:bg-blue-50`}
 									/>
 								</div>
+							</div>
+
+							<div className="grid grid-cols-12 gap-2">
+								<span className={`${labelClass} self-start`}>봉사내용</span>
+								<textarea
+									value={form.contentText}
+									onChange={(e) => setForm((p) => ({ ...p, contentText: e.target.value }))}
+									rows={4}
+									maxLength={1000}
+									className={`col-span-10 ${inputClass} resize-none`}
+								/>
+							</div>
+
+							<div className="grid grid-cols-12 gap-2">
+								<span className={`${labelClass} self-start`}>비고</span>
+								<textarea
+									value={form.etc}
+									onChange={(e) => setForm((p) => ({ ...p, etc: e.target.value }))}
+									rows={2}
+									maxLength={100}
+									className={`col-span-10 ${inputClass} resize-none`}
+								/>
 							</div>
 
 							<div className="flex flex-wrap items-center gap-2 pt-2 border-t border-blue-200">
