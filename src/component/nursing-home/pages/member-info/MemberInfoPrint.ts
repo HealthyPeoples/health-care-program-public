@@ -301,6 +301,11 @@ export function buildRecipientCardPrintHtml(
       word-break: break-word;
     }
 
+    .contractTable thead th.amt,
+    .contractTable tbody td.amt {
+      text-align: center;
+    }
+
     .muted { color: #000; }
     .right { text-align: right; }
     .center { text-align: center; }
@@ -432,24 +437,24 @@ export function buildRecipientCardPrintHtml(
         <tr>
           <th style="width:24mm;">계약일자</th>
           <th style="width:54mm;">계약기간</th>
-          <th style="width:24mm;">공단부담금</th>
-          <th style="width:24mm;">수급자부담금</th>
+          <th class="amt" style="width:24mm;">공단부담금</th>
+          <th class="amt" style="width:24mm;">수급자부담금</th>
           <th style="width:24mm;">급여종류</th>
-          <th style="width:24mm;">비급여식대</th>
-          <th style="width:24mm;">비급여간식</th>
-          <th style="width:26mm;">상급병실료</th>
+          <th class="amt" style="width:24mm;">비급여식대</th>
+          <th class="amt" style="width:24mm;">비급여간식</th>
+          <th class="amt" style="width:26mm;">상급병실료</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td>${escapeHtml(contractDate)}</td>
           <td>${escapeHtml(validPeriod)}</td>
-          <td class="right">${escapeHtml(selectedMember.INSPER_AMT || '')}</td>
-          <td class="right">${escapeHtml(selectedMember.USRPER_AMT || '')}</td>
+          <td class="amt">${escapeHtml(selectedMember.INSPER_AMT || '')}</td>
+          <td class="amt">${escapeHtml(selectedMember.USRPER_AMT || '')}</td>
           <td>${escapeHtml(selectedMember.BEN_TYPE || '')}</td>
-          <td class="right">${escapeHtml(selectedMember.EAMT || '')}</td>
-          <td class="right">${escapeHtml(selectedMember.ETAMT || '')}</td>
-          <td class="right">${escapeHtml(selectedMember.ESAMT || '')}</td>
+          <td class="amt">${escapeHtml(selectedMember.EAMT || '')}</td>
+          <td class="amt">${escapeHtml(selectedMember.ETAMT || '')}</td>
+          <td class="amt">${escapeHtml(selectedMember.ESAMT || '')}</td>
         </tr>
       </tbody>
     </table>

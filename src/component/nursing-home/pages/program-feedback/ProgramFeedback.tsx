@@ -28,6 +28,7 @@ type F14040Row = {
 
 type Program = {
 	pgseq: number;
+	pgGu: string;
 	category: string;
 	name: string;
 };
@@ -78,10 +79,36 @@ function getCurrentYearMonth(): string {
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+const PG_GU_ORDER = ['1', '2', '3', '4', '6', '9'];
+
+function pgGuCode(value: unknown): string {
+	return String(value ?? '').trim().replace(/^0+/, '') || '9';
+}
+
+function pgGuSortKey(code: string): number {
+	const i = PG_GU_ORDER.indexOf(code);
+	return i === -1 ? PG_GU_ORDER.length : i;
+}
+
 function pgGuLabel(value: unknown): string {
-	const code = String(value ?? '').trim().replace(/^0+/, '');
+	const code = pgGuCode(value);
 	if (!code) return '';
 	return PG_GU_LABEL[code] ?? code;
+}
+
+function comparePrograms(a: Program, b: Program): number {
+	const byGu = pgGuSortKey(a.pgGu) - pgGuSortKey(b.pgGu);
+	if (byGu !== 0) return byGu;
+	const byName = a.name.localeCompare(b.name, 'ko');
+	if (byName !== 0) return byName;
+	return a.pgseq - b.pgseq;
+}
+
+function feedbackStatusBadge(record: FeedbackRecord | undefined): '수렴' | '반영' | null {
+	if (!record) return null;
+	if (String(record.reflection ?? '').trim()) return '반영';
+	if (String(record.opinion ?? '').trim()) return '수렴';
+	return null;
 }
 
 function ymToDigits(yyyymm: string): string {
@@ -182,7 +209,14 @@ export default function ProgramFeedback() {
 	);
 
 	const canEditFields = formMode === 'create' || formMode === 'edit';
-	const savedPgseqSet = useMemo(() => new Set(savedRecordsForMonth.map((r) => r.pgseq)), [savedRecordsForMonth]);
+	const savedStatusByPgseq = useMemo(() => {
+		const map = new Map<number, '수렴' | '반영'>();
+		for (const r of savedRecordsForMonth) {
+			const badge = feedbackStatusBadge(r);
+			if (badge) map.set(r.pgseq, badge);
+		}
+		return map;
+	}, [savedRecordsForMonth]);
 
 	const fetchMonthRecords = useCallback(async () => {
 		if (!ancdStr) {
@@ -252,11 +286,12 @@ export default function ProgramFeedback() {
 					.filter((r) => String(r.DEL ?? '').trim().toUpperCase() !== 'D')
 					.map((r) => ({
 						pgseq: Number(r.PGSEQ ?? 0),
+						pgGu: pgGuCode(r.PG_GU),
 						category: pgGuLabel(r.PG_GU) || '기타',
 						name: String(r.PGNM ?? '').trim() || '(프로그램명 없음)',
 					}))
 					.filter((p) => Number.isFinite(p.pgseq) && p.pgseq > 0)
-					.sort((a, b) => a.pgseq - b.pgseq);
+					.sort(comparePrograms);
 				if (!alive) return;
 				setPrograms(mapped);
 				setSelectedPgseq(null);
@@ -489,7 +524,7 @@ export default function ProgramFeedback() {
 				<div className="flex flex-col w-full xl:w-[34%] xl:min-w-[280px] min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<h3 className="text-sm font-semibold text-blue-900">프로그램 목록 (F14040)</h3>
-						<p className="text-xs text-blue-900/70 mt-0.5">저장됨 표시 · 18개 단위 페이지</p>
+						<p className="text-xs text-blue-900/70 mt-0.5">구분별 정렬 · 수렴/반영 표시 · 18개 단위 페이지</p>
 					</div>
 					<div className="flex-1 overflow-y-auto">
 						<table className="w-full text-sm">
@@ -521,7 +556,9 @@ export default function ProgramFeedback() {
 										</td>
 									</tr>
 								) : (
-									pagedPrograms.map((p) => (
+									pagedPrograms.map((p) => {
+										const badge = savedStatusByPgseq.get(p.pgseq);
+										return (
 										<tr
 											key={p.pgseq}
 											onClick={() => handleSelectProgram(p.pgseq)}
@@ -534,14 +571,19 @@ export default function ProgramFeedback() {
 											</td>
 											<td className="px-3 py-2 text-left">
 												{p.name}
-												{savedPgseqSet.has(p.pgseq) ? (
+												{badge === '반영' ? (
 													<span className="ml-1.5 text-[10px] font-medium text-green-800 bg-green-100 px-1.5 py-0.5 rounded">
-														저장됨
+														반영
+													</span>
+												) : badge === '수렴' ? (
+													<span className="ml-1.5 text-[10px] font-medium text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+														수렴
 													</span>
 												) : null}
 											</td>
 										</tr>
-									))
+										);
+									})
 								)}
 							</tbody>
 						</table>
