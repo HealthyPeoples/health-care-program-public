@@ -101,6 +101,64 @@ export async function GET(req) {
   }
 }
 
+const DB_NAME = '돌봄시설DB';
+let f14090ColumnCache = null;
+
+async function getF14090ColumnSet(pool) {
+	if (f14090ColumnCache) return f14090ColumnCache;
+	try {
+		const result = await pool.request().query(`
+			SELECT COLUMN_NAME
+			FROM [${DB_NAME}].INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = N'F14090'
+		`);
+		const cols = new Set();
+		(result.recordset || []).forEach((r) => {
+			const c = String(r.COLUMN_NAME || '').trim().toUpperCase();
+			if (c) cols.add(c);
+		});
+		if (cols.size > 0) f14090ColumnCache = cols;
+		return cols;
+	} catch (e) {
+		console.warn('F14090 컬럼 스키마 조회 실패:', e?.message || e);
+		return new Set();
+	}
+}
+
+/** 월 집계 화면에서 쓰는 메모 컬럼 — 없으면 추가 */
+async function ensureF14090NoteColumns(pool) {
+	const noteCols = [
+		'NS_HEALTH_HELP_NM',
+		'NS_NURSE_HELP_NM',
+		'NS_ETC_NM',
+		'NS_SORE_MNG_NM',
+		'NS_ETC_DESC',
+		'PH_BATH_METH_NM',
+		'PH_MEAL_KIND_NM',
+		'PH_MEAL_VAL_NM',
+	];
+	for (const col of noteCols) {
+		try {
+			await pool.request().query(`
+				IF NOT EXISTS (
+					SELECT 1
+					FROM [${DB_NAME}].sys.columns c
+					INNER JOIN [${DB_NAME}].sys.tables t ON c.object_id = t.object_id
+					INNER JOIN [${DB_NAME}].sys.schemas s ON t.schema_id = s.schema_id
+					WHERE s.name = N'dbo' AND t.name = N'F14090' AND c.name = N'${col}'
+				)
+				BEGIN
+					ALTER TABLE [${DB_NAME}].[dbo].[F14090]
+					ADD [${col}] NVARCHAR(200) NULL;
+				END
+			`);
+		} catch (e) {
+			console.warn(`F14090 ${col} 컬럼 확인 경고:`, e?.message || e);
+		}
+	}
+	f14090ColumnCache = null;
+}
+
 function currentYyyymm() {
 	const d = new Date();
 	return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -190,10 +248,7 @@ export async function POST(req) {
       return jsonError({ success: false, error: 'yyyymm(YYYYMM)과 pnum 파라미터가 필요합니다' }, 400);
     }
 
-    const request = pool.request();
-    request.input('ANCD', gate.sessionAncd);
-    request.input('YYYYMM', String(yyyymm));
-    request.input('PNUM', String(pnum));
+    await ensureF14090NoteColumns(pool);
 
     const pick = (k) => (body && Object.prototype.hasOwnProperty.call(body, k) ? body[k] : null);
 
@@ -213,11 +268,21 @@ export async function POST(req) {
       'SV_CNT','AB_CNT','ROOM_NO'
     ];
 
-    editableKeys.forEach((k) => request.input(k, pick(k) == null ? null : String(pick(k))));
+    const columnSet = await getF14090ColumnSet(pool);
+    const keys = editableKeys.filter((k) => columnSet.size === 0 || columnSet.has(k));
+    if (keys.length === 0) {
+      return jsonError({ success: false, error: 'F14090에 저장할 수 있는 컬럼이 없습니다' }, 500);
+    }
 
-    const setSql = editableKeys.map((k) => `T.[${k}] = @${k}`).join(',\n          ');
-    const insertCols = editableKeys.map((k) => `[${k}]`).join(',');
-    const insertVals = editableKeys.map((k) => `@${k}`).join(',');
+    const request = pool.request();
+    request.input('ANCD', gate.sessionAncd);
+    request.input('YYYYMM', String(yyyymm));
+    request.input('PNUM', String(pnum));
+    keys.forEach((k) => request.input(k, pick(k) == null ? null : String(pick(k))));
+
+    const setSql = keys.map((k) => `T.[${k}] = @${k}`).join(',\n          ');
+    const insertCols = keys.map((k) => `[${k}]`).join(',');
+    const insertVals = keys.map((k) => `@${k}`).join(',');
 
     const query = `
       MERGE [돌봄시설DB].[dbo].[F14090] AS T
