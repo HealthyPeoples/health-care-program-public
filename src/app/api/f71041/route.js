@@ -12,6 +12,30 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F71041]';
+const DB_NAME = '돌봄시설DB';
+
+let srvNmEnsured = false;
+
+async function ensurePSrvNmColumn(pool) {
+	if (srvNmEnsured) return;
+	try {
+		await pool.request().query(`
+			IF NOT EXISTS (
+				SELECT 1
+				FROM [${DB_NAME}].sys.columns c
+				INNER JOIN [${DB_NAME}].sys.tables t ON c.object_id = t.object_id
+				INNER JOIN [${DB_NAME}].sys.schemas s ON t.schema_id = s.schema_id
+				WHERE s.name = N'dbo' AND t.name = N'F71041' AND c.name = N'P_SRV_NM'
+			)
+			BEGIN
+				ALTER TABLE ${TABLE_NAME} ADD [P_SRV_NM] NVARCHAR(1000) NULL;
+			END
+		`);
+		srvNmEnsured = true;
+	} catch (e) {
+		console.warn('F71041 P_SRV_NM 컬럼 확인 경고:', e?.message || e);
+	}
+}
 
 
 function trunc(v, max) {
@@ -52,6 +76,7 @@ function mapRow(row) {
 		P_SRV04: isFlagOn(row.P_SRV04) ? '1' : '0',
 		P_SRV09: isFlagOn(row.P_SRV09) ? '1' : '0',
 		P_SRV09_NM: row.P_SRV09_NM != null ? String(row.P_SRV09_NM).trim() : '',
+		P_SRV_NM: row.P_SRV_NM != null ? String(row.P_SRV_NM).trim() : '',
 		ETC: row.ETC != null ? String(row.ETC).trim() : '',
 		INDT: normalizeYmd(row.INDT),
 	};
@@ -80,6 +105,8 @@ export async function GET(req) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
+		await ensurePSrvNmColumn(pool);
+
 		const ancd = gate.sessionAncd;
 		const request = pool.request();
 		request.input('ANCD', ancd);
@@ -99,7 +126,7 @@ export async function GET(req) {
 			SELECT
 				[ANCD], [P_PHONE], [P_SDT], [P_STM], [P_ETM],
 				[P_SRV01], [P_SRV02], [P_SRV03], [P_SRV04], [P_SRV09], [P_SRV09_NM],
-				[ETC], [INDT]
+				[P_SRV_NM], [ETC], [INDT]
 			FROM ${TABLE_NAME}
 			${where}
 			ORDER BY [P_SDT] DESC
@@ -146,7 +173,10 @@ export async function POST(req) {
 		const pSrv04 = flag01(body?.P_SRV04 ?? body?.programOps);
 		const pSrv09 = flag01(body?.P_SRV09 ?? body?.other);
 		const pSrv09Nm = trunc(body?.P_SRV09_NM ?? body?.pSrv09Nm ?? body?.otherText, 200);
+		const pSrvNm = trunc(body?.P_SRV_NM ?? body?.pSrvNm ?? body?.contentText, 1000);
 		const etc = trunc(body?.ETC ?? body?.etc, 100);
+
+		await ensurePSrvNmColumn(pool);
 
 		const master = await pool
 			.request()
@@ -174,6 +204,7 @@ export async function POST(req) {
 			.input('P_SRV04', pSrv04)
 			.input('P_SRV09', pSrv09)
 			.input('P_SRV09_NM', pSrv09 === '1' ? pSrv09Nm : null)
+			.input('P_SRV_NM', pSrvNm)
 			.input('ETC', etc)
 			.query(`
 				MERGE ${TABLE_NAME} AS t
@@ -189,16 +220,17 @@ export async function POST(req) {
 						[P_SRV04] = @P_SRV04,
 						[P_SRV09] = @P_SRV09,
 						[P_SRV09_NM] = @P_SRV09_NM,
+						[P_SRV_NM] = @P_SRV_NM,
 						[ETC] = @ETC
 				WHEN NOT MATCHED THEN
 					INSERT (
 						[ANCD], [P_PHONE], [P_SDT], [P_STM], [P_ETM],
 						[P_SRV01], [P_SRV02], [P_SRV03], [P_SRV04], [P_SRV09], [P_SRV09_NM],
-						[ETC], [INDT]
+						[P_SRV_NM], [ETC], [INDT]
 					) VALUES (
 						@ANCD, @P_PHONE, @P_SDT, @P_STM, @P_ETM,
 						@P_SRV01, @P_SRV02, @P_SRV03, @P_SRV04, @P_SRV09, @P_SRV09_NM,
-						@ETC, CONVERT(date, GETDATE())
+						@P_SRV_NM, @ETC, CONVERT(date, GETDATE())
 					);
 			`);
 

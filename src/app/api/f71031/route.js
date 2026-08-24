@@ -12,6 +12,30 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { normalizeYmdEmpty as normalizeYmd } from '../../../utils/normalizeYmd';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F71031]';
+const DB_NAME = '돌봄시설DB';
+
+let srvNmEnsured = false;
+
+async function ensureGSrvNmColumn(pool) {
+	if (srvNmEnsured) return;
+	try {
+		await pool.request().query(`
+			IF NOT EXISTS (
+				SELECT 1
+				FROM [${DB_NAME}].sys.columns c
+				INNER JOIN [${DB_NAME}].sys.tables t ON c.object_id = t.object_id
+				INNER JOIN [${DB_NAME}].sys.schemas s ON t.schema_id = s.schema_id
+				WHERE s.name = N'dbo' AND t.name = N'F71031' AND c.name = N'G_SRV_NM'
+			)
+			BEGIN
+				ALTER TABLE ${TABLE_NAME} ADD [G_SRV_NM] NVARCHAR(1000) NULL;
+			END
+		`);
+		srvNmEnsured = true;
+	} catch (e) {
+		console.warn('F71031 G_SRV_NM 컬럼 확인 경고:', e?.message || e);
+	}
+}
 
 
 function trunc(v, max) {
@@ -55,6 +79,7 @@ function mapRow(row) {
 		G_SRV04: isFlagOn(row.G_SRV04) ? '1' : '0',
 		G_SRV09: isFlagOn(row.G_SRV09) ? '1' : '0',
 		G_SRV09_NM: row.G_SRV09_NM != null ? String(row.G_SRV09_NM).trim() : '',
+		G_SRV_NM: row.G_SRV_NM != null ? String(row.G_SRV_NM).trim() : '',
 		ETC: row.ETC != null ? String(row.ETC).trim() : '',
 		INDT: normalizeYmd(row.INDT),
 	};
@@ -84,6 +109,8 @@ export async function GET(req) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
+		await ensureGSrvNmColumn(pool);
+
 		const ancd = gate.sessionAncd;
 		const request = pool.request();
 		request.input('ANCD', ancd);
@@ -103,7 +130,7 @@ export async function GET(req) {
 			SELECT
 				[ANCD], [G_SEQ], [G_SDT], [G_STM], [G_ETM], [G_CNT], [G_TAKE_NM],
 				[G_SRV01], [G_SRV02], [G_SRV03], [G_SRV04], [G_SRV09], [G_SRV09_NM],
-				[ETC], [INDT]
+				[G_SRV_NM], [ETC], [INDT]
 			FROM ${TABLE_NAME}
 			${where}
 			ORDER BY [G_SDT] DESC
@@ -159,7 +186,10 @@ export async function POST(req) {
 		const gSrv04 = flag01(body?.G_SRV04 ?? body?.programOps);
 		const gSrv09 = flag01(body?.G_SRV09 ?? body?.other);
 		const gSrv09Nm = trunc(body?.G_SRV09_NM ?? body?.gSrv09Nm ?? body?.otherText, 200);
+		const gSrvNm = trunc(body?.G_SRV_NM ?? body?.gSrvNm ?? body?.contentText, 1000);
 		const etc = trunc(body?.ETC ?? body?.etc, 100);
+
+		await ensureGSrvNmColumn(pool);
 
 		// 단체 존재 확인
 		const groupCheck = await pool
@@ -205,6 +235,7 @@ export async function POST(req) {
 				.input('G_SRV04', gSrv04)
 				.input('G_SRV09', gSrv09)
 				.input('G_SRV09_NM', gSrv09 === '1' ? gSrv09Nm : null)
+				.input('G_SRV_NM', gSrvNm)
 				.input('ETC', etc)
 				.query(`
 					UPDATE ${TABLE_NAME}
@@ -218,6 +249,7 @@ export async function POST(req) {
 						[G_SRV04] = @G_SRV04,
 						[G_SRV09] = @G_SRV09,
 						[G_SRV09_NM] = @G_SRV09_NM,
+						[G_SRV_NM] = @G_SRV_NM,
 						[ETC] = @ETC
 					WHERE [ANCD] = @ANCD
 						AND [G_SEQ] = @G_SEQ
@@ -245,16 +277,17 @@ export async function POST(req) {
 				.input('G_SRV04', gSrv04)
 				.input('G_SRV09', gSrv09)
 				.input('G_SRV09_NM', gSrv09 === '1' ? gSrv09Nm : null)
+				.input('G_SRV_NM', gSrvNm)
 				.input('ETC', etc)
 				.query(`
 					INSERT INTO ${TABLE_NAME} (
 						[ANCD], [G_SEQ], [G_SDT], [G_STM], [G_ETM], [G_CNT], [G_TAKE_NM],
 						[G_SRV01], [G_SRV02], [G_SRV03], [G_SRV04], [G_SRV09], [G_SRV09_NM],
-						[ETC], [INDT]
+						[G_SRV_NM], [ETC], [INDT]
 					) VALUES (
 						@ANCD, @G_SEQ, @G_SDT, @G_STM, @G_ETM, @G_CNT, @G_TAKE_NM,
 						@G_SRV01, @G_SRV02, @G_SRV03, @G_SRV04, @G_SRV09, @G_SRV09_NM,
-						@ETC, CONVERT(date, GETDATE())
+						@G_SRV_NM, @ETC, CONVERT(date, GETDATE())
 					)
 				`);
 

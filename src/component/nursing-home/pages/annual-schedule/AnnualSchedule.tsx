@@ -22,6 +22,12 @@ interface ScheduleItem {
 	title: string;
 	content: string;
 	type: string;
+	done: boolean;
+}
+
+function isDoneYn(v: unknown): boolean {
+	const s = String(v ?? "").trim().toUpperCase();
+	return s === "Y" || s === "1" || s === "TRUE";
 }
 
 const SCHEDULE_TYPES = ["행사", "휴무", "교육", "기타"];
@@ -158,7 +164,7 @@ export default function AnnualSchedule() {
 
 	useEffect(() => {
 		setListPage(1);
-	}, [selectedYear, selectedMonth, scheduleList]);
+	}, [selectedYear, selectedMonth]);
 
 	useEffect(() => {
 		if (listPage > listTotalPages) {
@@ -203,6 +209,7 @@ export default function AnnualSchedule() {
 						TITLE: string;
 						CONTENT?: string;
 						SCH_TYPE?: string;
+						DONE_YN?: string;
 					}) => {
 						const start = String(r.SCH_DATE ?? r.SCH_START_DATE ?? "").slice(0, 10);
 						const end = String(r.SCH_END_DATE ?? start).slice(0, 10) || start;
@@ -213,6 +220,7 @@ export default function AnnualSchedule() {
 							title: r.TITLE || "",
 							content: r.CONTENT || "",
 							type: r.SCH_TYPE || "",
+							done: isDoneYn(r.DONE_YN),
 						};
 					}
 				);
@@ -357,6 +365,35 @@ export default function AnnualSchedule() {
 		setSelectedSchedule(schedule);
 	};
 
+	const handleToggleDone = async (schedule: ScheduleItem, done: boolean) => {
+		const prevList = scheduleList;
+		const prevSelected = selectedSchedule;
+		setScheduleList((list) => list.map((s) => (s.id === schedule.id ? { ...s, done } : s)));
+		if (selectedSchedule?.id === schedule.id) {
+			setSelectedSchedule({ ...selectedSchedule, done });
+		}
+		try {
+			const response = await fetch("/api/annual-schedule", {
+				method: "POST",
+				credentials: "include",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					action: "done",
+					AS_SEQ: schedule.id,
+					DONE_YN: done ? "Y" : "N",
+				}),
+			});
+			const result = await response.json();
+			if (!response.ok || !result.success) {
+				throw new Error(result.error || "진행 여부 저장에 실패했습니다.");
+			}
+		} catch (err) {
+			setScheduleList(prevList);
+			setSelectedSchedule(prevSelected);
+			alert(err instanceof Error ? err.message : "진행 여부 저장 중 오류가 발생했습니다.");
+		}
+	};
+
 	const handleDateClick = (date: Date) => {
 		setIsEditMode(false);
 		setSelectedSchedule(null);
@@ -428,6 +465,7 @@ export default function AnnualSchedule() {
 					TITLE: string;
 					CONTENT?: string;
 					SCH_TYPE?: string;
+					DONE_YN?: string;
 				}) => {
 					const start = String(r.SCH_DATE ?? r.SCH_START_DATE ?? "").slice(0, 10);
 					const end = String(r.SCH_END_DATE ?? start).slice(0, 10) || start;
@@ -437,6 +475,7 @@ export default function AnnualSchedule() {
 						title: r.TITLE || "",
 						content: r.CONTENT || "",
 						type: r.SCH_TYPE || "",
+						done: isDoneYn(r.DONE_YN),
 					};
 				}
 			);
@@ -670,7 +709,7 @@ export default function AnnualSchedule() {
 															<button
 																key={schedule.id}
 																type="button"
-																title={`${schedule.title} (${formatPeriod(schedule.date, schedule.endDate)})`}
+																title={`${schedule.done ? "[완료] " : ""}${schedule.title} (${formatPeriod(schedule.date, schedule.endDate)})`}
 																onClick={(e) => {
 																	e.stopPropagation();
 																	handleSelectSchedule(schedule);
@@ -681,8 +720,9 @@ export default function AnnualSchedule() {
 																	selectedSchedule?.id === schedule.id
 																		? "ring-2 ring-blue-600"
 																		: ""
-																} hover:brightness-95`}
+																} ${schedule.done ? "line-through opacity-80" : ""} hover:brightness-95`}
 															>
+																{schedule.done ? "✓ " : ""}
 																{schedule.title}
 															</button>
 														))}
@@ -700,7 +740,10 @@ export default function AnnualSchedule() {
 				{/* 오른쪽: 일정 목록 */}
 				<div className="w-full max-w-full lg:w-96 min-w-0 shrink-0 flex flex-col rounded-lg border border-blue-300 bg-white overflow-hidden">
 					<div className="border-b border-blue-200 bg-blue-100 px-3 py-2 font-semibold text-blue-900 shrink-0">
-						일정 목록 ({filteredSchedules.length}개)
+						<div>일정 목록 ({filteredSchedules.length}개)</div>
+						<div className="mt-0.5 text-[11px] font-normal text-blue-800/80">
+							체크하면 진행 완료로 표시됩니다
+						</div>
 					</div>
 					{showListPagination && (
 						<div className="border-b border-blue-200 bg-blue-50 px-2 py-2 flex items-center justify-center gap-1 shrink-0">
@@ -753,24 +796,45 @@ export default function AnnualSchedule() {
 												: ""
 										}`}
 									>
-										<div className="text-sm font-semibold text-blue-900 mb-1">
-											{schedule.title}
-										</div>
-										<div className="text-xs text-blue-700 mb-1">
-											{formatPeriod(schedule.date, schedule.endDate)}
-										</div>
-										{schedule.content && (
-											<div className="text-xs text-blue-900/70 line-clamp-2">
-												{schedule.content}
-											</div>
-										)}
-										{schedule.type && (
-											<div
-												className={`inline-block text-xs mt-1 px-1.5 py-0.5 rounded ${typeBadgeClass(schedule.type)}`}
+										<div className="flex items-start gap-2">
+											<label
+												className="mt-0.5 flex shrink-0 items-center gap-1"
+												onClick={(e) => e.stopPropagation()}
 											>
-												{schedule.type}
+												<input
+													type="checkbox"
+													checked={schedule.done}
+													onChange={(e) => void handleToggleDone(schedule, e.target.checked)}
+													className="h-4 w-4 accent-blue-600"
+													aria-label={`${schedule.title} 진행 완료`}
+												/>
+												<span className="text-[11px] text-blue-800">완료</span>
+											</label>
+											<div className="min-w-0 flex-1">
+												<div
+													className={`text-sm font-semibold text-blue-900 mb-1 ${
+														schedule.done ? "line-through opacity-80" : ""
+													}`}
+												>
+													{schedule.title}
+												</div>
+												<div className="text-xs text-blue-700 mb-1">
+													{formatPeriod(schedule.date, schedule.endDate)}
+												</div>
+												{schedule.content && (
+													<div className="text-xs text-blue-900/70 line-clamp-2">
+														{schedule.content}
+													</div>
+												)}
+												{schedule.type && (
+													<div
+														className={`inline-block text-xs mt-1 px-1.5 py-0.5 rounded ${typeBadgeClass(schedule.type)}`}
+													>
+														{schedule.type}
+													</div>
+												)}
 											</div>
-										)}
+										</div>
 									</div>
 								))}
 							</div>

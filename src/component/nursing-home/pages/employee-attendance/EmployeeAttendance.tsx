@@ -8,7 +8,7 @@
  *
  * @module component/nursing-home/pages/employee-attendance/EmployeeAttendance
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { getCookie } from "@/utils/auth";
 import {
 	buildDailyAttendancePrintHtml,
@@ -124,6 +124,9 @@ export default function EmployeeAttendance() {
 	const [selectedPrintKeys, setSelectedPrintKeys] = useState<Set<string>>(new Set());
 	const itemsPerPage = 10;
 	const attendanceItemsPerPage = 10;
+	const attendanceFetchSeq = useRef(0);
+	const formDataRef = useRef(formData);
+	formDataRef.current = formData;
 
 	const attendanceRowKey = (row: Pick<AttendanceData, "ANCD" | "EMPNO" | "WDT">) =>
 		`${row.ANCD}-${row.EMPNO}-${String(row.WDT ?? "").slice(0, 10)}`;
@@ -246,19 +249,28 @@ export default function EmployeeAttendance() {
 	};
 
 	// 근태 데이터 조회
-	const fetchAttendanceData = async (date: string) => {
+	const fetchAttendanceData = async (date: string, options?: { resetPrintKeys?: boolean }) => {
+		const seq = ++attendanceFetchSeq.current;
 		setLoadingAttendance(true);
 		try {
-			const response = await fetch(`/api/f02010?workDate=${encodeURIComponent(date)}`);
+			const response = await fetch(
+				`/api/f02010?workDate=${encodeURIComponent(date)}&_=${Date.now()}`,
+				{ cache: "no-store", credentials: "include" }
+			);
 			const result = await response.json();
+			if (seq !== attendanceFetchSeq.current) return;
 			if (result.success) {
 				setAttendanceData(result.data || []);
-				setSelectedPrintKeys(new Set());
+				if (options?.resetPrintKeys !== false) {
+					setSelectedPrintKeys(new Set());
+				}
 			}
 		} catch (err) {
 			// 근태 데이터 조회 오류
 		} finally {
-			setLoadingAttendance(false);
+			if (seq === attendanceFetchSeq.current) {
+				setLoadingAttendance(false);
+			}
 		}
 	};
 
@@ -354,19 +366,20 @@ export default function EmployeeAttendance() {
 		setWorkDate(newDate);
 	};
 
+	const workDateStr = formatDate(workDate);
+
 	// 초기 로드
 	useEffect(() => {
 		fetchEmployees();
-		fetchAttendanceData(formatDate(workDate));
 	}, []);
 
-	// 날짜 변경 시 근태 데이터 조회
+	// 근무일자 변경 시에만 목록 조회·입력폼 초기화 (Date 객체 참조 변경은 무시)
 	useEffect(() => {
-		fetchAttendanceData(formatDate(workDate));
-		setFormData(initialForm);
+		fetchAttendanceData(workDateStr);
+		setFormData({ ...initialForm });
 		setSelectedEmployee(null);
-		setAttendanceCurrentPage(1); // 날짜 변경 시 페이지 초기화
-	}, [workDate]);
+		setAttendanceCurrentPage(1);
+	}, [workDateStr]);
 
 	// 현재 로그인 사용자 정보 조회 함수 (F01010 테이블에서 직접 조회)
 	const getCurrentLoginUser = async (): Promise<Employee | null> => {
@@ -668,6 +681,7 @@ export default function EmployeeAttendance() {
 			const response = await fetch("/api/f02010", {
 				method: "POST",
 				credentials: "include",
+				cache: "no-store",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(payload),
 			});
@@ -764,46 +778,68 @@ export default function EmployeeAttendance() {
 	};
 
 	const handleSave = async () => {
-		if (!formData.ANCD || !formData.EMPNO) {
+		const current = formDataRef.current;
+		if (!current.ANCD || !current.EMPNO) {
 			alert("사원을 선택해주세요.");
 			return;
 		}
 
-		if (!formData.employeeName) {
+		if (!current.employeeName) {
 			alert("사원명을 입력해주세요.");
 			return;
 		}
 
 		try {
-			const wgu = getWorkClassificationCode(formData.workClassification);
+			const wgu = getWorkClassificationCode(current.workClassification);
 			const hodes =
-				formData.leaveReason.trim() ||
-				defaultHodesForClassification(formData.workClassification);
+				current.leaveReason.trim() ||
+				defaultHodesForClassification(current.workClassification);
+			const jobsh = jobshFromWorkClassification(
+				current.workClassification,
+				normalizeAttendanceJobsh(current.workType) || "1"
+			);
+			const wdt = String(current.workDate || workDateStr).slice(0, 10) || workDateStr;
 			const payload = {
-				ANCD: formData.ANCD,
-				EMPNO: formData.EMPNO,
-				WDT: formatDate(workDate),
-				JOBADD: formData.workLocation,
-				JOBSH: jobshFromWorkClassification(
-					formData.workClassification,
-					normalizeAttendanceJobsh(formData.workType) || "1"
-				),
+				ANCD: current.ANCD,
+				EMPNO: current.EMPNO,
+				WDT: wdt,
+				JOBADD: current.workLocation,
+				JOBSH: jobsh,
 				WGU: wgu,
 				HODES: hodes,
-				STM: formData.workStartTime,
-				ETM: formData.workEndTime,
+				STM: current.workStartTime,
+				ETM: current.workEndTime,
 			};
 
 			const response = await fetch("/api/f02010", {
 				method: "POST",
+				credentials: "include",
+				cache: "no-store",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(payload),
 			});
 
 			const result = await response.json();
 			if (result.success) {
+				setAttendanceData((prev) =>
+					prev.map((row) =>
+						row.ANCD === payload.ANCD &&
+						row.EMPNO === payload.EMPNO &&
+						String(row.WDT ?? "").slice(0, 10) === payload.WDT
+							? {
+									...row,
+									JOBADD: payload.JOBADD,
+									JOBSH: payload.JOBSH,
+									WGU: payload.WGU,
+									HODES: payload.HODES,
+									STM: payload.STM,
+									ETM: payload.ETM,
+								}
+							: row
+					)
+				);
 				alert("근태 데이터가 저장되었습니다.");
-				fetchAttendanceData(formatDate(workDate));
+				await fetchAttendanceData(payload.WDT, { resetPrintKeys: false });
 			} else {
 				alert(result.error || "저장 중 오류가 발생했습니다.");
 			}

@@ -33,17 +33,17 @@ export type MonthlySalaryStatementFormProps = {
 };
 
 const readOnlyInputClass =
-	"flex-1 rounded border border-blue-200 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default";
+	"min-w-0 flex-1 border border-l-0 border-blue-300 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default";
 const editableInputClass =
-	"flex-1 rounded border border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
+	"min-w-0 flex-1 border border-l-0 border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
 const readOnlySelectClass =
-	"flex-1 rounded border border-blue-200 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default";
+	"min-w-0 flex-1 border border-l-0 border-blue-300 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default";
 const editableSelectClass =
-	"flex-1 rounded border border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
+	"min-w-0 flex-1 border border-l-0 border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
 const readOnlyTextareaClass =
-	"flex-1 rounded border border-blue-200 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default resize-none";
+	"min-w-0 flex-1 border border-l-0 border-blue-300 bg-blue-50/80 px-2 py-1.5 text-sm text-blue-900/90 outline-none cursor-default resize-none";
 const editableTextareaClass =
-	"flex-1 rounded border border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
+	"min-w-0 flex-1 border border-l-0 border-blue-400 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none";
 
 /** 하단 수급자 전달정보 입력·액션 Presentational */
 export default function MonthlySalaryStatementForm({
@@ -59,7 +59,7 @@ export default function MonthlySalaryStatementForm({
 	onDelete,
 }: MonthlySalaryStatementFormProps) {
 	return (
-		<div className="relative flex flex-wrap gap-6 border-t border-blue-200 bg-blue-50/30 p-4">
+		<div className="relative border-t border-blue-200 bg-blue-50/30 p-4">
 			{!selectedPnum && (
 				<div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 backdrop-blur-[2px]">
 					<p className="rounded-lg border border-blue-300 bg-white/90 px-5 py-3 text-base font-semibold text-blue-900 shadow-sm">
@@ -73,9 +73,11 @@ export default function MonthlySalaryStatementForm({
 				}`}
 				aria-hidden={!selectedPnum}
 			>
-				<div className="flex flex-wrap gap-x-8 gap-y-3">
-					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
-						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">수급자</label>
+				<div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+					<div className="flex min-w-0 items-stretch">
+						<label className="flex w-[4.75rem] shrink-0 items-center justify-center border border-blue-300 bg-blue-100 px-1 text-center text-sm font-medium text-blue-900">
+							수급자
+						</label>
 						<input
 							type="text"
 							value={formData.recipient}
@@ -83,8 +85,10 @@ export default function MonthlySalaryStatementForm({
 							className={readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
-						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">생년월일</label>
+					<div className="flex min-w-0 items-stretch">
+						<label className="flex w-[4.75rem] shrink-0 items-center justify-center border border-blue-300 bg-blue-100 px-1 text-center text-sm font-medium text-blue-900">
+							생년월일
+						</label>
 						<input
 							type="text"
 							value={formData.birthday}
@@ -93,8 +97,10 @@ export default function MonthlySalaryStatementForm({
 							className={readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
-						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">전달자</label>
+					<div className="flex min-w-0 items-stretch">
+						<label className="flex w-[4.75rem] shrink-0 items-center justify-center border border-blue-300 bg-blue-100 px-1 text-center text-sm font-medium text-blue-900">
+							전달자
+						</label>
 						<input
 							type="text"
 							value={formData.deliverer}
@@ -102,8 +108,10 @@ export default function MonthlySalaryStatementForm({
 							className={readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
-						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">전달방법</label>
+					<div className="flex min-w-0 items-stretch">
+						<label className="flex w-[4.75rem] shrink-0 items-center justify-center border border-blue-300 bg-blue-100 px-1 text-center text-sm font-medium text-blue-900">
+							전달방법
+						</label>
 						<select
 							value={formData.deliveryMethod}
 							disabled={!formEditMode}
@@ -116,8 +124,12 @@ export default function MonthlySalaryStatementForm({
 							<option value="4">SMS</option>
 						</select>
 					</div>
-					<div className="flex min-w-0 sm:min-w-[220px] flex-1 items-center gap-2">
-						<label className="w-20 shrink-0 text-sm font-medium text-blue-900">수령자</label>
+				</div>
+				<div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+					<div className="flex min-w-0 items-stretch">
+						<label className="flex w-[4.75rem] shrink-0 items-center justify-center border border-blue-300 bg-blue-100 px-1 text-center text-sm font-medium text-blue-900">
+							수령자
+						</label>
 						<input
 							type="text"
 							value={formData.recipientName}
@@ -126,8 +138,10 @@ export default function MonthlySalaryStatementForm({
 							className={formEditMode ? editableInputClass : readOnlyInputClass}
 						/>
 					</div>
-					<div className="flex min-w-0 sm:min-w-[280px] flex-[1.4] items-start gap-2">
-						<label className="w-20 shrink-0 pt-1.5 text-sm font-medium text-blue-900">수령내용</label>
+					<div className="flex min-w-0 items-stretch">
+						<label className="flex w-[4.75rem] shrink-0 items-center justify-center border border-blue-300 bg-blue-100 px-1 text-center text-sm font-medium text-blue-900">
+							수령내용
+						</label>
 						<textarea
 							value={formData.receiveContent}
 							readOnly={!formEditMode}

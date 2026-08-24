@@ -8,9 +8,10 @@
  *
  * @module component/nursing-home/pages/physical-therapy-plan-evaluation/PhysicalTherapyPlanEvaluation
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
 import BeneficiaryListPanel, { BeneficiaryMember } from '../../components/BeneficiaryListPanel';
+import { EmployeeSearchInput } from '../../components/EmployeeSearchInput';
 import { formatDateYmd } from '../../utils/excretionObservationFields';
 
 interface MemberData {
@@ -29,12 +30,15 @@ type PlanRecordData = {
 	SDT: string;
 	EDT: string;
 	JHEMP?: number | string | null;
+	JHEMPNM?: string | null;
+	PD_NM?: string | null;
 } & Record<string, unknown>;
 
 type PlanForm = {
 	SDT: string;
 	EDT: string;
 	JHEMP: string;
+	JHEMPNM: string;
 	P_DIAG: string;
 	P_PROBLEM: string;
 	P_WAY: string;
@@ -88,6 +92,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 		SDT: sdt || new Date().toISOString().slice(0, 10),
 		EDT: edt || new Date().toISOString().slice(0, 10),
 		JHEMP: '',
+		JHEMPNM: '',
 		P_DIAG: '',
 		P_PROBLEM: '',
 		P_WAY: '',
@@ -154,6 +159,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 			if (k in next || /^P(STD|CHK)\d{2}$/.test(k)) next[k] = String(rowMap[k] ?? '');
 		});
 		next.JHEMP = String(rowMap.JHEMP ?? '');
+		next.JHEMPNM = String(rowMap.JHEMPNM ?? rowMap.PD_NM ?? '').trim();
 		next.SDT = formatDateDisplay(row.SDT);
 		next.EDT = formatDateDisplay(row.EDT);
 		setFormData(next);
@@ -182,16 +188,20 @@ export default function PhysicalTherapyPlanEvaluation() {
 				body: JSON.stringify({
 					PNUM: selectedMember.PNUM,
 					...formData,
+					JHEMP: formData.JHEMP,
+					PD_NM: formData.JHEMPNM,
+					JHEMPNM: formData.JHEMPNM,
 				}),
 			});
 			const result = await response.json().catch(() => ({}));
-			if (!response.ok || !result.success) throw new Error(result?.error || '저장 실패');
+			if (!response.ok || !result.success) throw new Error(result?.error || result?.details || '저장 실패');
 
 			alert(selectedPlanIndex !== null ? '물리치료계획이 수정되었습니다.' : '물리치료계획이 저장되었습니다.');
 			await fetchPlans(selectedMember.PNUM);
 		} catch (err) {
 			console.error('물리치료계획 저장 오류:', err);
-			alert('물리치료계획 저장 중 오류가 발생했습니다.');
+			const msg = err instanceof Error && err.message ? err.message : '';
+			alert(msg ? `물리치료계획 저장 중 오류가 발생했습니다.\n${msg}` : '물리치료계획 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingRecords(false);
 		}
@@ -317,7 +327,7 @@ export default function PhysicalTherapyPlanEvaluation() {
 									>
 										<div>{formatDateDisplay(r.SDT)} ~ {formatDateDisplay(r.EDT)}</div>
 										<div className="text-xs text-blue-900/70 mt-0.5">
-											담당자: {String((r as Record<string, unknown>).JHEMP ?? '') || '-'}
+											담당자: {String(r.JHEMPNM || r.PD_NM || '').trim() || '-'}
 										</div>
 									</div>
 								))
@@ -396,13 +406,19 @@ export default function PhysicalTherapyPlanEvaluation() {
 							/>
 						</div>
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">담당자(사번)</label>
-							<input
-								type="number"
-								value={String(formData.JHEMP ?? '')}
-								onChange={(e) => setFormData((prev) => ({ ...prev, JHEMP: e.target.value }))}
-								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-								placeholder="예) 1001"
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">담당자</label>
+							<EmployeeSearchInput
+								value={String(formData.JHEMPNM ?? '')}
+								onChange={(name, empno) =>
+									setFormData((prev) => ({
+										...prev,
+										JHEMPNM: name,
+										JHEMP: empno != null ? String(empno) : '',
+									}))
+								}
+								placeholder="직원 이름 검색"
+								className="min-w-[150px]"
+								inputClassName="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px] w-full"
 							/>
 						</div>
 						{selectedMember && (

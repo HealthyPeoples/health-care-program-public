@@ -9,6 +9,11 @@
  * @module component/nursing-home/pages/data-room/DataRoom
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import ShareFacilityPicker, {
+	DEFAULT_SHARE_ALL,
+	formatShareLabel,
+	type ShareFacilityValue,
+} from "../../components/ShareFacilityPicker";
 
 type DataRoomCategory = "전체" | "공지" | "서식" | "교육" | "기타";
 
@@ -33,6 +38,8 @@ interface DataRoomPost {
 	files: AttachedFile[];
 	fileCount: number;
 	downloadCount: number;
+	shareScope: "1" | "2" | "3";
+	shareAncds: string[];
 }
 
 type FacilityOption = { ancd: string; annm: string };
@@ -65,6 +72,8 @@ function mapApiPost(row: Record<string, unknown>): DataRoomPost {
 		files,
 		fileCount: Number(row.fileCount) || files.length,
 		downloadCount: Number(row.downloadCount) || 0,
+		shareScope: (String(row.shareScope || "3").slice(0, 1) as "1" | "2" | "3") || "3",
+		shareAncds: Array.isArray(row.shareAncds) ? row.shareAncds.map((v: unknown) => String(v)) : [],
 	};
 }
 
@@ -117,6 +126,7 @@ export default function DataRoom() {
 	const [uploadDesc, setUploadDesc] = useState("");
 	const [uploadUploader, setUploadUploader] = useState("");
 	const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+	const [uploadShare, setUploadShare] = useState<ShareFacilityValue>(DEFAULT_SHARE_ALL);
 
 	const fetchList = useCallback(async () => {
 		if (facilityFilter == null) return;
@@ -357,6 +367,7 @@ export default function DataRoom() {
 		setUploadTitle("");
 		setUploadDesc("");
 		setUploadFiles([]);
+		setUploadShare(DEFAULT_SHARE_ALL);
 	};
 
 	const onPickUploadFiles = (list: FileList | null) => {
@@ -387,6 +398,10 @@ export default function DataRoom() {
 			alert("제목과 첨부 파일(1개 이상)을 입력해 주세요.");
 			return;
 		}
+		if (uploadShare.scope === "2" && uploadShare.ancds.length === 0) {
+			alert("공유할 기관을 선택해 주세요.");
+			return;
+		}
 		setSaving(true);
 		try {
 			const fd = new FormData();
@@ -394,6 +409,8 @@ export default function DataRoom() {
 			fd.append("category", uploadCategory);
 			fd.append("description", uploadDesc.trim());
 			if (uploadUploader.trim()) fd.append("uploader", uploadUploader.trim());
+			fd.append("shareScope", uploadShare.scope);
+			fd.append("shareAncdsJson", JSON.stringify(uploadShare.ancds));
 			uploadFiles.forEach((f) => {
 				fd.append("files", f, f.name);
 				fd.append("file", f, f.name);
@@ -686,6 +703,16 @@ export default function DataRoom() {
 									</div>
 									<div className="grid grid-cols-12 gap-2 items-center">
 										<span className="col-span-3 rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 text-center">
+											공유
+										</span>
+										<input
+											readOnly
+											value={formatShareLabel(selectedPost.shareScope, selectedPost.shareAncds, facilities)}
+											className="col-span-9 rounded border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900"
+										/>
+									</div>
+									<div className="grid grid-cols-12 gap-2 items-center">
+										<span className="col-span-3 rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 text-center">
 											분류
 										</span>
 										<input readOnly value={selectedPost.category} className="col-span-9 rounded border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900" />
@@ -763,6 +790,14 @@ export default function DataRoom() {
 								</span>
 								<div className="col-span-9 rounded border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900">
 									{selectedPost.createdAt} · {selectedPost.uploader} · 다운로드 합계 {selectedPost.downloadCount}회
+								</div>
+							</div>
+							<div className="grid grid-cols-12 gap-2 items-center">
+								<span className="col-span-3 rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 text-center">
+									공유
+								</span>
+								<div className="col-span-9 rounded border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+									{formatShareLabel(selectedPost.shareScope, selectedPost.shareAncds, facilities)}
 								</div>
 							</div>
 							<div className="grid grid-cols-12 gap-2">
@@ -848,6 +883,21 @@ export default function DataRoom() {
 									className="col-span-9 rounded border border-blue-300 bg-white px-3 py-2 text-sm text-blue-900"
 								/>
 							</div>
+							<div className="grid grid-cols-12 gap-2 items-start">
+								<span className="col-span-3 rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 text-center">
+									공유 기관
+								</span>
+								<div className="col-span-9 rounded border border-blue-300 bg-white px-3 py-2">
+									<ShareFacilityPicker
+										facilities={facilities}
+										sessionAncd={sessionAncd}
+										value={uploadShare}
+										onChange={setUploadShare}
+										disabled={saving}
+										inputName="data-room-share"
+									/>
+								</div>
+							</div>
 							<div className="grid grid-cols-12 gap-2">
 								<span className="col-span-3 rounded border border-blue-300 bg-blue-100 px-3 py-2 text-sm font-medium text-blue-900 text-center self-start">
 									설명
@@ -905,7 +955,7 @@ export default function DataRoom() {
 							<button
 								type="button"
 								onClick={handleCreate}
-								disabled={!uploadTitle.trim() || uploadFiles.length === 0 || saving}
+								disabled={!uploadTitle.trim() || uploadFiles.length === 0 || saving || (uploadShare.scope === "2" && uploadShare.ancds.length === 0)}
 								className="rounded border border-blue-400 bg-blue-200 px-6 py-2.5 text-sm font-medium text-blue-900 hover:bg-blue-300 disabled:opacity-50"
 							>
 								{saving ? "저장 중..." : "저장"}

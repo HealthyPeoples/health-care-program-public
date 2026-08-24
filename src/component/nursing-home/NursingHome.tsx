@@ -18,6 +18,8 @@ import { logout, checkAuth } from '../../utils/auth';
 
 const HEADER_HEIGHT = 56; // 14 * 4(px)
 const SIDEBAR_WIDTH = 256; // 64 * 4(px)
+const SIDEBAR_COLLAPSED_KEY = 'nh_sidebar_collapsed';
+const LG_MEDIA = '(min-width: 1024px)';
 
 interface NursingHomeProps {
   children?: ReactNode;
@@ -32,6 +34,10 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
   const [accountDisplayName, setAccountDisplayName] = useState<string>('');
   /** lg 미만: 사이드바 오버레이 열림 */
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  /** lg 이상: 사이드바 숨김(본문 확장) */
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isLg, setIsLg] = useState(false);
+  const [collapsedReady, setCollapsedReady] = useState(false);
 
   // 인증 체크 및 강제 로그아웃
   useEffect(() => {
@@ -80,6 +86,60 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const mq = window.matchMedia(LG_MEDIA);
+    const apply = () => setIsLg(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1') {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      /* ignore */
+    }
+    setCollapsedReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!collapsedReady) return;
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }, [sidebarCollapsed, collapsedReady]);
+
+  const sidebarExpanded = isLg ? !sidebarCollapsed : sidebarOpen;
+
+  const toggleSidebar = () => {
+    if (isLg) {
+      setSidebarCollapsed((v) => !v);
+    } else {
+      setSidebarOpen((v) => !v);
+    }
+  };
+
+  const hideSidebar = () => {
+    if (isLg) {
+      setSidebarCollapsed(true);
+    } else {
+      setSidebarOpen(false);
+    }
+  };
+
+  const showSidebar = () => {
+    if (isLg) {
+      setSidebarCollapsed(false);
+    } else {
+      setSidebarOpen(true);
+    }
+  };
   
   const handleLogoClick = () => {
     if (pathname?.includes('nursingHome')) {
@@ -153,6 +213,7 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
                 max-width: none !important;
               }
               .nh-sidebar-overlay { display: none !important; }
+              .nh-sidebar-expand { display: none !important; }
             }
           `,
         }}
@@ -165,12 +226,32 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
         <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
           <button
             type="button"
-            className="lg:hidden shrink-0 px-2.5 py-1.5 bg-blue-700 rounded text-sm hover:bg-blue-800 transition-colors"
-            aria-label="메뉴 열기"
-            aria-expanded={sidebarOpen}
-            onClick={() => setSidebarOpen(true)}
+            className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-700 rounded text-sm hover:bg-blue-800 transition-colors"
+            aria-label={sidebarExpanded ? '메뉴 숨기기' : '메뉴 펼치기'}
+            aria-expanded={sidebarExpanded}
+            onClick={toggleSidebar}
           >
-            메뉴
+            {/* 햄버거: 모바일 닫힘 / 데스크톱 숨김 상태 */}
+            <svg
+              className={`w-4 h-4 ${sidebarOpen ? 'hidden' : 'block'} ${sidebarCollapsed ? 'lg:block' : 'lg:hidden'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            {/* 접기 아이콘: 모바일 열림 / 데스크톱 펼침 상태 */}
+            <svg
+              className={`w-4 h-4 ${sidebarOpen ? 'block' : 'hidden'} ${sidebarCollapsed ? 'lg:hidden' : 'lg:block'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
+            </svg>
+            <span>메뉴</span>
           </button>
           <button
             onClick={handleMainMoveClick}
@@ -231,23 +312,44 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
         />
       ) : null}
 
-      {/* 왼쪽 메뉴: lg 이상 고정, 미만 오버레이 */}
+      {/* 데스크톱에서 숨긴 뒤 다시 펼치는 탭 */}
+      {sidebarCollapsed ? (
+        <button
+          type="button"
+          className="nh-sidebar-expand print:hidden hidden lg:flex fixed z-40 left-0 items-center justify-center h-14 w-7 rounded-r-md bg-blue-600 text-white shadow-md hover:bg-blue-700"
+          style={{ top: HEADER_HEIGHT + 12 }}
+          aria-label="메뉴 펼치기"
+          onClick={showSidebar}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      ) : null}
+
+      {/* 왼쪽 메뉴: lg 이상 고정, 미만 오버레이. 데스크톱에서는 숨기기/펼치기 가능 */}
       <aside
         className={[
           'print:hidden fixed z-40 left-0 h-[calc(100vh-56px)] bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-          'lg:translate-x-0',
+          sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0',
         ].join(' ')}
         style={{ width: SIDEBAR_WIDTH, top: HEADER_HEIGHT }}
+        aria-hidden={!sidebarExpanded}
       >
-        <div className="lg:hidden flex items-center justify-between px-3 py-2 border-b border-gray-200">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200">
           <span className="text-sm font-semibold text-blue-900">메뉴</span>
           <button
             type="button"
-            className="px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
-            onClick={() => setSidebarOpen(false)}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+            onClick={hideSidebar}
+            aria-label={isLg ? '메뉴 숨기기' : '메뉴 닫기'}
           >
-            닫기
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span className="lg:hidden">닫기</span>
+            <span className="hidden lg:inline">숨기기</span>
           </button>
         </div>
         {renderMenu()}
@@ -257,7 +359,12 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
           w-full + ml-64 조합은 뷰포트보다 넓어져 페이지(탭 포함) 가로 스크롤이 생기므로
           lg에서는 사이드바 폭만큼 뺀 너비를 사용한다. */}
       <main
-        className="nh-main-content min-h-screen min-w-0 p-0 w-full max-w-[100vw] overflow-x-hidden lg:ml-64 lg:w-[calc(100%-16rem)] lg:max-w-[calc(100vw-16rem)]"
+        className={[
+          'nh-main-content min-h-screen min-w-0 p-0 w-full max-w-[100vw] overflow-x-hidden transition-[margin,width,max-width] duration-200 ease-out',
+          sidebarCollapsed
+            ? 'lg:ml-0 lg:w-full lg:max-w-[100vw]'
+            : 'lg:ml-64 lg:w-[calc(100%-16rem)] lg:max-w-[calc(100vw-16rem)]',
+        ].join(' ')}
         style={{ marginTop: HEADER_HEIGHT }}
       >
         <TabHost />

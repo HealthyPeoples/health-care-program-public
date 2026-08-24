@@ -328,6 +328,19 @@ export function lastDayOfPayYearMonth(payYearMonth: string): string {
 	return `${y}-${String(mo).padStart(2, "0")}-${d}`;
 }
 
+function isHardcodedDelivererPlaceholder(name: string): boolean {
+	const t = String(name ?? "").trim();
+	return t === "너싱홈 해원" || t === "너싱홈 혜원";
+}
+
+function pickLedgerDeliverer(rowVal: string, formVal: string): string {
+	const row = String(rowVal ?? "").trim();
+	const form = String(formVal ?? "").trim();
+	if (row && !isHardcodedDelivererPlaceholder(row)) return row;
+	if (form && !isHardcodedDelivererPlaceholder(form)) return form;
+	return form || row;
+}
+
 function deliveryMethodPrintLabel(method: string): string {
 	const t = String(method ?? "").trim();
 	if (t === "1" || t === "직접전달") return "직접전달";
@@ -395,11 +408,7 @@ export function buildStatementLedgerPrintHtml(
 						const rowDelivery =
 							String(row.deliveryMethod || "").trim() ||
 							deliveryMethodPrintLabel(row.sGu || form.deliveryMethod);
-						const rowDeliverer = (
-							row.deliverer ||
-							form.deliverer ||
-							LEDGER_DEFAULT_DELIVERER
-						).trim();
+						const rowDeliverer = pickLedgerDeliverer(row.deliverer, form.deliverer);
 						const rowEnm = (row.receiver || "").trim();
 						const recvName = rowEnm
 							? escapeHtml(rowEnm)

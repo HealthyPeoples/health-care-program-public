@@ -29,6 +29,7 @@ export type GroupVolunteerPrintData = {
 		other: boolean;
 		otherText: string;
 	};
+	contentText: string;
 	etc: string;
 };
 
@@ -108,7 +109,15 @@ function sharedStyles(): string {
     .svc-other { grid-column: 1 / -1; margin-top: 4px; }
     .content-box {
       padding: 12px;
-      min-height: 120px;
+      min-height: 100px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      vertical-align: top;
+      line-height: 1.6;
+    }
+    .note-box {
+      padding: 12px;
+      min-height: 48px;
       white-space: pre-wrap;
       word-break: break-word;
       vertical-align: top;
@@ -151,6 +160,7 @@ function buildContentPageBody(data: GroupVolunteerPrintData): string {
 	const date = nbsp(data.date);
 	const time = nbsp(formatTimeRange(data.startTime, data.endTime));
 	const cnt = nbsp(data.volunteers);
+	const contentText = nbsp(data.contentText);
 	const etc = nbsp(data.etc);
 	const s = data.services;
 	const otherLine = s.other
@@ -185,7 +195,7 @@ function buildContentPageBody(data: GroupVolunteerPrintData): string {
         <td class="val" colspan="3">${cnt} 명</td>
       </tr>
       <tr>
-        <td class="lbl">봉사내용</td>
+        <td class="lbl">봉사구분</td>
         <td colspan="3">
           <div class="svc-grid">
             <div class="svc-item">${checkMark(s.bath)} 목욕</div>
@@ -197,8 +207,12 @@ function buildContentPageBody(data: GroupVolunteerPrintData): string {
         </td>
       </tr>
       <tr>
+        <td class="lbl">봉사내용</td>
+        <td class="content-box" colspan="3">${contentText}</td>
+      </tr>
+      <tr>
         <td class="lbl">비고</td>
-        <td class="content-box" colspan="3">${etc}</td>
+        <td class="note-box" colspan="3">${etc}</td>
       </tr>
     </table>
     <div class="footer">

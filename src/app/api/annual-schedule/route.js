@@ -14,6 +14,37 @@ const TABLE = '[돌봄시설DB].[dbo].[ANNUAL_SCHEDULE]';
 
 /** 프로세스당 1회 — 테이블 없으면 자동 생성 + 종료일 컬럼 마이그레이션 */
 let ensureTablePromise = null;
+let doneYnEnsured = false;
+
+async function ensureDoneYnColumn(pool) {
+	if (doneYnEnsured || !pool) return;
+	try {
+		await pool.request().query(`
+			IF EXISTS (
+				SELECT 1 FROM [돌봄시설DB].sys.tables t
+				INNER JOIN [돌봄시설DB].sys.schemas s ON t.schema_id = s.schema_id
+				WHERE s.name = N'dbo' AND t.name = N'ANNUAL_SCHEDULE'
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM [돌봄시설DB].sys.columns c
+				INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
+				INNER JOIN [돌봄시설DB].sys.schemas s ON t.schema_id = s.schema_id
+				WHERE s.name = N'dbo' AND t.name = N'ANNUAL_SCHEDULE' AND c.name = N'DONE_YN'
+			)
+			BEGIN
+				ALTER TABLE ${TABLE} ADD [DONE_YN] CHAR(1) NULL;
+			END
+		`);
+		doneYnEnsured = true;
+	} catch (e) {
+		console.warn('ANNUAL_SCHEDULE DONE_YN 컬럼 확인 경고:', e?.message || e);
+	}
+}
+
+function isDoneYn(v) {
+	const s = String(v ?? '').trim().toUpperCase();
+	return s === 'Y' || s === '1';
+}
 
 async function ensureTable(pool) {
 	if (!pool) return;
@@ -40,6 +71,7 @@ async function ensureTable(pool) {
           [REG_DATE]      DATETIME NULL,
           [MOD_ID]        NVARCHAR(50) NULL,
           [MOD_DATE]      DATETIME NULL,
+          [DONE_YN]       CHAR(1) NULL,
           CONSTRAINT [PK_ANNUAL_SCHEDULE] PRIMARY KEY CLUSTERED ([AS_SEQ])
         );
         CREATE NONCLUSTERED INDEX [IX_ANNUAL_SCHEDULE_ANCD_SCH_DATE]
@@ -230,6 +262,7 @@ function mapRow(r) {
 		REG_DATE: r.REG_DATE ?? null,
 		MOD_ID: r.MOD_ID ?? '',
 		MOD_DATE: r.MOD_DATE ?? null,
+		DONE_YN: isDoneYn(r.DONE_YN) ? 'Y' : 'N',
 	};
 }
 
@@ -252,6 +285,7 @@ export async function GET(req) {
 		}
 
 		await ensureTable(pool);
+		await ensureDoneYnColumn(pool);
 
 		const searchParams = req.nextUrl.searchParams;
 		const year = searchParams.get('year');
@@ -296,7 +330,7 @@ export async function GET(req) {
         CONVERT(varchar(10), [SCH_DATE], 23) AS [SCH_DATE],
         CONVERT(varchar(10), [SCH_END_DATE], 23) AS [SCH_END_DATE],
         [TITLE], [CONTENT], [SCH_TYPE],
-        [REG_ID], [REG_DATE], [MOD_ID], [MOD_DATE]
+        [REG_ID], [REG_DATE], [MOD_ID], [MOD_DATE], [DONE_YN]
       FROM ${TABLE}
       ${where}
       ORDER BY [SCH_DATE] ASC, [AS_SEQ] ASC
@@ -323,8 +357,36 @@ export async function POST(req) {
 		}
 
 		await ensureTable(pool);
+		await ensureDoneYnColumn(pool);
 
 		const body = await req.json().catch(() => ({}));
+		const action = String(body?.action ?? '').trim().toLowerCase();
+
+		if (action === 'done') {
+			const asSeq = parseInt(String(body?.AS_SEQ ?? body?.asSeq ?? body?.id ?? ''), 10);
+			if (!Number.isFinite(asSeq)) {
+				return jsonError({ success: false, error: 'AS_SEQ가 필요합니다' }, 400);
+			}
+			const doneYn = isDoneYn(body?.DONE_YN ?? body?.doneYn ?? body?.done) ? 'Y' : 'N';
+			const userName = await resolveUserName(req, pool, sessionAncd);
+			const upd = await pool
+				.request()
+				.input('ANCD', sessionAncd)
+				.input('AS_SEQ', asSeq)
+				.input('DONE_YN', doneYn)
+				.input('USER_ID', userName)
+				.query(`
+					UPDATE ${TABLE}
+					SET [DONE_YN] = @DONE_YN,
+						[MOD_ID] = @USER_ID,
+						[MOD_DATE] = GETDATE()
+					WHERE [ANCD] = @ANCD AND [AS_SEQ] = @AS_SEQ
+				`);
+			if (!upd.rowsAffected?.[0]) {
+				return jsonError({ success: false, error: '일정을 찾을 수 없습니다' }, 404);
+			}
+			return jsonOk({ success: true, asSeq, DONE_YN: doneYn });
+		}
 		const asSeqRaw = body?.AS_SEQ ?? body?.asSeq ?? body?.id;
 		const asSeq =
 			asSeqRaw != null && String(asSeqRaw).trim() !== ''

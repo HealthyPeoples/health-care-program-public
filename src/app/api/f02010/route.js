@@ -7,10 +7,21 @@
  * @module app/api/f02010/route
  */
 import { connPool } from '../../../config/server';
-import { NextRequest } from 'next/server';
 import { getSessionAncd, ancdEquals } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
+
+const sql = require('mssql');
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
+
+const NO_STORE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' };
+
+function ymd(value) {
+	return String(value ?? '').trim().slice(0, 10);
+}
 
 async function ensureF01010JobListColumn(pool) {
 	await pool.request().query(`
@@ -82,21 +93,21 @@ export async function GET(req) {
     let query = '';
 
     if (startDate && endDate) {
-      request.input('startDate', startDate);
-      request.input('endDate', endDate);
+      request.input('startDate', sql.VarChar(10), ymd(startDate));
+      request.input('endDate', sql.VarChar(10), ymd(endDate));
       query = `${baseSelect}
       WHERE f02010.[ANCD] = @sessionAncd
-        AND f02010.[WDT] >= @startDate
-        AND f02010.[WDT] <= @endDate`;
+        AND CONVERT(varchar(10), f02010.[WDT], 23) >= @startDate
+        AND CONVERT(varchar(10), f02010.[WDT], 23) <= @endDate`;
       if (empnoParam != null && String(empnoParam).trim() !== '') {
         request.input('empno', parseInt(String(empnoParam).trim(), 10));
         query += ` AND f02010.[EMPNO] = @empno`;
       }
       query += ` ORDER BY f01010.[EMPNM], f02010.[WDT]`;
     } else if (workDate) {
-      request.input('workDate', workDate);
+      request.input('workDate', sql.VarChar(10), ymd(workDate));
       query = `${baseSelect}
-      WHERE f02010.[WDT] = @workDate AND f02010.[ANCD] = @sessionAncd
+      WHERE CONVERT(varchar(10), f02010.[WDT], 23) = @workDate AND f02010.[ANCD] = @sessionAncd
       ORDER BY f01010.[EMPNM]`;
     } else {
       return jsonError({
@@ -111,7 +122,7 @@ export async function GET(req) {
       success: true,
       data: result.recordset || [],
       count: result.recordset ? result.recordset.length : 0
-    });
+    }, 200, NO_STORE);
 
   } catch (err) {
     console.error('F02010 테이블 조회 오류:', err);
@@ -163,11 +174,11 @@ export async function POST(req) {
 
       const existingResult = await pool.request()
         .input('sessionAncd', sessionAncd)
-        .input('workDate', workDate)
+        .input('workDate', sql.VarChar(10), ymd(workDate))
         .query(`
           SELECT [EMPNO]
           FROM [돌봄시설DB].[dbo].[F02010]
-          WHERE [ANCD] = @sessionAncd AND [WDT] = @workDate
+          WHERE [ANCD] = @sessionAncd AND CONVERT(varchar(10), [WDT], 23) = @workDate
         `);
 
       const existingSet = new Set(
@@ -188,13 +199,13 @@ export async function POST(req) {
         const ins = pool.request();
         ins.input('ANCD', sessionAncd);
         ins.input('EMPNO', empno);
-        ins.input('WDT', workDate);
-        ins.input('JOBADD', emp.JOBADD || '');
-        ins.input('JOBSH', emp.JOBSH || '');
-        ins.input('WGU', '');
-        ins.input('HODES', '');
-        ins.input('STM', '');
-        ins.input('ETM', '');
+        ins.input('WDT', sql.VarChar(10), ymd(workDate));
+        ins.input('JOBADD', sql.VarChar(50), emp.JOBADD || '');
+        ins.input('JOBSH', sql.VarChar(10), String(emp.JOBSH ?? ''));
+        ins.input('WGU', sql.VarChar(10), '');
+        ins.input('HODES', sql.NVarChar(200), '');
+        ins.input('STM', sql.VarChar(10), '');
+        ins.input('ETM', sql.VarChar(10), '');
 
         await ins.query(`
           INSERT INTO [돌봄시설DB].[dbo].[F02010]
@@ -232,44 +243,64 @@ export async function POST(req) {
       }, 400);
     }
 
-    // INSERT 또는 UPDATE (MERGE 사용)
-    let query = `
-      MERGE [돌봄시설DB].[dbo].[F02010] AS target
-      USING (SELECT @ANCD AS ANCD, @EMPNO AS EMPNO, @WDT AS WDT) AS source
-      ON target.[ANCD] = source.[ANCD] 
-        AND target.[EMPNO] = source.[EMPNO]
-        AND target.[WDT] = source.[WDT]
-      WHEN MATCHED THEN
-        UPDATE SET
-          [JOBADD] = @JOBADD,
-          [JOBSH] = @JOBSH,
-          [WGU] = @WGU,
-          [HODES] = @HODES,
-          [STM] = @STM,
-          [ETM] = @ETM,
-          [INDT] = GETDATE()
-      WHEN NOT MATCHED THEN
-        INSERT ([ANCD], [EMPNO], [WDT], [JOBADD], [JOBSH], [WGU], [HODES], [STM], [ETM], [INDT])
-        VALUES (@ANCD, @EMPNO, @WDT, @JOBADD, @JOBSH, @WGU, @HODES, @STM, @ETM, GETDATE());
-    `;
+    const wdt = ymd(WDT);
+    const jobsh = String(JOBSH ?? '').trim();
+    const wgu = String(WGU ?? '').trim();
 
+    // MERGE 대신 날짜(YYYY-MM-DD)만 비교해 동일 일자 행을 갱신한다.
+    // datetime WDT와 문자열 비교 불일치로 INSERT만 되고 이후 UPDATE가 빠지는 경우를 막는다.
     const request = pool.request();
-    request.input('ANCD', ANCD);
-    request.input('EMPNO', EMPNO);
-    request.input('WDT', WDT);
-    request.input('JOBADD', JOBADD || '');
-    request.input('JOBSH', JOBSH || '');
-    request.input('WGU', WGU || '');
-    request.input('HODES', HODES || '');
-    request.input('STM', STM || '');
-    request.input('ETM', ETM || '');
+    request.input('ANCD', sql.Int, Number(ANCD));
+    request.input('EMPNO', sql.Int, Number(EMPNO));
+    request.input('WDT', sql.VarChar(10), wdt);
+    request.input('JOBADD', sql.VarChar(50), JOBADD || '');
+    request.input('JOBSH', sql.VarChar(10), jobsh);
+    request.input('WGU', sql.VarChar(10), wgu);
+    request.input('HODES', sql.NVarChar(500), HODES || '');
+    request.input('STM', sql.VarChar(10), STM || '');
+    request.input('ETM', sql.VarChar(10), ETM || '');
 
-    await request.query(query);
+    const upd = await request.query(`
+      UPDATE [돌봄시설DB].[dbo].[F02010]
+      SET
+        [JOBADD] = @JOBADD,
+        [JOBSH] = @JOBSH,
+        [WGU] = @WGU,
+        [HODES] = @HODES,
+        [STM] = @STM,
+        [ETM] = @ETM,
+        [INDT] = GETDATE()
+      WHERE [ANCD] = @ANCD
+        AND [EMPNO] = @EMPNO
+        AND CONVERT(varchar(10), [WDT], 23) = @WDT;
+      SELECT @@ROWCOUNT AS updated;
+    `);
+
+    const updatedRows = upd?.recordset || upd?.recordsets?.[upd.recordsets.length - 1] || [];
+    const updated = Number(updatedRows[0]?.updated ?? 0);
+    if (updated === 0) {
+      const ins = pool.request();
+      ins.input('ANCD', sql.Int, Number(ANCD));
+      ins.input('EMPNO', sql.Int, Number(EMPNO));
+      ins.input('WDT', sql.VarChar(10), wdt);
+      ins.input('JOBADD', sql.VarChar(50), JOBADD || '');
+      ins.input('JOBSH', sql.VarChar(10), jobsh);
+      ins.input('WGU', sql.VarChar(10), wgu);
+      ins.input('HODES', sql.NVarChar(500), HODES || '');
+      ins.input('STM', sql.VarChar(10), STM || '');
+      ins.input('ETM', sql.VarChar(10), ETM || '');
+      await ins.query(`
+        INSERT INTO [돌봄시설DB].[dbo].[F02010]
+          ([ANCD], [EMPNO], [WDT], [JOBADD], [JOBSH], [WGU], [HODES], [STM], [ETM], [INDT])
+        VALUES
+          (@ANCD, @EMPNO, @WDT, @JOBADD, @JOBSH, @WGU, @HODES, @STM, @ETM, GETDATE());
+      `);
+    }
 
     return jsonOk({
       success: true,
       message: '근태 데이터가 저장되었습니다'
-    });
+    }, 200, NO_STORE);
 
   } catch (err) {
     console.error('F02010 테이블 저장 오류:', err);
@@ -315,22 +346,21 @@ export async function DELETE(req) {
       }, 400);
     }
 
-    let query = `
-      DELETE FROM [돌봄시설DB].[dbo].[F02010]
-      WHERE [ANCD] = @ancd AND [EMPNO] = @empno AND [WDT] = @wdt
-    `;
-
     const request = pool.request();
-    request.input('ancd', ancd);
-    request.input('empno', empno);
-    request.input('wdt', wdt);
+    request.input('ancd', sql.Int, Number(ancd));
+    request.input('empno', sql.Int, Number(empno));
+    request.input('wdt', sql.VarChar(10), ymd(wdt));
 
-    await request.query(query);
+    await request.query(`
+      DELETE FROM [돌봄시설DB].[dbo].[F02010]
+      WHERE [ANCD] = @ancd AND [EMPNO] = @empno
+        AND CONVERT(varchar(10), [WDT], 23) = @wdt
+    `);
 
     return jsonOk({
       success: true,
       message: '근태 데이터가 삭제되었습니다'
-    });
+    }, 200, NO_STORE);
 
   } catch (err) {
     console.error('F02010 테이블 삭제 오류:', err);

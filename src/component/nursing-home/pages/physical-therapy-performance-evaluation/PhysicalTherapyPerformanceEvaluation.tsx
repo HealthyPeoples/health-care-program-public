@@ -8,19 +8,197 @@
  *
  * @module component/nursing-home/pages/physical-therapy-performance-evaluation/PhysicalTherapyPerformanceEvaluation
  */
-import React, { useState, useEffect } from 'react';
-import { formatCareGradeLabel } from '../../utils/careGrade';
+import React, { useMemo, useState } from 'react';
 import BeneficiaryListPanel, { BeneficiaryMember } from '../../components/BeneficiaryListPanel';
+import { EmployeeSearchInput } from '../../components/EmployeeSearchInput';
 
-interface MemberData {
-	ANCD: string;
-	PNUM: string;
-	P_NM: string;
-	P_SEX: string;
-	P_GRD: string;
-	P_BRDT: string;
-	P_ST: string;
-	[key: string]: any;
+const MOTION_TO_CODE: Record<string, string> = {
+	운동장애없음: '0',
+	불완전운동장애: '1',
+	완전운동장애: '2',
+};
+const CODE_TO_MOTION: Record<string, string> = {
+	'0': '운동장애없음',
+	'1': '불완전운동장애',
+	'2': '완전운동장애',
+};
+const JOINT_TO_CODE: Record<string, string> = {
+	제한없음: '0',
+	'좌/우관절제한': '1',
+	양관절제한: '2',
+};
+const CODE_TO_JOINT: Record<string, string> = {
+	'0': '제한없음',
+	'1': '좌/우관절제한',
+	'2': '양관절제한',
+};
+
+const ADL_KEYS = ['bowelBladder', 'eating', 'clothing', 'personalHygiene', 'gait', 'bathing'] as const;
+
+type EvalForm = {
+	evaluationDate: string;
+	beneficiary: string;
+	rightUpperLimb: string;
+	leftUpperLimb: string;
+	rightLowerLimb: string;
+	leftLowerLimb: string;
+	shoulderJoint: string;
+	elbowJoint: string;
+	wristFingerJoint: string;
+	hipJoint: string;
+	kneeJoint: string;
+	ankleJoint: string;
+	bodyPain: string;
+	bedMovement: boolean;
+	sitting: boolean;
+	crawling: boolean;
+	kneeling: boolean;
+	standing: boolean;
+	walking: boolean;
+	wheelchairOperation: boolean;
+	assistiveDeviceMovement: boolean;
+	bowelBladder: string;
+	eating: string;
+	clothing: string;
+	personalHygiene: string;
+	gait: string;
+	bathing: string;
+	evaluator: string;
+	evaluationNotes: string;
+};
+
+function code1(v: unknown) {
+	return String(v ?? '').trim();
+}
+
+function formatDateDisplay(dateStr: unknown) {
+	if (dateStr == null || dateStr === '') return '';
+	if (dateStr instanceof Date && !Number.isNaN(dateStr.getTime())) {
+		const y = dateStr.getFullYear();
+		const m = String(dateStr.getMonth() + 1).padStart(2, '0');
+		const d = String(dateStr.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	const s = String(dateStr).trim();
+	if (!s) return '';
+	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+	if (s.includes('T')) return s.split('T')[0].slice(0, 10);
+	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+	const parsed = new Date(s);
+	if (!Number.isNaN(parsed.getTime())) {
+		const y = parsed.getFullYear();
+		const m = String(parsed.getMonth() + 1).padStart(2, '0');
+		const d = String(parsed.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	return '';
+}
+
+function adlTotalOf(form: Pick<EvalForm, (typeof ADL_KEYS)[number]>) {
+	return ADL_KEYS.reduce((sum, k) => sum + (parseInt(String(form[k]), 10) || 0), 0);
+}
+
+function createEmptyForm(beneficiary = '', evaluationDate?: string): EvalForm {
+	return {
+		evaluationDate: evaluationDate || new Date().toISOString().slice(0, 10),
+		beneficiary,
+		rightUpperLimb: '운동장애없음',
+		leftUpperLimb: '운동장애없음',
+		rightLowerLimb: '운동장애없음',
+		leftLowerLimb: '운동장애없음',
+		shoulderJoint: '제한없음',
+		elbowJoint: '제한없음',
+		wristFingerJoint: '제한없음',
+		hipJoint: '제한없음',
+		kneeJoint: '제한없음',
+		ankleJoint: '제한없음',
+		bodyPain: '없음',
+		bedMovement: false,
+		sitting: false,
+		crawling: false,
+		kneeling: false,
+		standing: false,
+		walking: false,
+		wheelchairOperation: false,
+		assistiveDeviceMovement: false,
+		bowelBladder: '0',
+		eating: '0',
+		clothing: '0',
+		personalHygiene: '0',
+		gait: '0',
+		bathing: '0',
+		evaluator: '',
+		evaluationNotes: '',
+	};
+}
+
+function rowToForm(record: Record<string, unknown>, beneficiary: string, fallbackDate?: string): EvalForm {
+	const c = (k: string) => code1(record[k]);
+	return {
+		...createEmptyForm(beneficiary, formatDateDisplay(String(record.ADT || record.EVALDT || fallbackDate || ''))),
+		rightUpperLimb: CODE_TO_MOTION[c('APPR01')] || '운동장애없음',
+		leftUpperLimb: CODE_TO_MOTION[c('APPR02')] || '운동장애없음',
+		rightLowerLimb: CODE_TO_MOTION[c('APPR03')] || '운동장애없음',
+		leftLowerLimb: CODE_TO_MOTION[c('APPR04')] || '운동장애없음',
+		shoulderJoint: CODE_TO_JOINT[c('APPR05')] || '제한없음',
+		elbowJoint: CODE_TO_JOINT[c('APPR06')] || '제한없음',
+		wristFingerJoint: CODE_TO_JOINT[c('APPR07')] || '제한없음',
+		hipJoint: CODE_TO_JOINT[c('APPR08')] || '제한없음',
+		kneeJoint: CODE_TO_JOINT[c('APPR09')] || '제한없음',
+		ankleJoint: CODE_TO_JOINT[c('APPR10')] || '제한없음',
+		bodyPain: c('APPR11') === '1' ? '있음' : '없음',
+		bedMovement: c('APPR21') === '1',
+		sitting: c('APPR22') === '1',
+		crawling: c('APPR23') === '1',
+		kneeling: c('APPR24') === '1',
+		standing: c('APPR25') === '1',
+		walking: c('APPR26') === '1',
+		wheelchairOperation: c('APPR27') === '1',
+		assistiveDeviceMovement: c('APPR28') === '1',
+		bowelBladder: c('APPR31') || '0',
+		eating: c('APPR32') || '0',
+		clothing: c('APPR33') || '0',
+		personalHygiene: c('APPR34') || '0',
+		gait: c('APPR35') || '0',
+		bathing: c('APPR36') || '0',
+		evaluator: String(record.APEMP ?? ''),
+		evaluationNotes: String(record.APPR91 ?? ''),
+	};
+}
+
+function formToPayload(form: EvalForm, pnum: string | number) {
+	return {
+		PNUM: pnum,
+		ADT: form.evaluationDate,
+		APEMP: form.evaluator,
+		APPR01: MOTION_TO_CODE[form.rightUpperLimb] ?? '0',
+		APPR02: MOTION_TO_CODE[form.leftUpperLimb] ?? '0',
+		APPR03: MOTION_TO_CODE[form.rightLowerLimb] ?? '0',
+		APPR04: MOTION_TO_CODE[form.leftLowerLimb] ?? '0',
+		APPR05: JOINT_TO_CODE[form.shoulderJoint] ?? '0',
+		APPR06: JOINT_TO_CODE[form.elbowJoint] ?? '0',
+		APPR07: JOINT_TO_CODE[form.wristFingerJoint] ?? '0',
+		APPR08: JOINT_TO_CODE[form.hipJoint] ?? '0',
+		APPR09: JOINT_TO_CODE[form.kneeJoint] ?? '0',
+		APPR10: JOINT_TO_CODE[form.ankleJoint] ?? '0',
+		APPR11: form.bodyPain === '있음' ? '1' : '0',
+		APPR21: form.bedMovement ? '1' : '0',
+		APPR22: form.sitting ? '1' : '0',
+		APPR23: form.crawling ? '1' : '0',
+		APPR24: form.kneeling ? '1' : '0',
+		APPR25: form.standing ? '1' : '0',
+		APPR26: form.walking ? '1' : '0',
+		APPR27: form.wheelchairOperation ? '1' : '0',
+		APPR28: form.assistiveDeviceMovement ? '1' : '0',
+		APPR31: form.bowelBladder,
+		APPR32: form.eating,
+		APPR33: form.clothing,
+		APPR34: form.personalHygiene,
+		APPR35: form.gait,
+		APPR36: form.bathing,
+		APPR90: adlTotalOf(form),
+		APPR91: form.evaluationNotes,
+	};
 }
 
 export default function PhysicalTherapyPerformanceEvaluation() {
@@ -31,61 +209,14 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 	const [activeTab, setActiveTab] = useState<string>('운동');
 	const [evaluationRecords, setEvaluationRecords] = useState<Record<string, any>[]>([]);
 	const [isCreatingNew, setIsCreatingNew] = useState(false);
+	const [isEditing, setIsEditing] = useState(false);
+	const [formData, setFormData] = useState<EvalForm>(() => createEmptyForm());
 
-	// 폼 데이터
-	const [formData, setFormData] = useState({
-		evaluationDate: new Date().toISOString().slice(0, 10), // 작성일자
-		beneficiary: '', // 수급자
-		// 운동장애 평가
-		rightUpperLimb: '운동장애없음', // 우측상지
-		leftUpperLimb: '운동장애없음', // 좌측상지
-		rightLowerLimb: '운동장애없음', // 우측하지
-		leftLowerLimb: '운동장애없음', // 좌측하지
-		// 관절제한 평가
-		shoulderJoint: '제한없음', // 어깨관절
-		elbowJoint: '제한없음', // 팔꿈치관절
-		wristFingerJoint: '제한없음', // 손목 및 수지관절
-		hipJoint: '제한없음', // 고관절
-		kneeJoint: '제한없음', // 무릎관절
-		ankleJoint: '제한없음', // 발목관절
-		bodyPain: '없음', // 신체통증유무
-		// 기본동작평가
-		bedMovement: false, // 침상이동 - 측면 & 침상위 이동
-		sitting: false, // 앉기
-		crawling: false, // 네발기기
-		kneeling: false, // 무릎서기
-		standing: false, // 기립
-		walking: false, // 보행
-		wheelchairOperation: false, // 휠체어 조작 및 이동
-		assistiveDeviceMovement: false, // 보장구 장착 이동
-		// ADL1
-		bowelBladder: '0', // 대소변
-		eating: '0', // 식사
-		// ADL2
-		clothing: '0', // 복장
-		personalHygiene: '0', // 개인위생
-		// ADL3
-		gait: '0', // 보행
-		bathing: '0', // 목욕하기
-		// 총점
-		totalScore: '', // 총점
-		evaluator: '' // 평가자
-	});
-
-	const calculateAge = (birthDate: string) => {
-		if (!birthDate) return '-';
-		try {
-			const year = parseInt(birthDate.substring(0, 4));
-			const currentYear = new Date().getFullYear();
-			return (currentYear - year).toString();
-		} catch {
-			return '-';
-		}
-	};
+	const adlTotal = useMemo(() => adlTotalOf(formData), [formData]);
 
 	// 평가일자 목록 조회
-	const fetchEvaluationDates = async (ancd: string, pnum: string, keepEvaldt?: string) => {
-		if (!ancd || !pnum) {
+	const fetchEvaluationDates = async (pnum: string, keepEvaldt?: string) => {
+		if (!pnum) {
 			setEvaluationDates([]);
 			setEvaluationRecords([]);
 			return;
@@ -93,42 +224,29 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 
 		setLoadingEvaluations(true);
 		try {
-			const url = `/api/f51010?pnum=${encodeURIComponent(pnum)}`;
+			const url = `/api/f32030?pnum=${encodeURIComponent(pnum)}`;
 			const response = await fetch(url, { cache: 'no-store' });
 			const result = await response.json();
 			if (result.success) {
 				const list: Record<string, any>[] = result.data || [];
 				setEvaluationRecords(list);
-				const dates = list.map((r) => r.EVALDT || r.evaldt || r.evaluationDate).filter(Boolean);
+				const dates = list
+					.map((r) => formatDateDisplay(r.ADT || r.EVALDT || r.evaluationDate))
+					.filter(Boolean);
 				setEvaluationDates(dates);
 
 				if (keepEvaldt) {
 					const idx = dates.findIndex((d) => formatDateDisplay(String(d)) === formatDateDisplay(String(keepEvaldt)));
 					if (idx >= 0) {
 						setSelectedDateIndex(idx);
-						const record = list[idx];
-						const boolKeys = [
-							'bedMovement',
-							'sitting',
-							'crawling',
-							'kneeling',
-							'standing',
-							'walking',
-							'wheelchairOperation',
-							'assistiveDeviceMovement',
-						];
-						setFormData((prev) => ({
-							...prev,
-							...record,
-							evaluationDate: record.EVALDT || record.evaldt || keepEvaldt || prev.evaluationDate,
-							beneficiary: selectedMember?.P_NM || prev.beneficiary,
-							...Object.fromEntries(boolKeys.map((k) => [k, String(record[k] ?? '').trim() === '1' || record[k] === true])),
-						}));
+						setIsEditing(false);
+						setFormData(rowToForm(list[idx], selectedMember?.P_NM || '', keepEvaldt));
 					} else {
 						setSelectedDateIndex(null);
 					}
 				} else {
 					setSelectedDateIndex(null);
+					setIsEditing(false);
 				}
 			} else {
 				setEvaluationRecords([]);
@@ -144,38 +262,19 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 	// 수급자 선택 함수
 	const handleSelectMember = (member: BeneficiaryMember) => {
 		setSelectedMember(member);
-		setFormData(prev => ({ ...prev, beneficiary: String(member.P_NM ?? '') }));
+		setFormData(createEmptyForm(String(member.P_NM ?? '')));
 		setIsCreatingNew(false);
-		fetchEvaluationDates(String(member.ANCD), String(member.PNUM));
+		setIsEditing(false);
+		fetchEvaluationDates(String(member.PNUM));
 	};
 
-	// 평가일자 선택 함수
 	const handleSelectDate = (index: number) => {
 		setSelectedDateIndex(index);
 		setIsCreatingNew(false);
-		const selectedDate = evaluationDates[index];
-		setFormData(prev => ({ ...prev, evaluationDate: selectedDate || '' }));
+		setIsEditing(false);
 		const record = evaluationRecords[index];
 		if (record) {
-			const boolKeys = [
-				'bedMovement',
-				'sitting',
-				'crawling',
-				'kneeling',
-				'standing',
-				'walking',
-				'wheelchairOperation',
-				'assistiveDeviceMovement',
-			];
-			setFormData(prev => ({
-				...prev,
-				...record,
-				evaluationDate: record.EVALDT || record.evaldt || selectedDate || prev.evaluationDate,
-				beneficiary: selectedMember?.P_NM || prev.beneficiary,
-				...Object.fromEntries(
-					boolKeys.map((k) => [k, String(record[k] ?? '').trim() === '1' || record[k] === true])
-				),
-			}));
+			setFormData(rowToForm(record, selectedMember?.P_NM || formData.beneficiary, evaluationDates[index]));
 		}
 	};
 
@@ -186,54 +285,17 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 		}
 		setSelectedDateIndex(null);
 		setIsCreatingNew(true);
+		setIsEditing(true);
 		setActiveTab('운동');
-		setFormData((prev) => ({
-			...prev,
-			evaluationDate: new Date().toISOString().slice(0, 10),
-			beneficiary: selectedMember.P_NM || prev.beneficiary,
-			rightUpperLimb: '운동장애없음',
-			leftUpperLimb: '운동장애없음',
-			rightLowerLimb: '운동장애없음',
-			leftLowerLimb: '운동장애없음',
-			shoulderJoint: '제한없음',
-			elbowJoint: '제한없음',
-			wristFingerJoint: '제한없음',
-			hipJoint: '제한없음',
-			kneeJoint: '제한없음',
-			ankleJoint: '제한없음',
-			bodyPain: '없음',
-			bedMovement: false,
-			sitting: false,
-			crawling: false,
-			kneeling: false,
-			standing: false,
-			walking: false,
-			wheelchairOperation: false,
-			assistiveDeviceMovement: false,
-			bowelBladder: '0',
-			eating: '0',
-			clothing: '0',
-			personalHygiene: '0',
-			gait: '0',
-			bathing: '0',
-			totalScore: '',
-			evaluator: '',
-		}));
+		setFormData(createEmptyForm(selectedMember.P_NM || ''));
 	};
 
-	// 날짜 형식 변환 함수
-	const formatDateDisplay = (dateStr: string) => {
-		if (!dateStr) return '';
-		if (dateStr.includes('T')) {
-			dateStr = dateStr.split('T')[0];
+	const handleStartEdit = () => {
+		if (selectedDateIndex === null && !isCreatingNew) {
+			alert('수정할 평가를 선택해주세요.');
+			return;
 		}
-		if (dateStr.includes('-') && dateStr.length >= 10) {
-			return dateStr.substring(0, 10);
-		}
-		if (dateStr.length === 8 && !dateStr.includes('-') && !dateStr.includes('년')) {
-			return `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-		}
-		return dateStr;
+		setIsEditing(true);
 	};
 
 	// 저장 함수
@@ -248,57 +310,45 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 			return;
 		}
 
+		if (!isCreatingNew && !isEditing) {
+			alert('수정 버튼을 눌러 수정모드로 전환해 주세요.');
+			return;
+		}
+
 		setLoadingEvaluations(true);
 		try {
-			const boolToChar = (v: any) => (v ? '1' : '0');
-			const payload: Record<string, any> = {
-				PNUM: selectedMember.PNUM,
-				EVALDT: formData.evaluationDate,
-				...formData,
-				// DB 저장 시 boolean → '1'/'0'
-				bedMovement: boolToChar(formData.bedMovement),
-				sitting: boolToChar(formData.sitting),
-				crawling: boolToChar(formData.crawling),
-				kneeling: boolToChar(formData.kneeling),
-				standing: boolToChar(formData.standing),
-				walking: boolToChar(formData.walking),
-				wheelchairOperation: boolToChar(formData.wheelchairOperation),
-				assistiveDeviceMovement: boolToChar(formData.assistiveDeviceMovement),
-			};
-
-			const response = await fetch('/api/f51010', {
+			const response = await fetch('/api/f32030', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload),
+				body: JSON.stringify(formToPayload(formData, selectedMember.PNUM)),
 			});
 			const result = await response.json().catch(() => ({}));
 			if (!response.ok || !result.success) {
-				throw new Error(result?.error || '저장 실패');
+				throw new Error(result?.error || result?.details || '저장 실패');
 			}
 
-			alert(selectedDateIndex !== null ? '물리치료실적 평가가 수정되었습니다.' : '물리치료실적 평가가 저장되었습니다.');
+			alert(selectedDateIndex !== null && !isCreatingNew ? '물리치료실적 평가가 수정되었습니다.' : '물리치료실적 평가가 저장되었습니다.');
 			setIsCreatingNew(false);
-			
-			// 데이터 다시 조회
-			if (selectedMember) {
-				await fetchEvaluationDates(selectedMember.ANCD, selectedMember.PNUM, formData.evaluationDate);
-			}
+			setIsEditing(false);
+			await fetchEvaluationDates(String(selectedMember.PNUM), formData.evaluationDate);
 		} catch (err) {
 			console.error('물리치료실적 평가 저장 오류:', err);
-			alert('물리치료실적 평가 저장 중 오류가 발생했습니다.');
+			const msg = err instanceof Error && err.message ? err.message : '';
+			alert(msg ? `물리치료실적 평가 저장 중 오류가 발생했습니다.\n${msg}` : '물리치료실적 평가 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingEvaluations(false);
 		}
 	};
 
 	// 삭제 함수
-	const handleDelete = async () => {
+	const handleDelete = async (index?: number) => {
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
 
-		if (selectedDateIndex === null) {
+		const targetIndex = index ?? selectedDateIndex;
+		if (targetIndex === null || targetIndex === undefined) {
 			alert('삭제할 평가를 선택해주세요.');
 			return;
 		}
@@ -309,9 +359,9 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 
 		setLoadingEvaluations(true);
 		try {
-			const evaldt = evaluationDates[selectedDateIndex];
+			const evaldt = evaluationDates[targetIndex];
 			const response = await fetch(
-				`/api/f51010?pnum=${encodeURIComponent(selectedMember.PNUM)}&evaldt=${encodeURIComponent(evaldt)}`,
+				`/api/f32030?pnum=${encodeURIComponent(selectedMember.PNUM)}&adt=${encodeURIComponent(formatDateDisplay(String(evaldt)))}`,
 				{ method: 'DELETE' }
 			);
 			const result = await response.json().catch(() => ({}));
@@ -321,43 +371,9 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 
 			alert('물리치료실적 평가가 삭제되었습니다.');
 			setIsCreatingNew(false);
-			
-			// 데이터 다시 조회
-			if (selectedMember) {
-				await fetchEvaluationDates(selectedMember.ANCD, selectedMember.PNUM);
-			}
-			
-			// 폼 초기화
-			setFormData(prev => ({
-				...prev,
-				rightUpperLimb: '운동장애없음',
-				leftUpperLimb: '운동장애없음',
-				rightLowerLimb: '운동장애없음',
-				leftLowerLimb: '운동장애없음',
-				shoulderJoint: '제한없음',
-				elbowJoint: '제한없음',
-				wristFingerJoint: '제한없음',
-				hipJoint: '제한없음',
-				kneeJoint: '제한없음',
-				ankleJoint: '제한없음',
-				bodyPain: '없음',
-				bedMovement: false,
-				sitting: false,
-				crawling: false,
-				kneeling: false,
-				standing: false,
-				walking: false,
-				wheelchairOperation: false,
-				assistiveDeviceMovement: false,
-				bowelBladder: '0',
-				eating: '0',
-				clothing: '0',
-				personalHygiene: '0',
-				gait: '0',
-				bathing: '0',
-				totalScore: '',
-				evaluator: ''
-			}));
+			setIsEditing(false);
+			await fetchEvaluationDates(String(selectedMember.PNUM));
+			setFormData(createEmptyForm(selectedMember.P_NM || ''));
 			setSelectedDateIndex(null);
 		} catch (err) {
 			console.error('물리치료실적 평가 삭제 오류:', err);
@@ -367,27 +383,65 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 		}
 	};
 
-	// 총점 계산 함수
-	const calculateTotalScore = () => {
-		const scores = [
-			parseInt(formData.bowelBladder) || 0,
-			parseInt(formData.eating) || 0,
-			parseInt(formData.clothing) || 0,
-			parseInt(formData.personalHygiene) || 0,
-			parseInt(formData.gait) || 0,
-			parseInt(formData.bathing) || 0
-		];
-		const total = scores.reduce((sum, score) => sum + score, 0);
-		setFormData(prev => ({ ...prev, totalScore: total.toString() }));
-	};
-
 	const tabs = ['운동', '관절', '동작', 'ADL1', 'ADL2', 'ADL3', '총점'];
-	const isFormEnabled = !!selectedMember && (isCreatingNew || selectedDateIndex !== null);
+	const hasRecord = !!selectedMember && (isCreatingNew || selectedDateIndex !== null);
+	const isEditMode = hasRecord && (isCreatingNew || isEditing);
 
 	return (
 		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				<BeneficiaryListPanel selectedMember={selectedMember} onSelect={handleSelectMember} className="w-full xl:w-1/4 xl:min-w-[240px] xl:max-w-sm shrink-0 border-b xl:border-b-0 xl:h-full xl:min-h-0 min-h-0 xl:overflow-hidden" />
+
+				<div className="flex flex-col w-full xl:w-64 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 min-h-[180px] xl:min-h-0 overflow-hidden">
+					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50 flex items-center justify-between">
+						<label className="text-sm font-medium text-blue-900">평가일자</label>
+						<button
+							onClick={handleNewEvaluation}
+							disabled={!selectedMember}
+							className="px-2 py-1 text-xs border border-blue-300 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							신규
+						</button>
+					</div>
+					<div className="flex-1 overflow-y-auto bg-white">
+						{loadingEvaluations ? (
+							<div className="px-3 py-2 text-sm text-blue-900/60">로딩 중...</div>
+						) : evaluationDates.length === 0 ? (
+							<div className="px-3 py-2 text-sm text-blue-900/60">{selectedMember ? '등록된 평가가 없습니다' : '수급자를 선택해주세요'}</div>
+						) : (
+							evaluationDates.map((d, idx) => (
+								<div
+									key={`${d}-${idx}`}
+									className={`flex items-center gap-1 px-2 py-2 text-sm border-b border-blue-50 ${
+										selectedDateIndex === idx ? 'bg-blue-100 font-semibold' : ''
+									}`}
+								>
+									<button
+										type="button"
+										onClick={() => handleSelectDate(idx)}
+										className="flex-1 min-w-0 text-left hover:bg-blue-50 rounded px-1 py-0.5"
+									>
+										<div>{formatDateDisplay(String(d))}</div>
+										<div className="text-xs font-normal text-blue-900/70 mt-0.5">
+											평가자: {String(evaluationRecords[idx]?.APEMP ?? '').trim() || '-'}
+										</div>
+									</button>
+									<button
+										type="button"
+										onClick={(e) => {
+											e.stopPropagation();
+											handleDelete(idx);
+										}}
+										disabled={loadingEvaluations}
+										className="shrink-0 px-1.5 py-0.5 text-xs font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										삭제
+									</button>
+								</div>
+							))
+						)}
+					</div>
+				</div>
 
 				{/* 우측 패널: 평가 폼 */}
 				<div className={`relative flex flex-col flex-1 ${selectedMember ? 'bg-white' : 'bg-gray-100'}`}>
@@ -417,7 +471,7 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 								<button
 									key={tab}
 									onClick={() => setActiveTab(tab)}
-									disabled={!isFormEnabled}
+									disabled={!hasRecord}
 									className={`px-4 py-2 text-sm font-medium border border-blue-300 rounded ${
 										activeTab === tab
 											? 'bg-blue-500 text-white border-blue-500'
@@ -439,26 +493,37 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 						</div>
 					</div>
 
-					{selectedMember && !loadingEvaluations && evaluationDates.length > 0 && !isFormEnabled && (
+					{selectedMember && !loadingEvaluations && evaluationDates.length > 0 && hasRecord && !isEditMode && (
+						<div className="px-4 py-3 text-sm text-blue-900 border-b border-blue-100 bg-blue-50/40">
+							수정 버튼을 눌러 수정모드로 전환해 주세요.
+						</div>
+					)}
+
+					{selectedMember && !loadingEvaluations && evaluationDates.length > 0 && !hasRecord && (
 						<div className="px-4 py-3 text-sm text-blue-900 border-b border-blue-100 bg-blue-50/40">
 							좌측 목록에서 평가일자를 선택하거나, 신규등록을 눌러주세요.
 						</div>
 					)}
 
 					{/* 메인 컨텐츠 영역 */}
-					<div className={`flex-1 p-4 overflow-y-auto ${!isFormEnabled ? 'pointer-events-none opacity-60' : ''}`}>
+					<div className={`flex-1 p-4 overflow-y-auto ${!hasRecord ? 'pointer-events-none opacity-60' : ''}`}>
 						<div className="flex gap-4">
 							{/* 왼쪽: 평가 폼 */}
-							<div className="flex-1 space-y-4">
+							<div className={`flex-1 space-y-4 ${!isEditMode ? 'pointer-events-none' : ''}`}>
 								{/* 작성일자 */}
 								<div className="flex items-center gap-2">
 									<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">작성일자</label>
 									<input
-										type="text"
-										value={formData.evaluationDate}
-										onChange={(e) => setFormData(prev => ({ ...prev, evaluationDate: e.target.value }))}
-										className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-										placeholder="YYYY-MM-DD"
+										type="date"
+										value={formatDateDisplay(formData.evaluationDate)}
+										onChange={(e) => {
+											if (!isCreatingNew) return;
+											setFormData((prev) => ({ ...prev, evaluationDate: e.target.value }));
+										}}
+										disabled={!isCreatingNew}
+										className={`px-3 py-1.5 text-sm border border-blue-300 rounded focus:outline-none focus:border-blue-500 min-w-[150px] ${
+											isCreatingNew ? 'bg-white' : 'bg-gray-50'
+										}`}
 									/>
 								</div>
 
@@ -624,6 +689,7 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 
 								{activeTab === 'ADL1' && (
 									<div className="mt-6 space-y-8">
+										<div className="text-sm font-medium text-blue-900">현재 ADL 총점: {adlTotal} / 30</div>
 										{/* 1. 대소변 */}
 										<div>
 											<h3 className="mb-4 text-lg font-semibold text-blue-900">1. 대소변</h3>
@@ -679,6 +745,7 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 
 								{activeTab === 'ADL2' && (
 									<div className="mt-6 space-y-8">
+										<div className="text-sm font-medium text-blue-900">현재 ADL 총점: {adlTotal} / 30</div>
 										{/* 3. 복장 */}
 										<div>
 											<h3 className="mb-4 text-lg font-semibold text-blue-900">3. 복장</h3>
@@ -734,6 +801,7 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 
 								{activeTab === 'ADL3' && (
 									<div className="mt-6 space-y-8">
+										<div className="text-sm font-medium text-blue-900">현재 ADL 총점: {adlTotal} / 30</div>
 										{/* 5. 보행 */}
 										<div>
 											<h3 className="mb-4 text-lg font-semibold text-blue-900">5. 보행 (계단, 이동)</h3>
@@ -794,34 +862,37 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 												<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">총점</label>
 												<input
 													type="text"
-													value={formData.totalScore}
+													value={String(adlTotal)}
 													readOnly
 													className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-gray-50 min-w-[150px]"
 												/>
 											</div>
-											<button
-												onClick={calculateTotalScore}
-												className="px-4 py-2 text-sm font-medium text-red-600 bg-yellow-300 border border-yellow-400 rounded hover:bg-yellow-400"
-											>
-												총점계산
-											</button>
 										</div>
 										<div className="mb-4 text-sm text-blue-900">
+											<div>ADL 항목을 선택하면 총점이 바로 반영됩니다.</div>
 											<div>6개 항목에 0점부터 5점까지 배점</div>
 											<div>총점: 0점(완전 독립수행) - 30점(완전도움의존)</div>
 										</div>
-										<div className="flex items-center gap-2 mt-6">
+										<div className="flex items-start gap-2 mt-6">
 											<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">평가</label>
-											<div className="flex-1 h-64 bg-white border border-blue-300 rounded"></div>
+											<textarea
+												value={formData.evaluationNotes}
+												onChange={(e) => setFormData((prev) => ({ ...prev, evaluationNotes: e.target.value }))}
+												className="flex-1 min-h-[160px] px-3 py-2 text-sm bg-white border border-blue-300 rounded"
+												placeholder="평가 내용을 입력하세요"
+											/>
 										</div>
 										<div className="flex items-center gap-2 mt-4">
 											<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">평가자</label>
-											<input
-												type="text"
+											<EmployeeSearchInput
 												value={formData.evaluator}
-												onChange={(e) => setFormData(prev => ({ ...prev, evaluator: e.target.value }))}
-												className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[200px]"
-												placeholder="평가자명"
+												onChange={(name) => setFormData((prev) => ({ ...prev, evaluator: name }))}
+												disabled={!isEditMode}
+												placeholder="직원 이름 검색"
+												className="min-w-[200px]"
+												inputClassName={`px-3 py-1.5 text-sm border border-blue-300 rounded focus:outline-none focus:border-blue-500 min-w-[200px] w-full ${
+													isEditMode ? 'bg-white' : 'bg-gray-50'
+												}`}
 											/>
 										</div>
 									</div>
@@ -829,30 +900,24 @@ export default function PhysicalTherapyPerformanceEvaluation() {
 							</div>
 
 							{/* 오른쪽: 버튼 영역 */}
-							<div className="flex flex-col gap-2">
-								{activeTab !== '총점' && (
+							<div className="flex flex-col gap-2 pointer-events-auto">
+								{isEditMode ? (
 									<button
-										onClick={handleDelete}
-										disabled={!isFormEnabled || loadingEvaluations || selectedDateIndex === null}
-										className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 whitespace-nowrap"
+										onClick={handleSave}
+										disabled={!hasRecord || loadingEvaluations}
+										className="px-6 py-2 text-sm font-medium text-green-900 bg-green-200 border border-green-400 rounded hover:bg-green-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
 									>
-										삭제
+										저장
+									</button>
+								) : (
+									<button
+										onClick={handleStartEdit}
+										disabled={!hasRecord || loadingEvaluations || selectedDateIndex === null}
+										className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+									>
+										수정
 									</button>
 								)}
-								<button
-									onClick={handleSave}
-									disabled={!isFormEnabled || loadingEvaluations}
-									className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-								>
-									저장
-								</button>
-								<button
-									onClick={handleNewEvaluation}
-									disabled={!selectedMember || loadingEvaluations}
-									className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-								>
-									신규등록
-								</button>
 							</div>
 						</div>
 					</div>

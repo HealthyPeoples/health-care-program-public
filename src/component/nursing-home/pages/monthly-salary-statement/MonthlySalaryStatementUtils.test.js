@@ -107,6 +107,10 @@ describe("MonthlySalaryStatementUtils — pure helpers", () => {
 		assert.ok(Array.isArray(U.TABS));
 		assert.equal(U.TABS.length, 4);
 		assert.equal(U.initialForm.deliveryMethod, "2");
+		assert.equal(U.initialForm.deliverer, "");
+		assert.equal(U.loginFacilityDeliverer("로아기관", "너싱홈 해원"), "로아기관");
+		assert.equal(U.loginFacilityDeliverer("로아기관", "해원기관"), "로아기관");
+		assert.equal(U.loginFacilityDeliverer("", "담당자"), "담당자");
 	});
 
 	it("payYearMonthToSalmm / num / fmtInt", () => {

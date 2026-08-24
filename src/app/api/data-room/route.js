@@ -26,14 +26,15 @@ const {
 
 const TABLE = '[돌봄시설DB].[dbo].[DATA_ROOM]';
 const FILE_TABLE = '[돌봄시설DB].[dbo].[DATA_ROOM_FILE]';
+const SHARE_TABLE = '[돌봄시설DB].[dbo].[DATA_ROOM_SHARE]';
 const CATEGORIES = new Set(['공지', '서식', '교육', '기타']);
 const MAX_FILES_PER_POST = 10;
 
 let tableEnsured = false;
 
 async function ensureDataRoomTable(pool) {
-  if (tableEnsured) return;
-  try {
+  if (!tableEnsured) {
+    try {
     // 1) 게시글 테이블
     await pool.request().query(`
       IF OBJECT_ID(N'[돌봄시설DB].[dbo].[DATA_ROOM]', N'U') IS NULL
@@ -150,16 +151,135 @@ async function ensureDataRoomTable(pool) {
       END
     `);
 
+    await ensureDataRoomShareSchema(pool);
     tableEnsured = true;
   } catch (e) {
     const msg = String(e?.message || e);
     console.error('DATA_ROOM ensure 오류:', msg);
     if (/already an object named/i.test(msg)) {
       tableEnsured = true;
-      return;
+    } else {
+      throw e;
     }
-    throw e;
   }
+  }
+  await ensureDataRoomShareSchema(pool);
+}
+
+async function ensureDataRoomShareSchema(pool) {
+  await pool.request().query(`
+    IF COL_LENGTH(N'[돌봄시설DB].[dbo].[DATA_ROOM]', N'SHARE_SCOPE') IS NULL
+    BEGIN
+      ALTER TABLE ${TABLE} ADD [SHARE_SCOPE] NVARCHAR(1) NULL
+        CONSTRAINT [DF_DATA_ROOM_SHARE_SCOPE] DEFAULT (N'3');
+    END
+  `);
+  await pool.request().query(`
+    IF COL_LENGTH(N'[돌봄시설DB].[dbo].[DATA_ROOM]', N'SHARE_SCOPE') IS NOT NULL
+    BEGIN
+      UPDATE ${TABLE} SET [SHARE_SCOPE] = N'3' WHERE [SHARE_SCOPE] IS NULL;
+    END
+  `);
+  await pool.request().query(`
+    IF OBJECT_ID(N'[돌봄시설DB].[dbo].[DATA_ROOM_SHARE]', N'U') IS NULL
+    BEGIN
+      CREATE TABLE ${SHARE_TABLE} (
+        [DR_SEQ] INT NOT NULL,
+        [D_ANCD] INT NOT NULL,
+        CONSTRAINT [PK_DATA_ROOM_SHARE] PRIMARY KEY CLUSTERED ([DR_SEQ], [D_ANCD])
+      );
+    END
+
+    IF OBJECT_ID(N'[돌봄시설DB].[dbo].[DATA_ROOM_SHARE]', N'U') IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM [돌봄시설DB].sys.indexes
+         WHERE name = N'IX_DATA_ROOM_SHARE_DANCD'
+           AND object_id = OBJECT_ID(N'[돌봄시설DB].[dbo].[DATA_ROOM_SHARE]')
+       )
+    BEGIN
+      CREATE NONCLUSTERED INDEX [IX_DATA_ROOM_SHARE_DANCD]
+        ON ${SHARE_TABLE} ([D_ANCD], [DR_SEQ]);
+    END
+  `);
+}
+
+function parseShareInput(scopeRaw, ancdList) {
+  let scope = String(scopeRaw || '3').trim().slice(0, 1);
+  if (!['1', '2', '3'].includes(scope)) scope = '3';
+  const ancds = [...new Set(
+    (Array.isArray(ancdList) ? ancdList : [])
+      .map((v) => parseInt(String(v), 10))
+      .filter((n) => !Number.isNaN(n)),
+  )];
+  if (scope === '2' && ancds.length === 0) {
+    return { error: '공유할 기관을 선택해 주세요.' };
+  }
+  return { scope, ancds };
+}
+
+function parseShareFromForm(form) {
+  const raw = [];
+  try {
+    for (const v of form.getAll('shareAncds')) raw.push(v);
+    for (const v of form.getAll('shareAncd')) raw.push(v);
+  } catch (_) {
+    /* ignore */
+  }
+  const jsonRaw = form.get('shareAncdsJson');
+  if (jsonRaw) {
+    try {
+      const parsed = JSON.parse(String(jsonRaw));
+      if (Array.isArray(parsed)) raw.push(...parsed);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  return parseShareInput(form.get('shareScope') || form.get('SHARE_SCOPE'), raw);
+}
+
+async function syncDataRoomShare(pool, drSeq, scope, ancds) {
+  await pool.request().input('DR_SEQ', drSeq).query(`DELETE FROM ${SHARE_TABLE} WHERE [DR_SEQ] = @DR_SEQ`);
+  if (String(scope) !== '2' || !Array.isArray(ancds) || !ancds.length) return;
+  for (const dAncd of ancds) {
+    await pool
+      .request()
+      .input('DR_SEQ', drSeq)
+      .input('D_ANCD', dAncd)
+      .query(`
+        IF NOT EXISTS (SELECT 1 FROM ${SHARE_TABLE} WHERE [DR_SEQ] = @DR_SEQ AND [D_ANCD] = @D_ANCD)
+          INSERT INTO ${SHARE_TABLE} ([DR_SEQ], [D_ANCD]) VALUES (@DR_SEQ, @D_ANCD)
+      `);
+  }
+}
+
+function dataRoomVisibilitySql() {
+  return `
+    (
+      d.[ANCD] = @SESSION_ANCD
+      OR ISNULL(d.[SHARE_SCOPE], N'3') = N'3'
+      OR (
+        ISNULL(d.[SHARE_SCOPE], N'3') = N'2'
+        AND EXISTS (
+          SELECT 1 FROM ${SHARE_TABLE} s
+          WHERE s.[DR_SEQ] = d.[DR_SEQ] AND s.[D_ANCD] = @SESSION_ANCD
+        )
+      )
+    )
+  `;
+}
+
+async function assertCanViewDataRoomPost(pool, drSeq, sessionAncd) {
+  const r = await pool
+    .request()
+    .input('DR_SEQ', drSeq)
+    .input('SESSION_ANCD', sessionAncd)
+    .query(`
+      SELECT TOP 1 d.[DR_SEQ]
+      FROM ${TABLE} d
+      WHERE d.[DR_SEQ] = @DR_SEQ
+        AND ${dataRoomVisibilitySql()}
+    `);
+  return Boolean(r.recordset?.[0]);
 }
 
 function trunc(v, max) {
@@ -197,10 +317,12 @@ function mapFileRow(f) {
   };
 }
 
-function mapPost(r, files) {
+function mapPost(r, files, shareAncds = []) {
   const fileList = Array.isArray(files) ? files : [];
   const totalDl = fileList.reduce((acc, f) => acc + (Number(f.downloadCount) || 0), 0);
   const names = fileList.map((f) => f.fileName).filter(Boolean);
+  const shareScope = String(r.SHARE_SCOPE || '3').trim().slice(0, 1) || '3';
+  const shareList = Array.isArray(shareAncds) ? shareAncds.map((v) => String(v)) : [];
   return {
     id: String(r.DR_SEQ),
     drSeq: r.DR_SEQ,
@@ -216,6 +338,8 @@ function mapPost(r, files) {
     originalFilename: names[0] || r.FILE_NAME || '',
     sizeText: fileList[0]?.sizeText || formatSizeText(r.FILE_SIZE),
     downloadCount: totalDl || Number(r.DOWNLOAD_CNT) || 0,
+    shareScope,
+    shareAncds: shareList,
   };
 }
 
@@ -348,6 +472,10 @@ export async function GET(req) {
       if (!isValidDataRoomBlobName(row.BLOB_NAME) && !assertDataRoomBlobName(row.BLOB_NAME, row.ANCD)) {
         return jsonError({ success: false, error: '잘못된 파일 경로입니다.' }, 403);
       }
+      const allowed = await assertCanViewDataRoomPost(pool, row.DR_SEQ, gate.sessionAncd);
+      if (!allowed) {
+        return jsonError({ success: false, error: '해당 자료에 대한 조회 권한이 없습니다.' }, 403);
+      }
 
       const file = await downloadDataRoomBlob(row.BLOB_NAME);
       if (!file) return jsonError({ success: false, error: 'Blob 파일을 찾을 수 없습니다.' }, 404);
@@ -386,14 +514,15 @@ export async function GET(req) {
       filterAncdRaw.toLowerCase() === 'all';
 
     const rq = pool.request();
-    let where = `1=1`;
+    rq.input('SESSION_ANCD', gate.sessionAncd);
+    let where = dataRoomVisibilitySql();
     if (!filterAll) {
       const n = parseInt(filterAncdRaw, 10);
       if (Number.isNaN(n)) {
         return jsonError({ success: false, error: '기관 필터(ancd)가 올바르지 않습니다.' }, 400);
       }
       rq.input('FILTER_ANCD', n);
-      where = `d.[ANCD] = @FILTER_ANCD`;
+      where = `(${where}) AND d.[ANCD] = @FILTER_ANCD`;
     }
     if (category && category !== '전체' && CATEGORIES.has(category)) {
       rq.input('CATEGORY', category);
@@ -416,6 +545,7 @@ export async function GET(req) {
         d.[DR_SEQ], d.[ANCD], d.[CATEGORY], d.[TITLE], d.[DESCRIPTION],
         d.[FILE_NAME], d.[BLOB_NAME], d.[CONTENT_TYPE], d.[FILE_SIZE], d.[DOWNLOAD_CNT],
         d.[REG_EMPNO], d.[REG_EMPNM], d.[REG_DATE], d.[MOD_EMPNO], d.[MOD_DATE],
+        ISNULL(d.[SHARE_SCOPE], N'3') AS [SHARE_SCOPE],
         f10.[ANNM]
       FROM ${TABLE} d
       LEFT JOIN [돌봄시설DB].[dbo].[F00110] f10
@@ -445,6 +575,21 @@ export async function GET(req) {
       byDr.get(key).push(mapFileRow(f));
     }
 
+    const shareByDr = new Map();
+    if (ids.length) {
+      const sr = await pool.request().query(`
+        SELECT [DR_SEQ], [D_ANCD]
+        FROM ${SHARE_TABLE}
+        WHERE [DR_SEQ] IN (${ids.map((id) => Number(id)).join(',')})
+        ORDER BY [DR_SEQ], [D_ANCD]
+      `);
+      for (const s of sr.recordset || []) {
+        const key = s.DR_SEQ;
+        if (!shareByDr.has(key)) shareByDr.set(key, []);
+        shareByDr.get(key).push(s.D_ANCD);
+      }
+    }
+
     const data = posts.map((p) => {
       let files = byDr.get(p.DR_SEQ) || [];
       if (!files.length && p.BLOB_NAME) {
@@ -459,7 +604,7 @@ export async function GET(req) {
           }),
         ];
       }
-      return mapPost(p, files);
+      return mapPost(p, files, shareByDr.get(p.DR_SEQ) || []);
     });
 
     // 기관 필터용 목록 (로그인 사용자 누구나)
@@ -539,6 +684,8 @@ export async function POST(req) {
     if (!CATEGORIES.has(category)) {
       return jsonError({ success: false, error: '분류는 공지/서식/교육/기타 중 하나여야 합니다.' }, 400);
     }
+    const share = parseShareFromForm(form);
+    if (share.error) return jsonError({ success: false, error: share.error }, 400);
 
     const uploadedList = [];
     for (const file of uploadFiles) {
@@ -578,6 +725,7 @@ export async function POST(req) {
     ins.input('CATEGORY', category);
     ins.input('TITLE', title);
     ins.input('DESCRIPTION', description || null);
+    ins.input('SHARE_SCOPE', share.scope);
     ins.input('FILE_NAME', first.fileName);
     ins.input('BLOB_NAME', first.blobName);
     ins.input('CONTENT_TYPE', first.contentType);
@@ -587,13 +735,13 @@ export async function POST(req) {
 
     const inserted = await ins.query(`
       INSERT INTO ${TABLE} (
-        [ANCD], [CATEGORY], [TITLE], [DESCRIPTION],
+        [ANCD], [CATEGORY], [TITLE], [DESCRIPTION], [SHARE_SCOPE],
         [FILE_NAME], [BLOB_NAME], [CONTENT_TYPE], [FILE_SIZE],
         [DOWNLOAD_CNT], [REG_EMPNO], [REG_EMPNM], [REG_DATE]
       )
       OUTPUT INSERTED.*
       VALUES (
-        @ANCD, @CATEGORY, @TITLE, @DESCRIPTION,
+        @ANCD, @CATEGORY, @TITLE, @DESCRIPTION, @SHARE_SCOPE,
         @FILE_NAME, @BLOB_NAME, @CONTENT_TYPE, @FILE_SIZE,
         0, @REG_EMPNO, @REG_EMPNM, GETDATE()
       )
@@ -629,7 +777,9 @@ export async function POST(req) {
       if (fr.recordset?.[0]) fileMapped.push(mapFileRow(fr.recordset[0]));
     }
 
-    return jsonOk({ success: true, data: mapPost(post, fileMapped) });
+    await syncDataRoomShare(pool, post.DR_SEQ, share.scope, share.ancds);
+
+    return jsonOk({ success: true, data: mapPost({ ...post, SHARE_SCOPE: share.scope }, fileMapped, share.ancds) });
   } catch (err) {
     console.error('DATA_ROOM 등록 오류:', err);
     return jsonError({ success: false, error: err.message || '등록 실패' });
@@ -678,6 +828,11 @@ export async function DELETE(req) {
       `);
     const blobs = (files.recordset || []).map((r) => r.BLOB_NAME).filter(Boolean);
     if (postRow.BLOB_NAME && !blobs.includes(postRow.BLOB_NAME)) blobs.push(postRow.BLOB_NAME);
+
+    await pool
+      .request()
+      .input('DR_SEQ', drSeq)
+      .query(`DELETE FROM ${SHARE_TABLE} WHERE [DR_SEQ] = @DR_SEQ`);
 
     await pool
       .request()

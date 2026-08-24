@@ -179,7 +179,9 @@ export function buildDetailAnnualLeavePrintHtml(
 	referenceDate: string,
 	baseYear: number,
 	sections: DetailAnnualLeavePrintSection[],
+	documentTitle?: string,
 ): string {
+	const title = String(documentTitle ?? "").trim() || `년차 상세 보고서 ${baseYear}년`;
 	const bodyBlocks = sections
 		.map((sec) => {
 			const detailLines =
@@ -216,7 +218,7 @@ export function buildDetailAnnualLeavePrintHtml(
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>년차 상세 보고서 ${baseYear}년</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     @page { size: A4 portrait; margin: 14mm 12mm 18mm 12mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -323,7 +325,7 @@ export function buildDetailAnnualLeavePrintHtml(
         </tr>
         <tr><td></td><td></td><td></td></tr>
       </table>
-      <h1 class="title">년차 상세 보고서 ${baseYear}년</h1>
+      <h1 class="title">${escapeHtml(title)}</h1>
     </div>
     <div class="ref-date">기준일자: ${escapeHtml(referenceDate)}</div>
     <table class="main">
