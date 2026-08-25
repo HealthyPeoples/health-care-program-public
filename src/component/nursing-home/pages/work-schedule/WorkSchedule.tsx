@@ -22,6 +22,11 @@ import {
 	workStatusFromEmployee,
 	workStatusText,
 } from "../../utils/employeeWorkStatus";
+import {
+	JOB_LIST_OPTIONS,
+	compareByJobThenName,
+	employeeJobTitle,
+} from "../../utils/employeeJobList";
 
 interface Employee {
 	ANCD: number;
@@ -29,6 +34,7 @@ interface Employee {
 	EMPNM: string;
 	EMPHP?: string;
 	JOB?: string;
+	JOBLIST?: number | string | null;
 	JOBST?: string;
 	JOBADD?: string;
 	JOBSH?: string;
@@ -250,24 +256,32 @@ export default function WorkSchedule() {
 		return () => clearTimeout(timer);
 	}, [searchTerm, selectedJob, selectedWorkStatus]);
 
-	const filteredEmployees = employeeList.filter((employee) => {
-		const employeeName = String(employee.EMPNM || "").trim();
-		if (!employeeName) return false;
-		if (selectedJob) {
-			if (String(employee.JOB || "").trim() !== selectedJob) return false;
-		}
-		if (selectedWorkStatus === "1") {
-			// 기본(근무): 해당 월 시작 전에 이미 퇴직한 직원만 제외. 월중 휴직·퇴직은 칸에 표시
-			if (workStatusFromEmployee(employee, startDate) === "9") return false;
-		} else if (selectedWorkStatus) {
-			if (!hasWorkStatusInRange(employee, selectedWorkStatus, startDate, endDate)) return false;
-		}
-		return true;
-	});
+	const filteredEmployees = employeeList
+		.filter((employee) => {
+			const employeeName = String(employee.EMPNM || "").trim();
+			if (!employeeName) return false;
+			if (selectedJob) {
+				if (employeeJobTitle(employee) !== selectedJob) return false;
+			}
+			if (selectedWorkStatus === "1") {
+				// 기본(근무): 해당 월 시작 전에 이미 퇴직한 직원만 제외. 월중 휴직·퇴직은 칸에 표시
+				if (workStatusFromEmployee(employee, startDate) === "9") return false;
+			} else if (selectedWorkStatus) {
+				if (!hasWorkStatusInRange(employee, selectedWorkStatus, startDate, endDate)) return false;
+			}
+			return true;
+		})
+		.sort(compareByJobThenName);
 
-	const uniqueJobs = Array.from(
-		new Set(employeeList.map((emp) => emp.JOB).filter((job) => job && String(job).trim() !== ""))
+	const standardJobLabels: string[] = JOB_LIST_OPTIONS.map((o) => o.label);
+	const leftoverJobs = Array.from(
+		new Set(
+			employeeList
+				.map((emp) => employeeJobTitle(emp))
+				.filter((job) => job && !standardJobLabels.includes(job))
+		)
 	).sort();
+	const uniqueJobs = [...standardJobLabels, ...leftoverJobs];
 
 	const totalPages = Math.max(1, Math.ceil(filteredEmployees.length / itemsPerPage));
 	const currentEmployees = filteredEmployees.slice(
@@ -445,7 +459,7 @@ export default function WorkSchedule() {
 			employees: statusEmployees.map((e) => ({
 				EMPNO: e.EMPNO,
 				EMPNM: e.EMPNM,
-				JOB: e.JOB,
+				JOB: employeeJobTitle(e),
 				EDT: e.EDT,
 				HSDT: e.HSDT,
 				HEDT: e.HEDT,
@@ -709,7 +723,7 @@ export default function WorkSchedule() {
 												{emp.EMPNM}
 											</td>
 											<td className="sticky left-[72px] z-[5] border border-blue-100 px-2 py-1 bg-white text-blue-900/80">
-												{emp.JOB || "-"}
+												{employeeJobTitle(emp) || "-"}
 											</td>
 											{monthDates.map((d) => {
 												const wdt = formatDate(d);
