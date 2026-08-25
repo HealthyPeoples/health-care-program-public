@@ -8,10 +8,36 @@
  *
  * @module component/nursing-home/pages/physical-therapy-performance/PhysicalTherapyPerformance
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { formatCareGradeLabel } from '../../utils/careGrade';
-import BeneficiaryListPanel, { BeneficiaryMember } from '../../components/BeneficiaryListPanel';
+import BeneficiaryListPanel, { BeneficiaryMember, beneficiaryMemberKey } from '../../components/BeneficiaryListPanel';
+import { EmployeeSearchInput } from '../../components/EmployeeSearchInput';
 import { formatDateYmd } from '../../utils/excretionObservationFields';
+import { openPhysicalTherapyRecordPrint, type V32020PrintRow } from './physicalTherapyPerformancePrint';
+
+function todayYmd() {
+	const d = new Date();
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	const day = String(d.getDate()).padStart(2, '0');
+	return `${y}-${m}-${day}`;
+}
+
+function monthStartYmd() {
+	const d = new Date();
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	return `${y}-${m}-01`;
+}
+
+function toTimeInput(raw: unknown): string {
+	const s = String(raw ?? '').trim();
+	if (!s) return '';
+	if (/^\d{1,2}:\d{2}/.test(s)) return s.slice(0, 5);
+	const d = s.replace(/\D/g, '');
+	if (d.length >= 4) return `${d.slice(0, 2)}:${d.slice(2, 4)}`;
+	return s;
+}
 
 interface MemberData {
 	ANCD: string;
@@ -39,11 +65,18 @@ export default function PhysicalTherapyPerformance() {
 	const [isEditMode, setIsEditMode] = useState(false);
 	const [datePage, setDatePage] = useState(1);
 	const dateItemsPerPage = 10;
+	const [printFrom, setPrintFrom] = useState(monthStartYmd);
+	const [printTo, setPrintTo] = useState(todayYmd);
+	const [checkedMemberKeys, setCheckedMemberKeys] = useState<Set<string>>(() => new Set());
+	const [printRows, setPrintRows] = useState<V32020PrintRow[] | null>(null);
+	const [printQuerying, setPrintQuerying] = useState(false);
+	const [printOpening, setPrintOpening] = useState(false);
 
 	// F32020 폼 데이터(이미지 스키마 기반: 실시=1, 미실시=0 / 횟수·시간 등은 TVAL/TETCVAL로 입력)
 	const createEmptyForm = (tdt?: string) => ({
-		TDT: tdt || new Date().toISOString().slice(0, 10),
+		TDT: tdt || todayYmd(),
 		JHEMP: '',
+		JHEMPNM: '',
 		// 기구이용: TCHK01~07 / TVAL01~07
 		TCHK01: '0', TVAL01: '',
 		TCHK02: '0', TVAL02: '',
@@ -84,8 +117,11 @@ export default function PhysicalTherapyPerformance() {
 		TETC_5: '', TETCVAL_5: '',
 		TTEXT_4: '',
 		ETC: '',
+		T_SRT_TM: '',
+		T_END_TM: '',
 	});
 	const [formData, setFormData] = useState(() => createEmptyForm());
+	const [formBackup, setFormBackup] = useState<ReturnType<typeof createEmptyForm> | null>(null);
 
 	const extractFloorFromRoomNo = (roomNo: any): number | null => {
 		const s = String(roomNo ?? '').trim();
@@ -111,7 +147,7 @@ export default function PhysicalTherapyPerformance() {
 	};
 
 	// 치료일자 목록 조회
-	const fetchTreatmentDates = async (ancd: string, pnum: string) => {
+	const fetchTreatmentDates = async (ancd: string, pnum: string, keepTdt?: string) => {
 		if (!ancd || !pnum) {
 			setTreatmentDates([]);
 			setTreatmentRecords([]);
@@ -126,12 +162,23 @@ export default function PhysicalTherapyPerformance() {
 
 			if (result.success) {
 				const list: TherapyRecordData[] = result.data || [];
+				const dates = list.map((r) => formatDateYmd(r.TDT)).filter(Boolean);
 				setTreatmentRecords(list);
-				setTreatmentDates(
-					list.map((r) => formatDateYmd(r.TDT)).filter(Boolean)
-				);
-				setSelectedDateIndex(null);
-				setDatePage(1);
+				setTreatmentDates(dates);
+				if (keepTdt) {
+					const idx = dates.findIndex((d) => d === keepTdt);
+					setSelectedDateIndex(idx >= 0 ? idx : null);
+					if (idx >= 0) {
+						const next = hydrateForm(list[idx], dates[idx]);
+						setFormData(next);
+						setFormBackup(next);
+					}
+					const page = idx >= 0 ? Math.floor(idx / dateItemsPerPage) + 1 : 1;
+					setDatePage(page);
+				} else {
+					setSelectedDateIndex(null);
+					setDatePage(1);
+				}
 			} else {
 				setTreatmentRecords([]);
 				setTreatmentDates([]);
@@ -143,36 +190,76 @@ export default function PhysicalTherapyPerformance() {
 		}
 	};
 
+	const confirmLeaveEdit = () => {
+		if (!isEditMode) return true;
+		return confirm('수정 중인 내용이 저장되지 않습니다. 이동할까요?');
+	};
+
 	// 수급자 선택 함수
 	const handleSelectMember = (member: BeneficiaryMember) => {
+		if (!confirmLeaveEdit()) return;
+		setIsEditMode(false);
+		setFormBackup(null);
 		setSelectedMember(member as any);
-		setFormData(createEmptyForm(new Date().toISOString().slice(0, 10)));
+		setFormData(createEmptyForm(todayYmd()));
 		fetchTreatmentDates(String(member.ANCD), String(member.PNUM));
+	};
+
+	const hydrateForm = (record: TherapyRecordData | undefined, date?: string) => {
+		if (!record) return createEmptyForm(date);
+		return {
+			...createEmptyForm(date),
+			...record,
+			JHEMP: String((record as any).JHEMP ?? ''),
+			JHEMPNM: String((record as any).PD_NM ?? (record as any).JHEMPNM ?? '').trim(),
+			TDT: formatDateYmd(record.TDT || date || ''),
+			T_SRT_TM: toTimeInput((record as any).T_SRT_TM ?? (record as any).시작시간),
+			T_END_TM: toTimeInput((record as any).T_END_TM ?? (record as any).종료시간),
+		};
 	};
 
 	// 치료일자 선택 함수
 	const handleSelectDate = (index: number) => {
+		if (!confirmLeaveEdit()) return;
 		setSelectedDateIndex(index);
 		const selectedRecord = treatmentRecords[index];
 		const selectedDate = treatmentDates[index];
+		const next = hydrateForm(selectedRecord, selectedDate);
+		setFormData(next);
+		setFormBackup(next);
 		setIsEditMode(false);
-		if (selectedRecord) {
-			setFormData((prev) => ({
-				...prev,
-				...selectedRecord,
-				JHEMP: String((selectedRecord as any).JHEMP ?? ''),
-				TDT: formatDateYmd(selectedRecord.TDT || selectedDate || prev.TDT),
-			}));
-		} else {
-			setFormData(createEmptyForm(selectedDate || undefined));
-		}
 	};
 
 	// 날짜 형식 변환 함수 (YYYY-MM-DD)
 	const formatDateDisplay = (dateStr: string) => formatDateYmd(dateStr);
 
+	const handleEnterEditMode = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		if (selectedDateIndex === null) {
+			alert('수정할 치료일자를 목록에서 선택해 주세요.');
+			return;
+		}
+		setFormBackup({ ...formData });
+		setIsEditMode(true);
+	};
+
+	const handleCancelEdit = () => {
+		if (formBackup) setFormData(formBackup);
+		setIsEditMode(false);
+		if (selectedDateIndex === null) {
+			setFormData(createEmptyForm());
+		}
+	};
+
 	// 저장 함수
 	const handleSave = async () => {
+		if (!isEditMode) {
+			alert('수정 버튼을 누른 뒤 저장할 수 있습니다.');
+			return;
+		}
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
@@ -185,12 +272,18 @@ export default function PhysicalTherapyPerformance() {
 
 		setLoadingRecords(true);
 		try {
+			const origTdt =
+				selectedDateIndex !== null
+					? formatDateYmd(formBackup?.TDT || treatmentDates[selectedDateIndex] || formData.TDT)
+					: '';
 			const response = await fetch('/api/f32020', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					PNUM: selectedMember.PNUM,
 					...formData,
+					PD_NM: formData.JHEMPNM,
+					...(origTdt ? { ORIG_TDT: origTdt } : {}),
 				}),
 			});
 			const result = await response.json().catch(() => ({}));
@@ -200,14 +293,19 @@ export default function PhysicalTherapyPerformance() {
 
 			alert(selectedDateIndex !== null ? '물리치료실적이 수정되었습니다.' : '물리치료실적이 저장되었습니다.');
 			setIsEditMode(false);
-			
-			// 데이터 다시 조회
+			setFormBackup(null);
+			setPrintRows(null);
+
 			if (selectedMember) {
-				await fetchTreatmentDates(selectedMember.ANCD, selectedMember.PNUM);
+				await fetchTreatmentDates(
+					selectedMember.ANCD,
+					selectedMember.PNUM,
+					formatDateYmd(formData.TDT)
+				);
 			}
 		} catch (err) {
 			console.error('물리치료실적 저장 오류:', err);
-			alert('물리치료실적 저장 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '물리치료실적 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingRecords(false);
 		}
@@ -215,32 +313,37 @@ export default function PhysicalTherapyPerformance() {
 
 	// 지움 함수
 	const handleClear = () => {
-		setFormData(createEmptyForm());
-		setIsEditMode(true);
-		setSelectedDateIndex(null);
-	};
-
-	// 삭제 함수
-	const handleDelete = async () => {
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
+		if (!confirmLeaveEdit()) return;
+		const empty = createEmptyForm();
+		setFormData(empty);
+		setFormBackup(empty);
+		setIsEditMode(true);
+		setSelectedDateIndex(null);
+	};
 
-		if (selectedDateIndex === null) {
-			alert('삭제할 물리치료실적을 선택해주세요.');
+	const handleDelete = async (index: number) => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
 			return;
 		}
-
-		if (!confirm('정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+		const tdt = formatDateDisplay(treatmentDates[index]);
+		if (!tdt) {
+			alert('삭제할 치료일자를 선택해주세요.');
+			return;
+		}
+		if (!confirmLeaveEdit()) return;
+		if (!confirm(`${tdt} 물리치료실적을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
 			return;
 		}
 
 		setLoadingRecords(true);
 		try {
-			const tdt = treatmentDates[selectedDateIndex];
 			const response = await fetch(
-				`/api/f32020?pnum=${encodeURIComponent(selectedMember.PNUM)}&tdt=${encodeURIComponent(tdt)}`,
+				`/api/f32020?pnum=${encodeURIComponent(String(selectedMember.PNUM))}&tdt=${encodeURIComponent(tdt)}`,
 				{ method: 'DELETE' }
 			);
 			const result = await response.json().catch(() => ({}));
@@ -250,48 +353,131 @@ export default function PhysicalTherapyPerformance() {
 
 			alert('물리치료실적이 삭제되었습니다.');
 			setIsEditMode(false);
-			
-			// 데이터 다시 조회
-			if (selectedMember) {
-				await fetchTreatmentDates(selectedMember.ANCD, selectedMember.PNUM);
+			setFormBackup(null);
+			setPrintRows(null);
+
+			const keepTdt =
+				selectedDateIndex !== null && selectedDateIndex !== index
+					? formatDateDisplay(treatmentDates[selectedDateIndex])
+					: undefined;
+			await fetchTreatmentDates(selectedMember.ANCD, selectedMember.PNUM, keepTdt);
+			if (!keepTdt) {
+				setFormData(createEmptyForm());
+				setSelectedDateIndex(null);
 			}
-			
-			// 폼 초기화
-			handleClear();
 		} catch (err) {
 			console.error('물리치료실적 삭제 오류:', err);
-			alert('물리치료실적 삭제 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '물리치료실적 삭제 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingRecords(false);
 		}
 	};
 
-	// 출력 함수들
+	const toggleMemberChecked = (member: BeneficiaryMember, checked: boolean) => {
+		const key = beneficiaryMemberKey(member);
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			if (checked) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+		setPrintRows(null);
+	};
+
+	const toggleAllFilteredChecked = (checked: boolean, members: BeneficiaryMember[]) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			for (const m of members) {
+				const key = beneficiaryMemberKey(m);
+				if (checked) next.add(key);
+				else next.delete(key);
+			}
+			return next;
+		});
+		setPrintRows(null);
+	};
+
+	const fetchV32020 = async (pnums: string[], from: string, to: string) => {
+		const url = `/api/v32020?startDate=${encodeURIComponent(from)}&endDate=${encodeURIComponent(to)}&pnums=${encodeURIComponent(pnums.join(','))}`;
+		const res = await fetch(url, { cache: 'no-store' });
+		const json = await res.json().catch(() => ({}));
+		if (!res.ok || !json?.success) {
+			throw new Error(json?.error || 'V32020 조회 실패');
+		}
+		return (Array.isArray(json.data) ? json.data : []) as V32020PrintRow[];
+	};
+
+	const handleQueryPrint = async () => {
+		if (checkedMemberKeys.size === 0) {
+			alert('출력할 수급자를 체크해주세요.');
+			return;
+		}
+		if (!printFrom || !printTo) {
+			alert('출력 기간(시작일·종료일)을 설정해주세요.');
+			return;
+		}
+		if (printFrom > printTo) {
+			alert('시작일이 종료일보다 늦을 수 없습니다.');
+			return;
+		}
+
+		const pnums = Array.from(checkedMemberKeys)
+			.map((k) => k.split('::')[1] || '')
+			.filter(Boolean);
+		if (pnums.length === 0) {
+			alert('체크된 수급자를 찾을 수 없습니다.');
+			return;
+		}
+
+		setPrintQuerying(true);
+		try {
+			const rows = await fetchV32020(pnums, printFrom, printTo);
+			setPrintRows(rows);
+			if (rows.length === 0) {
+				alert('선택한 수급자·기간에 해당하는 물리치료기록이 없습니다.');
+				return;
+			}
+			alert(`${rows.length}건을 조회했습니다. 출력 버튼을 눌러 인쇄하세요.`);
+		} catch (err) {
+			console.error('V32020 조회 오류:', err);
+			alert('물리치료기록 조회 중 오류가 발생했습니다.');
+		} finally {
+			setPrintQuerying(false);
+		}
+	};
+
+	const handlePrintQueried = () => {
+		if (printRows == null) {
+			alert('먼저 조회를 실행해주세요.');
+			return;
+		}
+		if (printRows.length === 0) {
+			alert('출력할 물리치료기록이 없습니다.');
+			return;
+		}
+		openPhysicalTherapyRecordPrint(printRows);
+	};
+
 	const handlePrintRecord = async () => {
 		if (!selectedMember || !formData.TDT) {
 			alert('출력할 물리치료실적을 선택해주세요.');
 			return;
 		}
-		// TODO: 기록출력 구현
-		alert('기록출력 기능은 준비 중입니다.');
-	};
-
-	const handlePrintPeriod = async () => {
-		if (!selectedMember) {
-			alert('수급자를 선택해주세요.');
-			return;
+		setPrintOpening(true);
+		try {
+			const tdt = formatDateYmd(formData.TDT);
+			const rows = await fetchV32020([String(selectedMember.PNUM)], tdt, tdt);
+			if (rows.length === 0) {
+				alert('출력할 물리치료기록을 찾을 수 없습니다.');
+				return;
+			}
+			openPhysicalTherapyRecordPrint(rows);
+		} catch (err) {
+			console.error('기록출력 오류:', err);
+			alert('기록출력 준비 중 오류가 발생했습니다.');
+		} finally {
+			setPrintOpening(false);
 		}
-		// TODO: 기간기록출력 구현
-		alert('기간기록출력 기능은 준비 중입니다.');
-	};
-
-	const handlePlanAndEvaluation = async () => {
-		if (!selectedMember) {
-			alert('수급자를 선택해주세요.');
-			return;
-		}
-		// TODO: 계획 및 평가 페이지로 이동
-		alert('계획 및 평가 기능은 준비 중입니다.');
 	};
 
 	// 치료일자 목록 페이지네이션
@@ -301,6 +487,7 @@ export default function PhysicalTherapyPerformance() {
 	const currentDateItems = treatmentDates.slice(dateStartIndex, dateEndIndex);
 	const isRightLocked = !loadingRecords && selectedDateIndex === null && !isEditMode;
 	const showEmptyDataOverlay = isRightLocked && !!selectedMember && treatmentDates.length === 0;
+	const isReadOnly = !isEditMode;
 
 	// 치료 항목 렌더링 함수
 	const renderTreatmentItem = (chkKey: string, valKey: string, label: string) => {
@@ -311,25 +498,30 @@ export default function PhysicalTherapyPerformance() {
 				<input
 					type="checkbox"
 					checked={checked}
-					onChange={(e) =>
+					tabIndex={isReadOnly ? -1 : undefined}
+					onChange={(e) => {
+						if (isReadOnly) return;
 						setFormData((prev: any) => ({
 							...prev,
 							[chkKey]: e.target.checked ? '1' : '0',
-						}))
-					}
-					className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
+						}));
+					}}
+					className={`w-4 h-4 accent-blue-600 border border-blue-300 rounded ${
+						isReadOnly ? 'pointer-events-none' : ''
+					}`}
 				/>
 				<label className="text-sm text-blue-900 flex-1">{label}</label>
 				<input
 					type="text"
 					value={value}
+					readOnly={isReadOnly}
 					onChange={(e) =>
 						setFormData((prev: any) => ({
 							...prev,
 							[valKey]: e.target.value,
 						}))
 					}
-					className="w-24 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+					className="w-24 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 					placeholder="횟수/분"
 				/>
 			</div>
@@ -376,12 +568,71 @@ export default function PhysicalTherapyPerformance() {
 	return (
 		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
-				<BeneficiaryListPanel selectedMember={selectedMember} onSelect={handleSelectMember} className="w-full xl:w-1/4 xl:min-w-[240px] xl:max-w-sm shrink-0 border-b xl:border-b-0 xl:h-full xl:min-h-0 min-h-0 xl:overflow-hidden" />
+				<div className="flex flex-col w-full xl:w-1/4 xl:min-w-[240px] xl:max-w-sm shrink-0 min-w-0 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden border-r border-blue-200">
+					<div className="shrink-0 p-3 space-y-2 border-b border-blue-200 bg-blue-50/70">
+						<div className="text-xs font-semibold text-blue-900">출력 기간</div>
+						<div className="flex items-center gap-1">
+							<input
+								type="date"
+								value={printFrom}
+								onChange={(e) => {
+									setPrintFrom(e.target.value);
+									setPrintRows(null);
+								}}
+								className="flex-1 min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+							/>
+							<span className="text-xs text-blue-900 shrink-0">~</span>
+							<input
+								type="date"
+								value={printTo}
+								onChange={(e) => {
+									setPrintTo(e.target.value);
+									setPrintRows(null);
+								}}
+								className="flex-1 min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+							/>
+						</div>
+						<div className="grid grid-cols-2 gap-1">
+							<button
+								type="button"
+								onClick={() => void handleQueryPrint()}
+								disabled={printQuerying || checkedMemberKeys.size === 0}
+								className="px-2 py-1.5 text-xs font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+							>
+								{printQuerying ? '조회 중...' : `조회 (${checkedMemberKeys.size}명)`}
+							</button>
+							<button
+								type="button"
+								onClick={handlePrintQueried}
+								disabled={printQuerying || printRows == null || printRows.length === 0}
+								className="px-2 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+							>
+								출력{printRows ? ` (${printRows.length}건)` : ''}
+							</button>
+						</div>
+					</div>
+					<BeneficiaryListPanel
+						selectedMember={selectedMember}
+						onSelect={handleSelectMember}
+						checkedKeys={checkedMemberKeys}
+						onToggleCheck={toggleMemberChecked}
+						onToggleCheckAll={toggleAllFilteredChecked}
+						className="flex-1 min-h-0 !border-r-0"
+					/>
+				</div>
 
 				{/* 중간-왼쪽 패널: 치료일자 목록 */}
-				<div className="flex flex-col w-full xl:w-[220px] min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 max-h-[36vh] xl:max-h-none overflow-hidden">
-					<div className="px-3 py-2 border-b border-blue-200 bg-blue-50">
+				<div className="flex flex-col w-full xl:w-[240px] min-w-0 shrink-0 bg-white border-r border-blue-200 border-b xl:border-b-0 max-h-[36vh] xl:max-h-none overflow-hidden">
+					<div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-blue-200 bg-blue-50">
 						<label className="text-sm font-medium text-blue-900">치료일자</label>
+						<button
+							type="button"
+							onClick={handleClear}
+							disabled={!selectedMember || loadingRecords}
+							className="shrink-0 px-2 py-0.5 text-xs font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							신규
+						</button>
 					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto bg-white">
@@ -397,12 +648,25 @@ export default function PhysicalTherapyPerformance() {
 									return (
 										<div
 											key={globalIndex}
-											onClick={() => handleSelectDate(globalIndex)}
-											className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-blue-50 ${
+											className={`flex items-center gap-1 px-2 py-1.5 text-sm border-b border-blue-50 ${
 												selectedDateIndex === globalIndex ? 'bg-blue-100 font-semibold' : ''
 											}`}
 										>
-											{formatDateDisplay(date)}
+											<button
+												type="button"
+												onClick={() => handleSelectDate(globalIndex)}
+												className="flex-1 min-w-0 text-left hover:bg-blue-50 rounded px-1 py-0.5"
+											>
+												{formatDateDisplay(date)}
+											</button>
+											<button
+												type="button"
+												onClick={() => void handleDelete(globalIndex)}
+												disabled={loadingRecords}
+												className="shrink-0 px-1.5 py-0.5 text-xs font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+											>
+												삭제
+											</button>
 										</div>
 									);
 								})
@@ -495,6 +759,54 @@ export default function PhysicalTherapyPerformance() {
 							isRightLocked ? 'blur-sm select-none pointer-events-none opacity-70' : ''
 						}
 					>
+					<div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+						{!isEditMode ? (
+							<p className="text-xs text-blue-900/70">읽기모드 · 「수정」을 눌러 내용을 바꿀 수 있습니다.</p>
+						) : selectedDateIndex == null ? (
+							<p className="text-xs text-green-800">신규 작성모드 · 입력 후 「저장」하세요.</p>
+						) : (
+							<p className="text-xs text-green-800">수정모드 · 변경 후 「저장」해야 반영됩니다.</p>
+						)}
+						<div className="flex justify-end gap-2 ml-auto">
+							{isEditMode ? (
+								<>
+									<button
+										type="button"
+										onClick={() => void handleSave()}
+										disabled={loadingRecords || !selectedMember}
+										className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-700 rounded hover:bg-green-700 disabled:opacity-50"
+									>
+										저장
+									</button>
+									<button
+										type="button"
+										onClick={handleCancelEdit}
+										disabled={loadingRecords}
+										className="px-4 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 disabled:opacity-50"
+									>
+										취소
+									</button>
+								</>
+							) : (
+								<button
+									type="button"
+									onClick={handleEnterEditMode}
+									disabled={!selectedMember || loadingRecords || selectedDateIndex == null}
+									className="px-4 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:opacity-50"
+								>
+									수정
+								</button>
+							)}
+							<button
+								type="button"
+								onClick={() => void handlePrintRecord()}
+								disabled={!selectedMember || !formData.TDT || printOpening || isEditMode}
+								className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50"
+							>
+								{printOpening ? '출력 준비 중...' : '해당기록출력'}
+							</button>
+						</div>
+					</div>
 					{/* 상단: 수급자, 치료일자, 담당자 */}
 					<div className="flex flex-wrap items-center gap-4 mb-4">
 						<div className="flex items-center gap-2">
@@ -512,23 +824,44 @@ export default function PhysicalTherapyPerformance() {
 							<input
 								type="date"
 								value={String((formData as any).TDT || '').slice(0, 10)}
-								onChange={(e) => {
-									setIsEditMode(true);
-									setSelectedDateIndex(null);
-									setFormData((prev: any) => ({ ...prev, TDT: e.target.value }));
-								}}
-								disabled={!selectedMember}
+								onChange={(e) => setFormData((prev: any) => ({ ...prev, TDT: e.target.value }))}
+								disabled={!selectedMember || isReadOnly}
 								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 w-[140px] disabled:bg-gray-50 disabled:border-blue-200"
 							/>
 						</div>
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">담당자(사번)</label>
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">물리치료시간</label>
 							<input
-								type="number"
-								value={String((formData as any).JHEMP ?? '')}
-								onChange={(e) => setFormData((prev: any) => ({ ...prev, JHEMP: e.target.value }))}
-								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-								placeholder="예) 1001"
+								type="time"
+								value={toTimeInput((formData as any).T_SRT_TM)}
+								onChange={(e) => setFormData((prev: any) => ({ ...prev, T_SRT_TM: e.target.value }))}
+								disabled={isReadOnly}
+								className="px-2 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+							/>
+							<span className="text-sm text-blue-900">~</span>
+							<input
+								type="time"
+								value={toTimeInput((formData as any).T_END_TM)}
+								onChange={(e) => setFormData((prev: any) => ({ ...prev, T_END_TM: e.target.value }))}
+								disabled={isReadOnly}
+								className="px-2 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+							/>
+						</div>
+						<div className="flex items-center gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">담당자</label>
+							<EmployeeSearchInput
+								value={String((formData as any).JHEMPNM ?? '')}
+								onChange={(name, empno) =>
+									setFormData((prev: any) => ({
+										...prev,
+										JHEMPNM: name,
+										JHEMP: empno != null ? String(empno) : '',
+									}))
+								}
+								disabled={isReadOnly}
+								placeholder="이름 검색 후 선택"
+								className="min-w-[160px]"
+								inputClassName="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[160px] w-full disabled:bg-gray-50 disabled:border-blue-200"
 							/>
 						</div>
 						{selectedMember && (
@@ -568,7 +901,8 @@ export default function PhysicalTherapyPerformance() {
 								<textarea
 									value={String((formData as any).TTEXT_1 ?? '')}
 									onChange={(e) => setFormData((prev: any) => ({ ...prev, TTEXT_1: e.target.value }))}
-									className="w-full min-h-[72px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									readOnly={isReadOnly}
+									className="w-full min-h-[72px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 									placeholder="미실시 사유를 입력하세요"
 								/>
 							</div>
@@ -587,7 +921,8 @@ export default function PhysicalTherapyPerformance() {
 								<textarea
 									value={String((formData as any).TTEXT_2 ?? '')}
 									onChange={(e) => setFormData((prev: any) => ({ ...prev, TTEXT_2: e.target.value }))}
-									className="w-full min-h-[60px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									readOnly={isReadOnly}
+									className="w-full min-h-[60px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 								/>
 							</div>
 						</div>
@@ -605,7 +940,8 @@ export default function PhysicalTherapyPerformance() {
 								<textarea
 									value={String((formData as any).TTEXT_3 ?? '')}
 									onChange={(e) => setFormData((prev: any) => ({ ...prev, TTEXT_3: e.target.value }))}
-									className="w-full min-h-[60px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+									readOnly={isReadOnly}
+									className="w-full min-h-[60px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 								/>
 							</div>
 						</div>
@@ -624,14 +960,16 @@ export default function PhysicalTherapyPerformance() {
 											type="text"
 											value={String((formData as any)[`TETC_${n}`] ?? '')}
 											onChange={(e) => setFormData((prev: any) => ({ ...prev, [`TETC_${n}`]: e.target.value }))}
-											className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+											readOnly={isReadOnly}
+											className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 											placeholder={`기타치료 ${n}`}
 										/>
 										<input
 											type="text"
 											value={String((formData as any)[`TETCVAL_${n}`] ?? '')}
 											onChange={(e) => setFormData((prev: any) => ({ ...prev, [`TETCVAL_${n}`]: e.target.value }))}
-											className="w-28 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+											readOnly={isReadOnly}
+											className="w-28 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 											placeholder="시간/횟수"
 										/>
 									</div>
@@ -644,14 +982,16 @@ export default function PhysicalTherapyPerformance() {
 											type="text"
 											value={String((formData as any)[`TETC_${n}`] ?? '')}
 											onChange={(e) => setFormData((prev: any) => ({ ...prev, [`TETC_${n}`]: e.target.value }))}
-											className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+											readOnly={isReadOnly}
+											className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 											placeholder={`기타치료 ${n}`}
 										/>
 										<input
 											type="text"
 											value={String((formData as any)[`TETCVAL_${n}`] ?? '')}
 											onChange={(e) => setFormData((prev: any) => ({ ...prev, [`TETCVAL_${n}`]: e.target.value }))}
-											className="w-28 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+											readOnly={isReadOnly}
+											className="w-28 px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 											placeholder="시간/횟수"
 										/>
 									</div>
@@ -661,7 +1001,8 @@ export default function PhysicalTherapyPerformance() {
 									<textarea
 										value={String((formData as any).TTEXT_4 ?? '')}
 										onChange={(e) => setFormData((prev: any) => ({ ...prev, TTEXT_4: e.target.value }))}
-										className="w-full min-h-[60px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+										readOnly={isReadOnly}
+										className="w-full min-h-[60px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 									/>
 								</div>
 								<div>
@@ -669,52 +1010,14 @@ export default function PhysicalTherapyPerformance() {
 									<textarea
 										value={String((formData as any).ETC ?? '')}
 										onChange={(e) => setFormData((prev: any) => ({ ...prev, ETC: e.target.value }))}
-										className="w-full min-h-[72px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+										readOnly={isReadOnly}
+										className="w-full min-h-[72px] px-2 py-1 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 read-only:bg-gray-50"
 									/>
 								</div>
 							</div>
 						</div>
 					</div>
 
-					{/* 하단 버튼 영역 */}
-					<div className="flex justify-end gap-2">
-						<button
-							onClick={handleSave}
-							className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							저장
-						</button>
-						<button
-							onClick={handleClear}
-							className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							지움
-						</button>
-						<button
-							onClick={handleDelete}
-							className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							삭제
-						</button>
-						<button
-							onClick={handlePrintRecord}
-							className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							기록출력
-						</button>
-						<button
-							onClick={handlePrintPeriod}
-							className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							기간기록출력
-						</button>
-						<button
-							onClick={handlePlanAndEvaluation}
-							className="px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							계획 및 평가
-						</button>
-					</div>
 					</div>
 				</div>
 			</div>
