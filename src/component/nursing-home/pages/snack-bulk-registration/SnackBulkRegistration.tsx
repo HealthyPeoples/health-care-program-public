@@ -9,11 +9,18 @@
  *
  * @module component/nursing-home/pages/snack-bulk-registration/SnackBulkRegistration
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+	buildSnackPrintSectionHtml,
+	formatWeekdayDate,
+	openSnackPrintWindow,
+	type SnackPrintRow,
+} from './snackBulkRegistrationPrint';
 
 type SnackRow = {
 	PNUM: string;
 	P_NM: string;
+	P_BRDT: string;
 	SVDT: string;
 	MGVOL: string;
 	AGVOL: string;
@@ -78,6 +85,7 @@ function mapApiToSnackRow(item: any): SnackRow {
 	return {
 		PNUM: str(item.PNUM),
 		P_NM: str(item.P_NM) || '-',
+		P_BRDT: toYmd(item.P_BRDT),
 		SVDT: toYmd(item.SVDT),
 		MGVOL: str(item.MGVOL),
 		AGVOL: str(item.AGVOL),
@@ -127,6 +135,22 @@ export default function SnackBulkRegistration() {
 	const [listFilter, setListFilter] = useState<ListFilter>('all');
 	const [nameQuery, setNameQuery] = useState('');
 	const [currentPage, setCurrentPage] = useState(1);
+
+	const [showMemberPrintModal, setShowMemberPrintModal] = useState(false);
+	const [selectedMemberForPrint, setSelectedMemberForPrint] = useState<{
+		PNUM?: string;
+		ANCD?: string;
+		P_NM?: string;
+		P_BRDT?: string;
+	} | null>(null);
+	const [memberSearchTerm, setMemberSearchTerm] = useState('');
+	const [memberSearchResults, setMemberSearchResults] = useState<any[]>([]);
+	const [showMemberSearchResults, setShowMemberSearchResults] = useState(false);
+	const [startDate, setStartDate] = useState(todayYmd());
+	const [endDate, setEndDate] = useState(todayYmd());
+	const [memberPrintData, setMemberPrintData] = useState<SnackRow[]>([]);
+	const [loadingMemberData, setLoadingMemberData] = useState(false);
+	const printSearchRequestIdRef = useRef(0);
 
 	const fetchSnackList = useCallback(async (svdt: string) => {
 		if (!svdt) {
@@ -209,6 +233,130 @@ export default function SnackBulkRegistration() {
 
 	const handlePageChange = (page: number) => {
 		setCurrentPage(Math.min(Math.max(1, page), totalPages));
+	};
+
+	const toPrintRows = (list: SnackRow[]): SnackPrintRow[] =>
+		list.map((r) => ({
+			SVDT: r.SVDT,
+			P_NM: r.P_NM,
+			P_BRDT: r.P_BRDT,
+			MGVOL: r.MGVOL,
+			AGVOL: r.AGVOL,
+			DGVOL: r.DGVOL,
+		}));
+
+	const handlePrintDaily = () => {
+		if (!rows.length) {
+			alert('출력할 데이터가 없습니다.');
+			return;
+		}
+		openSnackPrintWindow(
+			buildSnackPrintSectionHtml(formatWeekdayDate(queryDate), toPrintRows(rows))
+		);
+	};
+
+	const handleOpenMemberPrintModal = () => {
+		setShowMemberPrintModal(true);
+		setSelectedMemberForPrint(null);
+		setMemberSearchTerm('');
+		setMemberSearchResults([]);
+		setShowMemberSearchResults(false);
+		setStartDate(queryDate || todayYmd());
+		setEndDate(queryDate || todayYmd());
+		setMemberPrintData([]);
+	};
+
+	const handleCloseMemberPrintModal = () => {
+		setShowMemberPrintModal(false);
+		setSelectedMemberForPrint(null);
+		setMemberSearchTerm('');
+		setMemberSearchResults([]);
+		setShowMemberSearchResults(false);
+		setMemberPrintData([]);
+	};
+
+	const handleSearchMemberForPrint = async (searchValue: string) => {
+		if (!searchValue || searchValue.trim().length < 1) {
+			printSearchRequestIdRef.current += 1;
+			setMemberSearchResults([]);
+			setShowMemberSearchResults(false);
+			return;
+		}
+		const requestId = ++printSearchRequestIdRef.current;
+		try {
+			const response = await fetch(
+				`/api/f10010/search?q=${encodeURIComponent(searchValue.trim())}`
+			);
+			if (!response.ok) throw new Error('검색 요청 실패');
+			const data = await response.json();
+			if (requestId !== printSearchRequestIdRef.current) return;
+			if (data.success && Array.isArray(data.data)) {
+				setMemberSearchResults(data.data);
+				setShowMemberSearchResults(data.data.length > 0);
+			} else {
+				setMemberSearchResults([]);
+				setShowMemberSearchResults(false);
+			}
+		} catch (error) {
+			console.error('수급자 검색 오류:', error);
+			if (requestId !== printSearchRequestIdRef.current) return;
+			setMemberSearchResults([]);
+			setShowMemberSearchResults(false);
+		}
+	};
+
+	const handleSelectMemberForPrint = (member: any) => {
+		setSelectedMemberForPrint(member);
+		setMemberSearchTerm(member.P_NM || '');
+		setShowMemberSearchResults(false);
+		setMemberSearchResults([]);
+	};
+
+	const handleLoadMemberData = async () => {
+		if (!selectedMemberForPrint || !startDate || !endDate) {
+			alert('수급자와 기간을 선택해주세요.');
+			return;
+		}
+		if (startDate > endDate) {
+			alert('시작일이 종료일보다 늦을 수 없습니다.');
+			return;
+		}
+		setLoadingMemberData(true);
+		try {
+			const url = `/api/f14020?pnum=${encodeURIComponent(String(selectedMemberForPrint.PNUM || ''))}&ancd=${encodeURIComponent(String(selectedMemberForPrint.ANCD || ''))}&startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`;
+			const response = await fetch(url);
+			const result = await response.json();
+			if (result.success && Array.isArray(result.data)) {
+				const list = result.data
+					.map(mapApiToSnackRow)
+					.sort((a: SnackRow, b: SnackRow) => a.SVDT.localeCompare(b.SVDT));
+				setMemberPrintData(list);
+				if (list.length === 0) {
+					alert('해당 기간에 출력할 데이터가 없습니다.');
+				}
+			} else {
+				setMemberPrintData([]);
+				alert('데이터를 조회할 수 없습니다.');
+			}
+		} catch (err) {
+			console.error('수급자별 간식내역 조회 오류:', err);
+			alert('데이터 조회 중 오류가 발생했습니다.');
+			setMemberPrintData([]);
+		} finally {
+			setLoadingMemberData(false);
+		}
+	};
+
+	const handlePrintMember = () => {
+		if (memberPrintData.length === 0) {
+			alert('출력할 데이터가 없습니다. 먼저 데이터를 조회해주세요.');
+			return;
+		}
+		const periodText =
+			startDate === endDate
+				? formatWeekdayDate(startDate)
+				: `${formatWeekdayDate(startDate)} ~ ${formatWeekdayDate(endDate)}`;
+		openSnackPrintWindow(buildSnackPrintSectionHtml(periodText, toPrintRows(memberPrintData)));
 	};
 
 	const handleSubmit = async () => {
@@ -386,6 +534,23 @@ export default function SnackBulkRegistration() {
 								<p className="mt-0.5 text-xs text-blue-900/70">
 									일자를 바꾸면 해당 일자 수급자별 간식 등록 내역이 바로 조회됩니다.
 								</p>
+							</div>
+							<div className="flex flex-wrap items-center gap-2">
+								<button
+									type="button"
+									onClick={handlePrintDaily}
+									disabled={loadingList || rows.length === 0}
+									className="h-9 px-3 text-sm border border-blue-400 rounded-md bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									일자별 출력
+								</button>
+								<button
+									type="button"
+									onClick={handleOpenMemberPrintModal}
+									className="h-9 px-3 text-sm border border-blue-400 rounded-md bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+								>
+									수급자별 출력
+								</button>
 							</div>
 						</div>
 
@@ -628,6 +793,124 @@ export default function SnackBulkRegistration() {
 					</section>
 				</div>
 			</div>
+
+			{showMemberPrintModal && (
+				<div
+					className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+					onClick={handleCloseMemberPrintModal}
+				>
+					<div
+						className="bg-white rounded-lg border border-blue-400 w-[600px] max-w-[90vw] max-h-[90vh] overflow-y-auto shadow-xl"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<div className="bg-blue-200 border-b border-blue-400 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+							<h3 className="text-lg font-semibold text-blue-900">수급자별 간식내역 출력</h3>
+							<button
+								type="button"
+								onClick={handleCloseMemberPrintModal}
+								className="text-blue-900 hover:text-blue-700 text-xl font-bold"
+							>
+								×
+							</button>
+						</div>
+						<div className="p-4 space-y-4">
+							<div className="space-y-2">
+								<label className="block text-sm font-medium text-blue-900">수급자 검색</label>
+								<div className="relative">
+									<input
+										type="text"
+										value={memberSearchTerm}
+										onChange={(e) => {
+											setMemberSearchTerm(e.target.value);
+											void handleSearchMemberForPrint(e.target.value);
+										}}
+										onFocus={() => {
+											if (memberSearchTerm.trim().length > 0) {
+												void handleSearchMemberForPrint(memberSearchTerm);
+											}
+										}}
+										onBlur={() => {
+											setTimeout(() => setShowMemberSearchResults(false), 200);
+										}}
+										placeholder="수급자명 검색"
+										className="w-full px-3 py-2 border border-blue-300 rounded text-blue-900"
+									/>
+									{showMemberSearchResults && memberSearchResults.length > 0 && (
+										<div className="absolute z-20 w-full mt-1 bg-white border border-blue-300 rounded shadow-lg max-h-60 overflow-y-auto">
+											{memberSearchResults.map((member: any, idx: number) => (
+												<div
+													key={idx}
+													onMouseDown={(e) => {
+														e.preventDefault();
+														handleSelectMemberForPrint(member);
+													}}
+													className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-blue-100 last:border-b-0"
+												>
+													<div className="font-medium text-blue-900">{member.P_NM}</div>
+													<div className="text-xs text-blue-900/70">
+														{member.P_BRDT ? `(${toYmd(member.P_BRDT)})` : ''}
+													</div>
+												</div>
+											))}
+										</div>
+									)}
+								</div>
+								{selectedMemberForPrint && (
+									<div className="px-3 py-2 text-sm text-blue-900 bg-blue-50 border border-blue-200 rounded">
+										선택: {selectedMemberForPrint.P_NM}
+										{selectedMemberForPrint.P_BRDT
+											? ` (${toYmd(selectedMemberForPrint.P_BRDT)})`
+											: ''}
+									</div>
+								)}
+							</div>
+							<div className="grid grid-cols-2 gap-3">
+								<div>
+									<label className="block text-sm font-medium text-blue-900 mb-1">시작일</label>
+									<input
+										type="date"
+										value={startDate}
+										onChange={(e) => setStartDate(e.target.value)}
+										className="w-full px-3 py-2 border border-blue-300 rounded text-blue-900"
+									/>
+								</div>
+								<div>
+									<label className="block text-sm font-medium text-blue-900 mb-1">종료일</label>
+									<input
+										type="date"
+										value={endDate}
+										onChange={(e) => setEndDate(e.target.value)}
+										className="w-full px-3 py-2 border border-blue-300 rounded text-blue-900"
+									/>
+								</div>
+							</div>
+							<div className="flex gap-2">
+								<button
+									type="button"
+									onClick={() => void handleLoadMemberData()}
+									disabled={!selectedMemberForPrint || loadingMemberData}
+									className="flex-1 px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									{loadingMemberData ? '조회 중...' : '데이터 조회'}
+								</button>
+								<button
+									type="button"
+									onClick={handlePrintMember}
+									disabled={memberPrintData.length === 0}
+									className="flex-1 px-4 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+								>
+									출력
+								</button>
+							</div>
+							{memberPrintData.length > 0 && (
+								<div className="px-3 py-2 bg-green-50 border border-green-200 rounded text-sm text-green-900">
+									조회된 데이터: {memberPrintData.length}건
+								</div>
+							)}
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
