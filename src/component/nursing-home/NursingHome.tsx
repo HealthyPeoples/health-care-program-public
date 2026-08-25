@@ -199,7 +199,7 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
   };
 
   return (
-    <div className="nh-root-shell w-full min-h-screen min-w-0 max-w-[100vw] overflow-x-hidden bg-gray-50 h-fit">
+    <div className="nh-root-shell w-full min-h-screen min-w-0 max-w-full overflow-x-hidden bg-gray-50 h-fit">
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -207,6 +207,7 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
               .nh-root-shell { background: #fff !important; min-height: auto !important; }
               .nh-main-content {
                 margin-left: 0 !important;
+                padding-left: 0 !important;
                 margin-top: 0 !important;
                 padding: 0 !important;
                 width: 100% !important;
@@ -330,7 +331,7 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
       {/* 왼쪽 메뉴: lg 이상 고정, 미만 오버레이. 데스크톱에서는 숨기기/펼치기 가능 */}
       <aside
         className={[
-          'print:hidden fixed z-40 left-0 h-[calc(100vh-56px)] bg-white border-r border-gray-200 overflow-y-auto transition-transform duration-200 ease-out',
+          'print:hidden fixed z-40 left-0 h-[calc(100vh-56px)] bg-white border-r border-gray-200 overflow-y-auto overflow-x-hidden transition-transform duration-200 ease-out',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full',
           sidebarCollapsed ? 'lg:-translate-x-full' : 'lg:translate-x-0',
         ].join(' ')}
@@ -341,7 +342,7 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
           <span className="text-sm font-semibold text-blue-900">메뉴</span>
           <button
             type="button"
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-black border border-gray-300 rounded hover:bg-gray-50"
             onClick={hideSidebar}
             aria-label={isLg ? '메뉴 숨기기' : '메뉴 닫기'}
           >
@@ -355,15 +356,11 @@ export const NursingHome = ({ children }: NursingHomeProps) => {
         {renderMenu()}
       </aside>
 
-      {/* 본문 컨텐츠: TabHost를 항상 표시
-          w-full + ml-64 조합은 뷰포트보다 넓어져 페이지(탭 포함) 가로 스크롤이 생기므로
-          lg에서는 사이드바 폭만큼 뺀 너비를 사용한다. */}
+      {/* 본문: padding-left로 사이드바 폭을 확보해 w-full + ml-64 가로 넘침을 막는다. */}
       <main
         className={[
-          'nh-main-content min-h-screen min-w-0 p-0 w-full max-w-[100vw] overflow-x-hidden transition-[margin,width,max-width] duration-200 ease-out',
-          sidebarCollapsed
-            ? 'lg:ml-0 lg:w-full lg:max-w-[100vw]'
-            : 'lg:ml-64 lg:w-[calc(100%-16rem)] lg:max-w-[calc(100vw-16rem)]',
+          'nh-main-content box-border min-h-screen min-w-0 w-full max-w-full overflow-x-hidden',
+          sidebarCollapsed ? '' : 'lg:pl-64',
         ].join(' ')}
         style={{ marginTop: HEADER_HEIGHT }}
       >

@@ -41,7 +41,7 @@ export default function NursingHomeMenu() {
   const makeGroupKey = (section: string, group: string) => `${section}::${group}`;
 
   return (
-    <nav className="w-64 h-full bg-white p-4">
+    <nav className="w-full min-w-0 h-full bg-white p-4">
       {/* 메뉴 검색 */}
       <div className="mb-3">
         <input
