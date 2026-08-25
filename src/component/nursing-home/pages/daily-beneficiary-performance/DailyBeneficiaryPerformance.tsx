@@ -23,7 +23,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTabRefresh } from '../../hooks/useTabRefresh';
-import { mealSnackStatusFromOutingFields } from '../../../../lib/applyMealSnackByPresence';
 
 /**
  * 식사종류(PH_MEAL_KIND / ST_KIND) 코드 → 표시명
@@ -47,6 +46,28 @@ const MEAL_KIND_LABEL_BY_CODE: Record<string, string> = Object.fromEntries(
 function mealKindLabel(code: string | null | undefined): string {
 	const key = String(code ?? '').trim();
 	return MEAL_KIND_LABEL_BY_CODE[key] || '';
+}
+
+function fieldCls(editing: boolean) {
+	return `h-8 w-full rounded-md border px-2 text-sm text-blue-900 disabled:opacity-100 disabled:text-blue-900 ${
+		editing
+			? 'border-blue-300 bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-400'
+			: 'border-transparent bg-transparent appearance-none'
+	}`;
+}
+
+function timeCls(editing: boolean) {
+	return `h-7 w-[5.75rem] shrink-0 rounded-md border px-1 text-xs tabular-nums text-blue-900 disabled:opacity-100 disabled:text-blue-900 ${
+		editing
+			? 'border-blue-300 bg-white focus:border-blue-500 focus:outline-none'
+			: 'border-blue-200 bg-white/80'
+	}`;
+}
+
+function chkCls(editing: boolean, on: boolean) {
+	return `h-4 w-4 shrink-0 accent-blue-600 ${editing ? 'cursor-pointer' : 'pointer-events-none'} ${
+		!editing && on ? 'disabled-checked-blue' : ''
+	}`;
 }
 
 /**
@@ -80,17 +101,15 @@ function SnackStatusCheck({
 				}}
 				onMouseLeave={() => setHoverRect(null)}
 			>
-				<label className="flex items-center gap-1">
+				<label className={`flex items-center gap-1 ${editing ? 'cursor-pointer' : ''}`}>
 					<input
 						type="checkbox"
 						checked={checked}
 						onChange={(e) => onCheckedChange(e.target.checked)}
 						disabled={!editing}
-						className={`${editing ? 'cursor-pointer' : 'pointer-events-none'} ${
-							!editing && checked ? 'disabled-checked-blue' : ''
-						}`}
+						className={chkCls(editing, checked)}
 					/>
-					<span className="text-xs">{label}</span>
+					<span className="text-xs text-blue-900 whitespace-nowrap">{label}</span>
 				</label>
 			</span>
 			{typeof document !== 'undefined' &&
@@ -411,6 +430,10 @@ function gynDisplayText(row: PerformanceData, dateYmd?: string): string {
 	return gynLabel(row.gyn);
 }
 
+function asMealSnackFlag(v: unknown): string {
+	return String(v ?? '').trim() === '2' ? '2' : '1';
+}
+
 /**
  * `/api/f14020` 목록 행을 {@link PerformanceData}로 매핑합니다.
  *
@@ -451,15 +474,15 @@ function mapApiItemToPerformance(item: any, index: number): PerformanceData {
 		overnightLeaveDate: overnightOngoing ? times.overnightLeaveDate || '' : '',
 		overnightLeaveTime: overnightOngoing ? times.start || '' : '',
 		mealStatus: {
-			breakfast: item.MOST || '1',
-			lunch: item.LCST || '1',
-			dinner: item.DNST || '1'
+			breakfast: asMealSnackFlag(item.MOST),
+			lunch: asMealSnackFlag(item.LCST),
+			dinner: asMealSnackFlag(item.DNST)
 		},
 		specialNotes: item.ST_ETC || '',
 		snackStatus: {
-			morning: item.MGST || '1',
-			afternoon: item.AGST || '1',
-			evening: item.DGST || '1'
+			morning: asMealSnackFlag(item.MGST),
+			afternoon: asMealSnackFlag(item.AGST),
+			evening: asMealSnackFlag(item.DGST)
 		},
 		snackNames: {
 			morning: String(item.MGVOL ?? '').trim(),
@@ -770,9 +793,7 @@ export default function DailyBeneficiaryPerformance() {
 				alert('외박 시 나간 시간을 입력해주세요.');
 				return;
 			}
-			// 저장 시 외출/외박 시각 기준으로 식사·간식 체크 반영
-			const rowToSave = withAutoMealSnack(row);
-			const payload = buildMealSavePayload(rowToSave);
+			const payload = buildMealSavePayload(row);
 			try {
 				const saveRes = await fetch('/api/f14020', {
 					method: 'POST',
@@ -788,11 +809,11 @@ export default function DailyBeneficiaryPerformance() {
 					prev.map((r) =>
 						r.id === id
 							? {
-									...rowToSave,
+									...row,
 									payComGu: payload.payComGu,
-									gynStartTime: rowToSave.gyn === '0' || rowToSave.gyn === '2' ? rowToSave.gynStartTime : '',
-									gynEndTime: rowToSave.gyn === '0' ? rowToSave.gynEndTime : '',
-									returnTime: rowToSave.returnTime || ''
+									gynStartTime: row.gyn === '0' || row.gyn === '2' ? row.gynStartTime : '',
+									gynEndTime: row.gyn === '0' ? row.gynEndTime : '',
+									returnTime: row.returnTime || ''
 								}
 							: r
 					)
@@ -805,16 +826,13 @@ export default function DailyBeneficiaryPerformance() {
 				alert('저장 중 오류가 발생했습니다.');
 			}
 		} else {
-			// 수정 버튼: 진입 시 외출/외박 시각 기준으로 식사·간식 체크
 			const row = combinedData.find((r) => r.id === id);
 			if (row?.pnum && !isInServicePeriod(row, selectedDate)) {
 				alert('입·퇴소 기간(서비스 제공일)이 아닌 날에는 입력할 수 없습니다.');
 				return;
 			}
 			if (row) {
-				const adjusted = withAutoMealSnack(row);
-				setCombinedData((prev) => prev.map((r) => (r.id === id ? adjusted : r)));
-				setEditingBackup(JSON.parse(JSON.stringify(adjusted)) as PerformanceData);
+				setEditingBackup(JSON.parse(JSON.stringify(row)) as PerformanceData);
 			} else {
 				setEditingBackup(null);
 			}
@@ -862,12 +880,6 @@ export default function DailyBeneficiaryPerformance() {
 		setEditingRowId(newRow.id); // 새로 추가된 행을 수정 모드로 설정
 		setEditingBackup(JSON.parse(JSON.stringify(newRow)) as PerformanceData);
 		setCurrentPage(1); // 첫 페이지로 이동
-	};
-
-	/** 외출/외박 시각 기준 식사·간식 체크 (수정 진입·저장 시에만 사용) */
-	const withAutoMealSnack = <T extends PerformanceData>(row: T): T => {
-		const { mealStatus, snackStatus } = mealSnackStatusFromOutingFields(row);
-		return { ...row, mealStatus, snackStatus };
 	};
 
 	const applyGynChange = (rowId: number, nextGyn: string) => {
@@ -1812,32 +1824,30 @@ export default function DailyBeneficiaryPerformance() {
 	};
 
 	return (
-		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-blue-900">
 			<div className="mx-auto w-full max-w-full min-w-0 p-3 sm:p-4">
 				{/* 상단: 날짜 네비게이션 */}
-				<div className="mb-4 flex flex-col gap-3 border-b border-blue-200 pb-3 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
+				<div className="mb-3 flex flex-col gap-3 border-b border-blue-200 pb-3 lg:flex-row lg:items-center lg:justify-between">
 					{/* 날짜 네비게이션 */}
-					<div className="flex flex-wrap items-center justify-center gap-2 sm:gap-4 lg:flex-1">
-						<button 
+					<div className="flex flex-wrap items-center justify-center gap-2 lg:justify-start">
+						<button
 							onClick={() => handleDateChange(-1)}
-							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
+							className="inline-flex h-9 w-9 items-center justify-center text-sm border border-blue-300 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-900"
+							aria-label="이전일"
 						>
 							<span>◀</span>
-							{/* <span>이전일</span> */}
 						</button>
-						<div className="flex items-center gap-2">
-							<input
-								type="date"
-								value={selectedDate}
-								onChange={(e) => setSelectedDate(e.target.value)}
-								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white text-blue-900"
-							/>
-						</div>
-						<button 
+						<input
+							type="date"
+							value={selectedDate}
+							onChange={(e) => setSelectedDate(e.target.value)}
+							className="h-9 px-3 text-sm border border-blue-300 rounded-md bg-white text-blue-900"
+						/>
+						<button
 							onClick={() => handleDateChange(1)}
-							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
+							className="inline-flex h-9 w-9 items-center justify-center text-sm border border-blue-300 rounded-md bg-blue-100 hover:bg-blue-200 text-blue-900"
+							aria-label="다음일"
 						>
-							{/* <span>다음일</span> */}
 							<span>▶</span>
 						</button>
 					</div>
@@ -1847,7 +1857,7 @@ export default function DailyBeneficiaryPerformance() {
 							type="button"
 							onClick={handleBulkAddAdmittedMembers}
 							disabled={bulkAdding}
-							className="px-4 py-1.5 text-sm border border-green-500 rounded bg-green-200 hover:bg-green-300 text-green-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+							className="h-9 px-3 text-sm border border-green-500 rounded-md bg-green-200 hover:bg-green-300 text-green-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							{bulkAdding ? '전체추가 중...' : '전체추가'}
 						</button>
@@ -1855,7 +1865,7 @@ export default function DailyBeneficiaryPerformance() {
 							type="button"
 							onClick={handleOpenOvernightReturnModal}
 							disabled={loading || bulkAdding || savingOvernightReturn || combinedData.length === 0}
-							className="px-4 py-1.5 text-sm border border-amber-500 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+							className="h-9 px-3 text-sm border border-amber-500 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							외박 수급자 복귀 처리
 						</button>
@@ -1863,7 +1873,7 @@ export default function DailyBeneficiaryPerformance() {
 							type="button"
 							onClick={handlePrintDaily}
 							disabled={loading || combinedData.length === 0}
-							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+							className="h-9 px-3 text-sm border border-blue-400 rounded-md bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							일자별 출력
 						</button>
@@ -1871,7 +1881,7 @@ export default function DailyBeneficiaryPerformance() {
 							type="button"
 							onClick={handleOpenMemberPrintModal}
 							disabled={loading || combinedData.length === 0}
-							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+							className="h-9 px-3 text-sm border border-blue-400 rounded-md bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							수급자별 출력
 						</button>
@@ -1879,7 +1889,7 @@ export default function DailyBeneficiaryPerformance() {
 							type="button"
 							onClick={handlePrintMonthly}
 							disabled={loading || printingMonthly || combinedData.length === 0}
-							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+							className="h-9 px-3 text-sm border border-blue-400 rounded-md bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							{printingMonthly ? '조회 중...' : '월식사상태 출력'}
 						</button>
@@ -1887,23 +1897,34 @@ export default function DailyBeneficiaryPerformance() {
 				</div>
 
 				{/* 통합 테이블: 수급자 목록 + 실적 등록 — 표 영역만 가로 스크롤 */}
-				<div className="w-full max-w-full min-w-0 border border-blue-300 rounded-lg bg-white shadow-sm">
-					<div className="bg-blue-100 border-b border-blue-300 px-4 py-2">
-						<h2 className="text-lg font-semibold text-blue-900">일 수급자급여실적 등록</h2>
+				<div className="w-full max-w-full min-w-0 overflow-hidden border border-blue-300 rounded-lg bg-white shadow-sm">
+					<div className="bg-blue-100 border-b border-blue-300 px-4 py-2.5">
+						<h2 className="text-base font-semibold text-blue-900">일 수급자급여실적 등록</h2>
 					</div>
 					<div className="block w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain">
-						<table className="text-sm min-w-[1400px] w-max max-w-none">
-							<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
+						<table className="w-full min-w-[1120px] table-fixed border-collapse text-sm">
+							<colgroup>
+								<col className="w-14" />
+								<col className="w-40" />
+								<col className="w-28" />
+								<col className="w-36" />
+								<col className="w-[220px]" />
+								<col className="w-[118px]" />
+								<col className="w-[148px]" />
+								<col />
+								<col className="w-[132px]" />
+							</colgroup>
+							<thead className="bg-blue-100">
 								<tr>
-									<th className="sticky left-0 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">연번</th>
-									<th className="sticky left-10 z-20 bg-blue-50 text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">수급자명(생년월일)</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-32">식사장소</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-40">식사종류</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 min-w-[320px]">입원/외출/외박</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">식사상태</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200">간식상태</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold border-r border-blue-200 w-80">특이사항</th>
-									<th className="text-center px-3 py-2 text-blue-900 font-semibold">작업</th>
+									<th className="sticky left-0 z-20 bg-blue-100 text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">연번</th>
+									<th className="sticky left-14 z-20 bg-blue-100 text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">수급자명(생년월일)</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">식사장소</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">식사종류</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">입원/외출/외박</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">식사상태</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">간식상태</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">특이사항</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-blue-200">작업</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -1924,107 +1945,112 @@ export default function DailyBeneficiaryPerformance() {
 									const { isAdmitDay, isDischargeDay, isAdmitOrDischargeDay } =
 										getAdmitDischargeFlags(row, selectedDate);
 									const isOvernightOngoing = !!row.overnightOngoing;
+									const editing = editingRowId === row.id;
+									const rowTone = isAdmitOrDischargeDay
+										? 'bg-amber-50'
+										: isOvernightOngoing
+											? 'bg-emerald-50'
+											: selectedMember === row.id
+												? 'bg-sky-50'
+												: 'bg-white';
+									const rowHover = isAdmitOrDischargeDay
+										? 'hover:bg-amber-100 group-hover:bg-amber-100'
+										: isOvernightOngoing
+											? 'hover:bg-emerald-100 group-hover:bg-emerald-100'
+											: 'hover:bg-blue-50 group-hover:bg-blue-50';
 									return (
-									<tr 
-										key={row.id} 
-										className={`border-b border-blue-50 ${
-											isAdmitOrDischargeDay
-												? 'bg-yellow-100 hover:bg-yellow-200'
-												: isOvernightOngoing
-													? 'bg-green-100 hover:bg-green-200'
-													: selectedMember === row.id
-														? 'bg-blue-100 hover:bg-blue-50'
-														: 'hover:bg-blue-50'
-										}`}
+									<tr
+										key={row.id}
+										className={`group border-b border-blue-100 ${rowTone} ${rowHover}`}
 										onClick={() => setSelectedMember(row.id)}
 									>
 										{/* 연번 */}
-										<td className="sticky left-0 z-10 bg-white text-center px-3 py-3 border-r border-blue-100">{row.serialNo}</td>
+										<td className={`sticky left-0 z-10 ${rowTone} ${rowHover} text-center px-2 py-2.5 border-r border-blue-100 tabular-nums text-blue-900`}>
+											{row.serialNo}
+										</td>
 										{/* 수급자명(생년월일) */}
-										<td className="sticky left-10 z-10 bg-white text-center px-3 py-3 border-r border-blue-100 relative w-32">
-											<div className="flex flex-col">
-												<input
-													ref={(el) => {
-														if (el) {
-															searchInputRefs.current[row.id] = el;
-														} else {
-															delete searchInputRefs.current[row.id];
-														}
-													}}
-													type="text"
-													value={row.name || ''}
-													placeholder="수급자명 검색"
-													onChange={(e) => {
-														const newData = combinedData.map(r => 
-															r.id === row.id ? { ...r, name: e.target.value } : r
-														);
-														setCombinedData(newData);
-														// 타이핑할 때마다 검색 실행 (수정 모드일 때만)
-														if (editingRowId === row.id) {
+										<td className={`sticky left-14 z-10 ${rowTone} ${rowHover} text-center px-2 py-2.5 border-r border-blue-100 relative shadow-[2px_0_6px_rgba(30,64,175,0.06)]`}>
+											{editing ? (
+												<div className="flex flex-col items-center gap-0.5">
+													<input
+														ref={(el) => {
+															if (el) {
+																searchInputRefs.current[row.id] = el;
+															} else {
+																delete searchInputRefs.current[row.id];
+															}
+														}}
+														type="text"
+														value={row.name || ''}
+														placeholder="수급자명 검색"
+														onChange={(e) => {
+															const newData = combinedData.map(r =>
+																r.id === row.id ? { ...r, name: e.target.value } : r
+															);
+															setCombinedData(newData);
 															if (e.target.value.trim().length > 0) {
 																handleSearchMember(row.id, e.target.value);
 															} else {
 																setSearchResults(prev => ({ ...prev, [row.id]: [] }));
 																setShowSearchResults(prev => ({ ...prev, [row.id]: false }));
 															}
-														}
-													}}
-													disabled={editingRowId !== row.id}
-													onClick={(e) => e.stopPropagation()}
-													onFocus={() => {
-														if (editingRowId === row.id && row.name && row.name.trim().length > 0) {
-															handleSearchMember(row.id, row.name);
-														}
-													}}
-													onBlur={() => {
-														// 포커스를 잃을 때 약간의 지연 후 드롭다운 닫기
-														setTimeout(() => {
-															setShowSearchResults(prev => ({ ...prev, [row.id]: false }));
-														}, 200);
-													}}
-													className={`w-full px-2 py-1 border border-blue-300 rounded ${
-														editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-													}`}
-												/>
-												{row.birthDate && (
-													<span className="text-xs text-gray-500 mt-1">({row.birthDate})</span>
-												)}
-											</div>
+														}}
+														onClick={(e) => e.stopPropagation()}
+														onFocus={() => {
+															if (row.name && row.name.trim().length > 0) {
+																handleSearchMember(row.id, row.name);
+															}
+														}}
+														onBlur={() => {
+															setTimeout(() => {
+																setShowSearchResults(prev => ({ ...prev, [row.id]: false }));
+															}, 200);
+														}}
+														className={fieldCls(true)}
+													/>
+													{row.birthDate ? (
+														<span className="text-[11px] text-blue-900/55">({row.birthDate})</span>
+													) : null}
+												</div>
+											) : (
+												<div className="flex flex-col items-center leading-tight">
+													<span className="w-full truncate font-medium text-blue-900">{row.name || '-'}</span>
+													{row.birthDate ? (
+														<span className="text-[11px] text-blue-900/55">({row.birthDate})</span>
+													) : null}
+												</div>
+											)}
 										</td>
 										{/* 식사장소 */}
-										<td className="text-center px-3 py-3 border-r border-blue-100 w-32">
-											<input 
-												type="text" 
+										<td className="text-center px-2 py-2.5 border-r border-blue-100">
+											<input
+												type="text"
 												value={row.mealLocation}
-												placeholder="식사장소 입력"
+												placeholder={editing ? '식사장소 입력' : ''}
 												onChange={(e) => {
-													const newData = combinedData.map(r => 
+													const newData = combinedData.map(r =>
 														r.id === row.id ? { ...r, mealLocation: e.target.value } : r
 													);
 													setCombinedData(newData);
 												}}
-												disabled={editingRowId !== row.id}
+												disabled={!editing}
 												onClick={(e) => e.stopPropagation()}
-												className={`w-full px-2 py-1 border border-blue-300 rounded ${
-													editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
+												className={fieldCls(editing)}
 											/>
 										</td>
 										{/* 식사종류 (PH_MEAL_KIND) */}
-										<td className="text-center px-3 py-3 border-r border-blue-100 w-40">
-											<select 
+										<td className="text-center px-2 py-2.5 border-r border-blue-100">
+											<select
 												value={row.mealType}
 												onChange={(e) => {
-													const newData = combinedData.map(r => 
+													const newData = combinedData.map(r =>
 														r.id === row.id ? { ...r, mealType: e.target.value } : r
 													);
 													setCombinedData(newData);
 												}}
-												disabled={editingRowId !== row.id}
+												disabled={!editing}
 												onClick={(e) => e.stopPropagation()}
-												className={`w-full px-2 py-1 border border-blue-300 rounded ${
-													editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
+												className={fieldCls(editing)}
 											>
 												{MEAL_KIND_OPTIONS.map((opt) => (
 													<option key={opt.value} value={opt.value}>
@@ -2034,7 +2060,7 @@ export default function DailyBeneficiaryPerformance() {
 											</select>
 										</td>
 										{/* 입원/외출/외박 (GYN) — 입·퇴소/외박중은 문구만 표시 */}
-										<td className="text-center px-3 py-3 border-r border-blue-100 min-w-[320px]">
+										<td className="text-center px-2 py-2.5 border-r border-blue-100">
 											<div className="flex flex-col items-center gap-1" onClick={(e) => e.stopPropagation()}>
 												{isAdmitOrDischargeDay ? (
 													<>
@@ -2063,74 +2089,69 @@ export default function DailyBeneficiaryPerformance() {
 													</div>
 												) : (
 													<>
-														<div className="flex justify-center gap-1 flex-wrap">
-															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+														<div className="flex justify-center gap-2.5">
+															<label className={`inline-flex items-center gap-1 ${editing ? 'cursor-pointer' : ''}`}>
 																<input
 																	type="checkbox"
 																	checked={row.gyn === '0'}
 																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '0' : '')}
-																	disabled={editingRowId !== row.id}
-																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '0' ? "disabled-checked-blue" : ""}`}
+																	disabled={!editing}
+																	className={chkCls(editing, row.gyn === '0')}
 																/>
-																<span className="text-xs">외출</span>
+																<span className="text-xs text-blue-900">외출</span>
 															</label>
-															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+															<label className={`inline-flex items-center gap-1 ${editing ? 'cursor-pointer' : ''}`}>
 																<input
 																	type="checkbox"
 																	checked={row.gyn === '1'}
 																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '1' : '')}
-																	disabled={editingRowId !== row.id}
-																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '1' ? "disabled-checked-blue" : ""}`}
+																	disabled={!editing}
+																	className={chkCls(editing, row.gyn === '1')}
 																/>
-																<span className="text-xs">입원</span>
+																<span className="text-xs text-blue-900">입원</span>
 															</label>
-															<label className={`flex items-center justify-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
+															<label className={`inline-flex items-center gap-1 ${editing ? 'cursor-pointer' : ''}`}>
 																<input
 																	type="checkbox"
 																	checked={row.gyn === '2'}
 																	onChange={(e) => applyGynChange(row.id, e.target.checked ? '2' : '')}
-																	disabled={editingRowId !== row.id}
-																	className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.gyn === '2' ? "disabled-checked-blue" : ""}`}
+																	disabled={!editing}
+																	className={chkCls(editing, row.gyn === '2')}
 																/>
-																<span className="text-xs">외박</span>
+																<span className="text-xs text-blue-900">외박</span>
 															</label>
 														</div>
 														{row.gyn === '0' && (
-															<div className="flex flex-col items-center gap-0.5">
-																<div className="flex items-center gap-1 whitespace-nowrap">
-																	<input
-																		type="time"
-																		value={row.gynStartTime || ''}
-																		onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
-																		disabled={editingRowId !== row.id}
-																		className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
-																			editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-																		}`}
-																	/>
-																	<span className="text-xs text-blue-900/70 shrink-0">~</span>
-																	<input
-																		type="time"
-																		value={row.gynEndTime || ''}
-																		onChange={(e) => applyGynTimeChange(row.id, 'gynEndTime', e.target.value)}
-																		disabled={editingRowId !== row.id}
-																		className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
-																			editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-																		}`}
-																	/>
-																</div>
+															<div className="flex items-center gap-1">
+																<input
+																	type="time"
+																	lang="en-GB"
+																	value={row.gynStartTime || ''}
+																	onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
+																	disabled={!editing}
+																	className={timeCls(editing)}
+																/>
+																<span className="text-xs text-blue-900/50 shrink-0">~</span>
+																<input
+																	type="time"
+																	lang="en-GB"
+																	value={row.gynEndTime || ''}
+																	onChange={(e) => applyGynTimeChange(row.id, 'gynEndTime', e.target.value)}
+																	disabled={!editing}
+																	className={timeCls(editing)}
+																/>
 															</div>
 														)}
 														{row.gyn === '2' && (
-															<div className="flex items-center gap-1 whitespace-nowrap">
+															<div className="flex items-center gap-1">
 																<span className="text-xs text-blue-900/70 shrink-0">나감</span>
 																<input
 																	type="time"
+																	lang="en-GB"
 																	value={row.gynStartTime || ''}
 																	onChange={(e) => applyGynTimeChange(row.id, 'gynStartTime', e.target.value)}
-																	disabled={editingRowId !== row.id}
-																	className={`min-w-[9rem] w-[9rem] px-1 py-0.5 text-xs border border-blue-300 rounded ${
-																		editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-																	}`}
+																	disabled={!editing}
+																	className={timeCls(editing)}
 																/>
 															</div>
 														)}
@@ -2143,68 +2164,80 @@ export default function DailyBeneficiaryPerformance() {
 													</>
 												)}
 												{row.payComGu === '1' && (
-													<span className="text-xs font-semibold text-red-600">급여50%적용</span>
+													<span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold text-red-700 bg-red-50">급여50%적용</span>
 												)}
 											</div>
 										</td>
 										{/* 식사상태 */}
-										<td className="text-center px-3 py-3 border-r border-blue-100">
-											<div className="flex justify-center gap-3" onClick={(e) => e.stopPropagation()}>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
+										<td className="text-center px-2 py-2.5 border-r border-blue-100">
+											<div className="flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+												<label className={`inline-flex items-center gap-0.5 ${editing ? 'cursor-pointer' : ''}`}>
+													<input
+														type="checkbox"
 														checked={row.mealStatus.breakfast === '1'}
 														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, mealStatus: { ...r.mealStatus, breakfast: e.target.checked ? '1' : '2' } } : r
+															const next = e.target.checked ? '1' : '2';
+															setCombinedData((prev) =>
+																prev.map((r) =>
+																	r.id === row.id
+																		? { ...r, mealStatus: { ...r.mealStatus, breakfast: next } }
+																		: r
+																)
 															);
-															setCombinedData(newData);
 														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.mealStatus.breakfast === '1' ? "disabled-checked-blue" : ""}`}
+														disabled={!editing}
+														className={chkCls(editing, row.mealStatus.breakfast === '1')}
 													/>
-													<span className="text-xs">조</span>
+													<span className="text-xs text-blue-900">조</span>
 												</label>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
+												<label className={`inline-flex items-center gap-0.5 ${editing ? 'cursor-pointer' : ''}`}>
+													<input
+														type="checkbox"
 														checked={row.mealStatus.lunch === '1'}
 														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, mealStatus: { ...r.mealStatus, lunch: e.target.checked ? '1' : '2' } } : r
+															const next = e.target.checked ? '1' : '2';
+															setCombinedData((prev) =>
+																prev.map((r) =>
+																	r.id === row.id
+																		? { ...r, mealStatus: { ...r.mealStatus, lunch: next } }
+																		: r
+																)
 															);
-															setCombinedData(newData);
 														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.mealStatus.lunch === '1' ? "disabled-checked-blue" : ""}`}
+														disabled={!editing}
+														className={chkCls(editing, row.mealStatus.lunch === '1')}
 													/>
-													<span className="text-xs">중</span>
+													<span className="text-xs text-blue-900">중</span>
 												</label>
-												<label className={`flex items-center gap-1 ${editingRowId === row.id ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
-													<input 
-														type="checkbox" 
+												<label className={`inline-flex items-center gap-0.5 ${editing ? 'cursor-pointer' : ''}`}>
+													<input
+														type="checkbox"
 														checked={row.mealStatus.dinner === '1'}
 														onChange={(e) => {
-															const newData = combinedData.map(r => 
-																r.id === row.id ? { ...r, mealStatus: { ...r.mealStatus, dinner: e.target.checked ? '1' : '2' } } : r
+															const next = e.target.checked ? '1' : '2';
+															setCombinedData((prev) =>
+																prev.map((r) =>
+																	r.id === row.id
+																		? { ...r, mealStatus: { ...r.mealStatus, dinner: next } }
+																		: r
+																)
 															);
-															setCombinedData(newData);
 														}}
-														disabled={editingRowId !== row.id}
-														className={`${editingRowId === row.id ? "cursor-pointer" : "cursor-not-allowed"} ${editingRowId !== row.id && row.mealStatus.dinner === '1' ? "disabled-checked-blue" : ""}`}
+														disabled={!editing}
+														className={chkCls(editing, row.mealStatus.dinner === '1')}
 													/>
-													<span className="text-xs">석</span>
+													<span className="text-xs text-blue-900">석</span>
 												</label>
 											</div>
 										</td>
 										{/* 간식상태 — 체크된 항목만 MGVOL/AGVOL/DGVOL 호버 표시 */}
-										<td className="text-center px-3 py-3 border-r border-blue-100">
-											<div className="flex justify-center gap-3" onClick={(e) => e.stopPropagation()}>
+										<td className="text-center px-2 py-2.5 border-r border-blue-100">
+											<div className="flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
 												<SnackStatusCheck
 													label="오전"
 													checked={row.snackStatus.morning === '1'}
 													snackName={row.snackNames?.morning}
-													editing={editingRowId === row.id}
+													editing={editing}
 													onCheckedChange={(checked) => {
 														setCombinedData((prev) =>
 															prev.map((r) =>
@@ -2225,7 +2258,7 @@ export default function DailyBeneficiaryPerformance() {
 													label="오후"
 													checked={row.snackStatus.afternoon === '1'}
 													snackName={row.snackNames?.afternoon}
-													editing={editingRowId === row.id}
+													editing={editing}
 													onCheckedChange={(checked) => {
 														setCombinedData((prev) =>
 															prev.map((r) =>
@@ -2246,7 +2279,7 @@ export default function DailyBeneficiaryPerformance() {
 													label="저녁"
 													checked={row.snackStatus.evening === '1'}
 													snackName={row.snackNames?.evening}
-													editing={editingRowId === row.id}
+													editing={editing}
 													onCheckedChange={(checked) => {
 														setCombinedData((prev) =>
 															prev.map((r) =>
@@ -2265,42 +2298,40 @@ export default function DailyBeneficiaryPerformance() {
 												/>
 											</div>
 										</td>
-										<td className="text-center px-3 py-3 border-r border-blue-100 w-80">
-											<input 
-												type="text" 
+										<td className="px-2 py-2.5 border-r border-blue-100">
+											<input
+												type="text"
 												value={row.specialNotes}
-												placeholder="특이사항 입력"
+												placeholder={editing ? '특이사항 입력' : ''}
 												onChange={(e) => {
-													const newData = combinedData.map(r => 
+													const newData = combinedData.map(r =>
 														r.id === row.id ? { ...r, specialNotes: e.target.value } : r
 													);
 													setCombinedData(newData);
 												}}
-												disabled={editingRowId !== row.id}
+												disabled={!editing}
 												onClick={(e) => e.stopPropagation()}
-												className={`w-full px-2 py-1 border border-blue-300 rounded ${
-													editingRowId === row.id ? 'bg-white' : 'bg-gray-100 cursor-not-allowed'
-												}`}
+												className={fieldCls(editing)}
 											/>
 										</td>
-										<td className="text-center px-3 py-3">
-											<div className="flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+										<td className="text-center px-2 py-2.5">
+											<div className="flex justify-center gap-1.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
 												<button
 													onClick={() => handleEditClick(row.id)}
-													disabled={!!row.pnum && !isInServicePeriod(row, selectedDate) && editingRowId !== row.id}
-													className={`px-3 py-1 text-xs border rounded font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
-														editingRowId === row.id
+													disabled={!!row.pnum && !isInServicePeriod(row, selectedDate) && !editing}
+													className={`h-7 min-w-[3.25rem] px-2.5 text-xs border rounded-md font-medium disabled:opacity-50 disabled:cursor-not-allowed ${
+														editing
 															? 'border-green-400 bg-green-200 hover:bg-green-300 text-green-900'
 															: 'border-blue-400 bg-blue-200 hover:bg-blue-300 text-blue-900'
 													}`}
 												>
-													{editingRowId === row.id ? '저장' : '수정'}
+													{editing ? '저장' : '수정'}
 												</button>
-												{editingRowId === row.id ? (
+												{editing ? (
 													<button
 														type="button"
 														onClick={() => handleCancelEdit(row.id)}
-														className="px-3 py-1 text-xs border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium"
+														className="h-7 min-w-[3.25rem] px-2.5 text-xs border border-gray-400 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium"
 													>
 														취소
 													</button>
@@ -2308,7 +2339,7 @@ export default function DailyBeneficiaryPerformance() {
 													<button
 														type="button"
 														onClick={() => handleDeleteRow(row.id)}
-														className="px-3 py-1 text-xs border border-red-400 rounded bg-red-200 hover:bg-red-300 text-red-900 font-medium"
+														className="h-7 min-w-[3.25rem] px-2.5 text-xs border border-red-400 rounded-md bg-red-100 hover:bg-red-200 text-red-800 font-medium"
 													>
 														삭제
 													</button>
@@ -2381,7 +2412,7 @@ export default function DailyBeneficiaryPerformance() {
 				<div className="flex justify-center mt-4">
 					<button
 						onClick={handleAddRow}
-						className="px-6 py-2 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+						className="h-9 px-6 text-sm border border-blue-400 rounded-md bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
 					>
 						추가
 					</button>
