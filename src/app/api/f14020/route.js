@@ -1172,7 +1172,6 @@ export async function DELETE(req) {
 				console.warn('F14020 삭제 → OUTING_INFO 동기화 경고:', syncErr);
 			}
 		}
-
 		return jsonOk({ success: true });
 	} catch (err) {
 		console.error('F14020 삭제 오류:', err);

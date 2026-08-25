@@ -5,6 +5,7 @@
  *
  * @description
  * 요양원 월 급여명세서 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/monthly-salary-statement
+ * 비급여 식대·간식은 계약의 식대 1회·간식비 1회가 있는 수급자에게만 합산합니다. 저녁 간식은 제공 기록만 하고 부담금에 넣지 않습니다.
  *
  * @module component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatement
  */

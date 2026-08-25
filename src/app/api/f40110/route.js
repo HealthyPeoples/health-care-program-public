@@ -32,6 +32,7 @@ function mapRow(r) {
 		P_GRD: r.P_GRD != null ? String(r.P_GRD).trim() : '',
 		USRGU: r.USRGU != null ? String(r.USRGU).trim() : '',
 		P_YYNO: r.P_YYNO != null ? String(r.P_YYNO).trim() : '',
+		DGST: r.DGST != null ? String(r.DGST).trim() : '',
 	};
 }
 
@@ -69,21 +70,26 @@ export async function GET(req) {
 
 		const result = await request.query(`
       SELECT
-        [ANCD], [SALMM], [PNUM],
+        t.[ANCD], t.[SALMM], t.[PNUM],
         CASE
-          WHEN TRY_CONVERT(date, [SVDT]) IS NOT NULL
-          THEN CONVERT(varchar(10), TRY_CONVERT(date, [SVDT]), 23)
-          ELSE LEFT(LTRIM(RTRIM(CAST([SVDT] AS varchar(30)))), 10)
+          WHEN TRY_CONVERT(date, t.[SVDT]) IS NOT NULL
+          THEN CONVERT(varchar(10), TRY_CONVERT(date, t.[SVDT]), 23)
+          ELSE LEFT(LTRIM(RTRIM(CAST(t.[SVDT] AS varchar(30)))), 10)
         END AS [SVDT],
-        [SALTM], [SALAMT], [BSABAMT],
-        [MOAMT], [AFAMT], [EVAMT], [AMAMT], [PMAMT], [EMAMT],
-        [MEGAMT], [DOCAMT], [PREAMT], [ETC], [INDT], [ESAMT],
-        [P_GRD], [USRGU], [INSPER], [USRPER], [P_YYNO], [SAL1], [SAL2]
-      FROM ${TABLE}
-      WHERE [ANCD] = @sessionAncd
-        AND LTRIM(RTRIM([SALMM])) = LTRIM(RTRIM(@salmm))
-        AND CAST([PNUM] AS VARCHAR(30)) = @pnum
-      ORDER BY TRY_CONVERT(date, [SVDT]) ASC
+        t.[SALTM], t.[SALAMT], t.[BSABAMT],
+        t.[MOAMT], t.[AFAMT], t.[EVAMT], t.[AMAMT], t.[PMAMT], t.[EMAMT],
+        t.[MEGAMT], t.[DOCAMT], t.[PREAMT], t.[ETC], t.[INDT], t.[ESAMT],
+        t.[P_GRD], t.[USRGU], t.[INSPER], t.[USRPER], t.[P_YYNO], t.[SAL1], t.[SAL2],
+        f.[DGST]
+      FROM ${TABLE} t
+      LEFT JOIN [돌봄시설DB].[dbo].[F14020] f
+        ON CAST(f.[ANCD] AS VARCHAR(30)) = CAST(t.[ANCD] AS VARCHAR(30))
+       AND CAST(f.[PNUM] AS VARCHAR(30)) = CAST(t.[PNUM] AS VARCHAR(30))
+       AND TRY_CONVERT(date, f.[SVDT]) = TRY_CONVERT(date, t.[SVDT])
+      WHERE t.[ANCD] = @sessionAncd
+        AND LTRIM(RTRIM(t.[SALMM])) = LTRIM(RTRIM(@salmm))
+        AND CAST(t.[PNUM] AS VARCHAR(30)) = @pnum
+      ORDER BY TRY_CONVERT(date, t.[SVDT]) ASC
     `);
 
 		const data = (result.recordset || []).map(mapRow);

@@ -91,6 +91,7 @@ function mapDbToSalaryRow(r: Record<string, unknown>): SalaryRow {
 	const esal = num(r.ESAL);
 	const sumBs = b1 + b2 + b3 + b4 + b6 + b7 + b8 + b9;
 	/** 급여합계 = 공단부담금 + 수급자부담금 (V40100). 비급여는 수급자부담금합에만 포함 */
+	/** BSAL1/BSAL2 = 계약 식대·간식비 1회가 있는 수급자만. 저녁 간식은 미포함 */
 	const benefitTotal = sal1 + sal2;
 	const recipientTotal = sal2 + sumBs + esal;
 	return {
@@ -124,6 +125,7 @@ function mapDbToDetailForm(r: Record<string, unknown>): SalaryDetailForm {
 		recipientContribution: fmtAmt(num(r.SAL2)),
 		beautyCost: fmtAmt(num(r.BSAL4)),
 		nonBenefitMeal: fmtAmt(num(r.BSAL1)),
+		/** 계약 간식비 1회가 있는 수급자의 오전·오후만. 저녁은 제외 */
 		nonBenefitSnack: fmtAmt(num(r.BSAL2)),
 		otherCosts: fmtAmt(num(r.ESAL)),
 		otherCostDesc: String(r.ESALDES ?? ""),
@@ -985,7 +987,7 @@ export default function MonthlySalaryData() {
 								/>
 							</div>
 							<div className="flex items-center gap-2">
-								<label className={fieldLabelClass}>
+								<label className={fieldLabelClass} title="계약 간식비 1회가 있는 수급자만. 오전·오후 제공 시 계약 단가, 저녁은 미포함">
 									비급여간식
 								</label>
 								<input
@@ -1315,7 +1317,7 @@ export default function MonthlySalaryData() {
 											"저녁",
 											"오전간식",
 											"오후간식",
-											"저녁간식",
+											"저녁간식(제공)",
 											"촉탁진료",
 											"촉탁처방비",
 										].map((h) => (
@@ -1398,8 +1400,8 @@ export default function MonthlySalaryData() {
 													<td className="whitespace-nowrap border border-blue-200 px-2 py-1.5 text-right text-blue-900">
 														{formatAmountCell(row.PMAMT)}
 													</td>
-													<td className="whitespace-nowrap border border-blue-200 px-2 py-1.5 text-right text-blue-900">
-														{formatAmountCell(row.EMAMT)}
+													<td className="whitespace-nowrap border border-blue-200 px-2 py-1.5 text-center text-blue-900">
+														{String(row.DGST ?? "").trim() === "1" ? "○" : ""}
 													</td>
 													<td className="whitespace-nowrap border border-blue-200 px-2 py-1.5 text-right text-blue-900">
 														{formatAmountCell(row.DOCAMT)}

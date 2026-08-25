@@ -80,12 +80,14 @@ function SnackStatusCheck({
 	snackName,
 	editing,
 	onCheckedChange,
+	title,
 }: {
 	label: string;
 	checked: boolean;
 	snackName?: string;
 	editing: boolean;
 	onCheckedChange: (checked: boolean) => void;
+	title?: string;
 }) {
 	const tip = checked ? String(snackName || '').trim() : '';
 	const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
@@ -93,6 +95,7 @@ function SnackStatusCheck({
 	return (
 		<>
 			<span
+				title={title}
 				className={`inline-flex items-center gap-1 ${
 					tip ? 'cursor-help' : editing ? 'cursor-pointer' : 'cursor-not-allowed'
 				}`}
@@ -186,7 +189,10 @@ interface PerformanceData {
 	mealStatus: { breakfast: string; lunch: string; dinner: string };
 	/** 특이사항 ST_ETC */
 	specialNotes: string;
-	/** 오전/오후/저녁 간식 MGST, AGST, DGST: '1'=양호, '2'=이상 */
+	/**
+	 * 오전/오후/저녁 간식 MGST, AGST, DGST: '1'=제공, '2'=미제공.
+	 * 부담금 청구는 오전·오후만 각 1,000원. 저녁은 제공 기록만 하고 부담금에 넣지 않습니다.
+	 */
 	snackStatus: { morning: string; afternoon: string; evening: string };
 	/** 간식명 — F14020.MGVOL / AGVOL / DGVOL (호버 표시용) */
 	snackNames?: { morning: string; afternoon: string; evening: string };
@@ -1922,7 +1928,10 @@ export default function DailyBeneficiaryPerformance() {
 									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">식사종류</th>
 									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">입원/외출/외박</th>
 									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">식사상태</th>
-									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">간식상태</th>
+									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">
+										<div>간식상태</div>
+										{/* <div className="text-[10px] font-normal text-blue-900/60 leading-tight">청구: 오전·오후 각 1,000원</div> */}
+									</th>
 									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-r border-blue-200">특이사항</th>
 									<th className="text-center px-2 py-2.5 text-blue-900 font-semibold border-b border-blue-200">작업</th>
 								</tr>
@@ -2280,6 +2289,7 @@ export default function DailyBeneficiaryPerformance() {
 													checked={row.snackStatus.evening === '1'}
 													snackName={row.snackNames?.evening}
 													editing={editing}
+													title="저녁 간식은 제공 여부만 기록하며 부담금에 포함되지 않습니다."
 													onCheckedChange={(checked) => {
 														setCombinedData((prev) =>
 															prev.map((r) =>
