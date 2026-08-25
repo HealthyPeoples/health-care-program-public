@@ -1130,9 +1130,10 @@ export default function DailyBeneficiaryPerformance() {
 	const PERFORMANCE_PRINT_STYLES = `
 					@page {
 						size: A4;
-						margin: 10mm;
+						margin: 0;
 					}
-					body {
+					* { box-sizing: border-box; }
+					html, body {
 						font-family: 'Malgun Gothic', sans-serif;
 						font-size: 11pt;
 						margin: 0;
@@ -1140,6 +1141,7 @@ export default function DailyBeneficiaryPerformance() {
 					}
 					.print-section {
 						page-break-after: always;
+						padding: 10mm;
 					}
 					.print-section:last-of-type {
 						page-break-after: auto;
@@ -1185,16 +1187,35 @@ export default function DailyBeneficiaryPerformance() {
 						border: 1px solid #000;
 						font-size: 10pt;
 						margin-top: 10px;
+						table-layout: fixed;
 					}
 					.main-table th,
 					.main-table td {
 						border: 1px solid #000;
-						padding: 4px;
+						padding: 4px 2px;
 						text-align: center;
+						word-break: keep-all;
+						overflow-wrap: break-word;
 					}
 					.main-table th {
 						background-color: #f0f0f0;
 						font-weight: bold;
+					}
+					.col-date { width: 11%; }
+					.col-name { width: 10%; }
+					.col-birth { width: 8%; }
+					.col-gyn { width: 10%; }
+					.col-meal { width: 8.5%; }
+					.col-snack { width: 9.5%; }
+					.col-diet { width: 7%; }
+					.cell-date {
+						white-space: nowrap;
+						font-variant-numeric: tabular-nums;
+					}
+					.cell-gyn {
+						font-size: 8.5pt;
+						line-height: 1.25;
+						padding: 3px 2px;
 					}
 					.check-mark {
 						text-align: center;
@@ -1207,7 +1228,7 @@ export default function DailyBeneficiaryPerformance() {
 						font-size: 10pt;
 					}
 					@media print {
-						body {
+						html, body {
 							margin: 0;
 							padding: 0;
 						}
@@ -1216,11 +1237,12 @@ export default function DailyBeneficiaryPerformance() {
 
 	const buildPerformanceTableRowsHtml = (rows: PerformanceData[]) => {
 		if (rows.length === 0) {
-			return '<tr><td colspan="10" style="text-align:center">해당 일자 데이터 없음</td></tr>';
+			return '<tr><td colspan="11" style="text-align:center">해당 일자 데이터 없음</td></tr>';
 		}
 		return rows
 			.map((row) => {
-				const gynText = gynDisplayText(row, row.svdt || selectedDate);
+				const rowDate = toYmd(row.svdt || selectedDate);
+				const gynText = gynDisplayText(row, rowDate || selectedDate);
 				const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
 				const lunch = row.mealStatus.lunch === '1' ? '○' : '';
 				const dinner = row.mealStatus.dinner === '1' ? '○' : '';
@@ -1231,9 +1253,10 @@ export default function DailyBeneficiaryPerformance() {
 
 				return `
 								<tr>
+									<td class="cell-date">${rowDate}</td>
 									<td>${row.name || ''}</td>
 									<td>${row.birthDate || ''}</td>
-									<td>${gynText}</td>
+									<td class="cell-gyn">${gynText}</td>
 									<td class="check-mark">${breakfast}</td>
 									<td class="check-mark">${lunch}</td>
 									<td class="check-mark">${dinner}</td>
@@ -1269,8 +1292,22 @@ export default function DailyBeneficiaryPerformance() {
 					</div>
 				</div>
 				<table class="main-table">
+					<colgroup>
+						<col class="col-date" />
+						<col class="col-name" />
+						<col class="col-birth" />
+						<col class="col-gyn" />
+						<col class="col-meal" />
+						<col class="col-meal" />
+						<col class="col-meal" />
+						<col class="col-snack" />
+						<col class="col-snack" />
+						<col class="col-snack" />
+						<col class="col-diet" />
+					</colgroup>
 					<thead>
 						<tr>
+							<th>일자</th>
 							<th>수급자명</th>
 							<th>생일</th>
 							<th>입원/외출/외박</th>
@@ -1314,7 +1351,7 @@ export default function DailyBeneficiaryPerformance() {
 			<html>
 			<head>
 				<meta charset="UTF-8">
-				<title>수급자급여실적</title>
+				<title></title>
 				<style>${PERFORMANCE_PRINT_STYLES}</style>
 			</head>
 			<body>
@@ -1394,7 +1431,7 @@ export default function DailyBeneficiaryPerformance() {
 			<html>
 			<head>
 				<meta charset="UTF-8">
-				<title>수급자급여실적 (${yStr}년 ${mStr}월)</title>
+				<title></title>
 				<style>${PERFORMANCE_PRINT_STYLES}</style>
 			</head>
 			<body>
@@ -1625,160 +1662,16 @@ export default function DailyBeneficiaryPerformance() {
 			? `${startDate} ${startDayName}`
 			: `${startDate} ${startDayName} ~ ${endDate} ${endDayName}`;
 
-		// 출력용 HTML 생성
 		const printContent = `
 			<!DOCTYPE html>
 			<html>
 			<head>
 				<meta charset="UTF-8">
-				<title>수급자급여실적</title>
-				<style>
-					@page {
-						size: A4;
-						margin: 10mm;
-					}
-					body {
-						font-family: 'Malgun Gothic', sans-serif;
-						font-size: 11pt;
-						margin: 0;
-						padding: 0;
-					}
-					.header {
-						display: grid;
-						grid-template-columns: minmax(0, 1fr) minmax(0, 2.2fr) minmax(0, 1fr);
-						align-items: start;
-						column-gap: 12px;
-						margin-bottom: 15px;
-					}
-					.date-info {
-						font-size: 11pt;
-						justify-self: start;
-						text-align: left;
-					}
-					.title {
-						font-size: 18pt;
-						font-weight: bold;
-						text-align: center;
-						justify-self: center;
-						width: 100%;
-					}
-					.header-sign {
-						justify-self: end;
-					}
-					.signature-table {
-						border: 1px solid #000;
-						border-collapse: collapse;
-						width: 150px;
-						font-size: 10pt;
-					}
-					.signature-table th,
-					.signature-table td {
-						border: 1px solid #000;
-						padding: 5px;
-						text-align: center;
-						height: 30px;
-					}
-					.main-table {
-						width: 100%;
-						border-collapse: collapse;
-						border: 1px solid #000;
-						font-size: 10pt;
-						margin-top: 10px;
-					}
-					.main-table th,
-					.main-table td {
-						border: 1px solid #000;
-						padding: 4px;
-						text-align: center;
-					}
-					.main-table th {
-						background-color: #f0f0f0;
-						font-weight: bold;
-					}
-					.check-mark {
-						text-align: center;
-						font-size: 14pt;
-					}
-					.footer {
-						display: flex;
-						justify-content: space-between;
-						margin-top: 20px;
-						font-size: 10pt;
-					}
-					@media print {
-						body {
-							margin: 0;
-							padding: 0;
-						}
-					}
-				</style>
+				<title></title>
+				<style>${PERFORMANCE_PRINT_STYLES}</style>
 			</head>
 			<body>
-				<div class="header">
-					<div class="date-info">일자: ${periodText}</div>
-					<div class="title">수급자급여실적</div>
-					<div class="header-sign">
-					<table class="signature-table">
-						<tr>
-							<th>담당</th>
-							<th>검토</th>
-							<th>결재</th>
-						</tr>
-						<tr>
-							<td></td>
-							<td></td>
-							<td></td>
-						</tr>
-					</table>
-					</div>
-				</div>
-				<table class="main-table">
-					<thead>
-						<tr>
-							<th>수급자명</th>
-							<th>생일</th>
-							<th>입원/외출/외박</th>
-							<th>아</th>
-							<th>정</th>
-							<th>저</th>
-							<th>오전간</th>
-							<th>오후간</th>
-							<th>저녁간</th>
-							<th>식이</th>
-						</tr>
-					</thead>
-					<tbody>
-						${memberPrintData.map(row => {
-							const gynText = gynDisplayText(row, row.svdt);
-							const breakfast = row.mealStatus.breakfast === '1' ? '○' : '';
-							const lunch = row.mealStatus.lunch === '1' ? '○' : '';
-							const dinner = row.mealStatus.dinner === '1' ? '○' : '';
-							const morningSnack = row.snackStatus.morning === '1' ? '○' : '';
-							const afternoonSnack = row.snackStatus.afternoon === '1' ? '○' : '';
-							const eveningSnack = row.snackStatus.evening === '1' ? '○' : '';
-							const mealTypeText = mealKindLabel(row.mealType);
-
-							return `
-								<tr>
-									<td>${row.name || ''}</td>
-									<td>${row.birthDate || ''}</td>
-									<td>${gynText}</td>
-									<td class="check-mark">${breakfast}</td>
-									<td class="check-mark">${lunch}</td>
-									<td class="check-mark">${dinner}</td>
-									<td class="check-mark">${morningSnack}</td>
-									<td class="check-mark">${afternoonSnack}</td>
-									<td class="check-mark">${eveningSnack}</td>
-									<td>${mealTypeText}</td>
-								</tr>
-							`;
-						}).join('')}
-					</tbody>
-				</table>
-				<div class="footer">
-					<div>R14020</div>
-					<div>페이지: 1</div>
-				</div>
+				${buildPerformancePrintSectionHtml(periodText, memberPrintData)}
 			</body>
 			</html>
 		`;
