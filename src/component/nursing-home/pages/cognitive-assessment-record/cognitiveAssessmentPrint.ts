@@ -11,7 +11,10 @@ import {
 	ASSESSMENT_ITEMS,
 	EDUCATION_OPTIONS,
 	calcTotalScore,
+	countAnswered,
 	interpretScore,
+	SCORE_INTERPRETATION_BANDS,
+	emptySnapshot,
 	type F51015Item,
 	type F51015UiSnapshot,
 } from './f51015Mapper';
@@ -53,10 +56,9 @@ function formatYmd(raw: unknown): string {
 	return s;
 }
 
-/** DB: 0=맞음 → 출력 점수 1 / 1=틀림 → 출력 점수 0 */
+/** 화면/DB: 0=틀림(0점), 1=맞음(1점) — 출력에 그대로 표시 */
 function pointOf(code: string): string {
-	if (code === '0') return '1';
-	if (code === '1') return '0';
+	if (code === '0' || code === '1') return code;
 	return '';
 }
 
@@ -105,7 +107,7 @@ type Block =
 	| { type: 'hint'; no: number; text: string }
 	| { type: 'sep' };
 
-function renderBlocks(blocks: Block[], snap: F51015UiSnapshot): string {
+function renderBlocks(blocks: Block[], snap: F51015UiSnapshot, blank = false): string {
 	return blocks
 		.map((b) => {
 			if (b.type === 'sep') return `<div class="sep"></div>`;
@@ -116,7 +118,7 @@ function renderBlocks(blocks: Block[], snap: F51015UiSnapshot): string {
 						: '';
 				return `<div class="hint"><span class="qno">${b.no}.</span> ${nl(b.text)}</div>${words}`;
 			}
-			const pt = scoreOf(snap, b.item.field);
+			const pt = blank ? '' : scoreOf(snap, b.item.field);
 			const indent = b.item.group ? ' sub' : '';
 			const noHtml =
 				!b.item.group && b.showNo
@@ -154,7 +156,7 @@ function renderBlocks(blocks: Block[], snap: F51015UiSnapshot): string {
 
 			return `${prepend}<div class="qrow${indent}${centerName}">
 				<div class="qlabel">${showItemNo}<span class="qtext">${nl(labelText)}</span>${phraseBanner}${drawBox}</div>
-				<div class="qscore">${esc(pt)}</div>
+				<div class="qscore${blank ? ' blankBox' : ''}">${esc(pt)}</div>
 			</div>`;
 		})
 		.join('');
@@ -218,13 +220,25 @@ function cutoffTableHtml(): string {
 	</table>`;
 }
 
-function buildPages(snap: F51015UiSnapshot, member: CognitiveAssessmentPrintMember): string {
-	const total =
-		calcTotalScore(snap) ||
-		(parseInt(String(snap.score || ''), 10) >= 0 ? parseInt(String(snap.score), 10) : 0);
-	const totalText = Number.isFinite(total) && total >= 0 ? String(total) : '';
-	const opinion = String(snap.opinion || '').trim();
-	const edu = String(snap.education || '').trim();
+function scoreBandsHtml(): string {
+	return `<div class="scoreBands">${SCORE_INTERPRETATION_BANDS.map(
+		(b) => `${b.min}~${b.max}점 : ${esc(b.label)}`
+	).join(' &nbsp;/&nbsp; ')}</div>`;
+}
+
+function buildPages(
+	snap: F51015UiSnapshot,
+	member: CognitiveAssessmentPrintMember,
+	opts?: { blank?: boolean }
+): string {
+	const blank = opts?.blank === true;
+	const answered = blank ? 0 : countAnswered(snap);
+	const total = blank ? 0 : calcTotalScore(snap);
+	const totalText = !blank && answered > 0 ? String(total) : '';
+	const interpretation =
+		!blank && answered === ASSESSMENT_ITEMS.length ? interpretScore(total) : '';
+	const opinion = blank ? '' : String(snap.opinion || '').trim();
+	const edu = blank ? '' : String(snap.education || '').trim();
 
 	const page1 = `
 <div class="page">
@@ -232,13 +246,15 @@ function buildPages(snap: F51015UiSnapshot, member: CognitiveAssessmentPrintMemb
 	<div class="secTitle">- 치매 선별용 한국어판 간이정신상태검사<br/>
 		<span class="secEn">(Korean version of MMSE for Dementia Screening: MMSE-DS)</span>
 	</div>
-	<div class="qwrap">${renderBlocks(buildPrintBlocks(1), snap)}</div>
+	<div class="qwrap">${renderBlocks(buildPrintBlocks(1), snap, blank)}</div>
 </div>`;
 
 	const page2 = `
 <div class="page page2">
-	<div class="qwrap">${renderBlocks(buildPrintBlocks(2), snap)}</div>
-	<div class="totalLine"><span>총 점</span><span class="totalVal">${esc(totalText)} / 30</span></div>
+	<div class="qwrap">${renderBlocks(buildPrintBlocks(2), snap, blank)}</div>
+	<div class="totalLine"><span>총 점</span><span class="totalVal">${esc(totalText)}${totalText ? ' / 30' : blank ? ' / 30' : ''}</span></div>
+	${interpretation ? `<div class="interpLine">${esc(interpretation)}</div>` : ''}
+	${scoreBandsHtml()}
 	<div class="opinion">
 		<div class="opinionHead">평가결과에 대한 의견</div>
 		<div class="opinionBody">${nl(opinion)}</div>
@@ -339,9 +355,19 @@ html, body {
 }
 .totalLine {
 	display: flex; justify-content: flex-end; align-items: center; gap: 10mm;
-	margin: 4mm 0 3mm; font-weight: 700; font-size: 12pt;
+	margin: 4mm 0 1mm; font-weight: 700; font-size: 12pt;
 }
 .totalVal { min-width: 28mm; text-align: right; }
+.interpLine {
+	text-align: right; font-weight: 700; font-size: 11pt; margin: 0 0 2mm;
+}
+.scoreBands {
+	text-align: right; font-size: 8.5pt; line-height: 1.45; margin: 0 0 3mm; color: #222;
+}
+.qscore.blankBox {
+	width: 10mm; height: 6mm; border: 1px solid #000; text-align: center;
+	margin-left: auto;
+}
 .opinion {
 	border: 1.5px solid #000; margin-bottom: 4mm;
 }
@@ -382,11 +408,14 @@ html, body {
 
 export function buildCognitiveAssessmentPrintHtml(
 	snap: F51015UiSnapshot,
-	member: CognitiveAssessmentPrintMember
+	member: CognitiveAssessmentPrintMember,
+	opts?: { blank?: boolean }
 ): string {
 	const name = snap.beneficiary || member.P_NM || '';
 	const rqdt = formatYmd(snap.inspectionDate);
-	const title = `인지상태 평가${name ? ` - ${name}` : ''}${rqdt ? ` (${rqdt})` : ''}`;
+	const title = opts?.blank
+		? '인지상태 평가 (빈 양식)'
+		: `인지상태 평가${name ? ` - ${name}` : ''}${rqdt ? ` (${rqdt})` : ''}`;
 	return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -395,7 +424,7 @@ export function buildCognitiveAssessmentPrintHtml(
 <style>${PRINT_STYLES}</style>
 </head>
 <body>
-${buildPages(snap, member)}
+${buildPages(snap, member, opts)}
 </body>
 </html>`;
 }
@@ -422,13 +451,22 @@ export function openCognitiveAssessmentPrint(
 	snap: F51015UiSnapshot,
 	member: CognitiveAssessmentPrintMember
 ): void {
+	const answered = countAnswered(snap);
 	const total = calcTotalScore(snap);
 	const filled: F51015UiSnapshot = {
 		...snap,
-		score: snap.score || String(total),
-		interpretation: snap.interpretation || interpretScore(total),
+		score: answered > 0 ? String(total) : '',
+		interpretation: answered === ASSESSMENT_ITEMS.length ? interpretScore(total) : snap.interpretation,
 	};
 	openPrintWindow(buildCognitiveAssessmentPrintHtml(filled, member));
+}
+
+export function openCognitiveAssessmentBlankPrint(
+	member?: CognitiveAssessmentPrintMember | null
+): void {
+	const m = member || {};
+	const snap = emptySnapshot(String(m.P_NM ?? '').trim(), '');
+	openPrintWindow(buildCognitiveAssessmentPrintHtml(snap, m, { blank: true }));
 }
 
 export function openCognitiveAssessmentBatchPrint(
@@ -443,11 +481,12 @@ export function openCognitiveAssessmentBatchPrint(
 	const styles = styleMatch ? styleMatch[1] : '';
 	const body = items
 		.map(({ snap, member }) => {
+			const answered = countAnswered(snap);
 			const total = calcTotalScore(snap);
 			const filled = {
 				...snap,
-				score: snap.score || String(total),
-				interpretation: snap.interpretation || interpretScore(total),
+				score: answered > 0 ? String(total) : '',
+				interpretation: answered === ASSESSMENT_ITEMS.length ? interpretScore(total) : snap.interpretation,
 			};
 			const full = buildCognitiveAssessmentPrintHtml(filled, member);
 			const m = full.match(/<body>([\s\S]*?)<\/body>/i);

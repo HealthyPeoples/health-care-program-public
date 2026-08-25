@@ -21,13 +21,15 @@ import {
 	hydrateFromF51015Row,
 	buildF51015RowPayload,
 	calcTotalScore,
+	countAnswered,
 	interpretScore,
 	ASSESSMENT_ITEMS,
 	EDUCATION_OPTIONS,
+	SCORE_INTERPRETATION_BANDS,
 	type F51015UiSnapshot,
 } from './f51015Mapper';
 import CognitiveAssessmentModal from './CognitiveAssessmentModal';
-import { openCognitiveAssessmentPrint, openCognitiveAssessmentBatchPrint } from './cognitiveAssessmentPrint';
+import { openCognitiveAssessmentPrint, openCognitiveAssessmentBatchPrint, openCognitiveAssessmentBlankPrint } from './cognitiveAssessmentPrint';
 
 interface MemberData {
 	ANCD: string;
@@ -375,13 +377,18 @@ export default function CognitiveAssessmentRecord() {
 		}
 	};
 
-	// E01~E30 변경 시 E80/E81 자동 계산
+	const handleBlankPrint = () => {
+		openCognitiveAssessmentBlankPrint(selectedMember);
+	};
+
+	// E01~E30 변경 시 E80/E81 자동 계산 (맞음=1점, 틀림=0점)
 	useEffect(() => {
 		if (!isEditMode) return;
 		const total = calcTotalScore(formData);
-		const interp = interpretScore(total);
+		const answered = countAnswered(formData);
+		const interp = answered === ASSESSMENT_ITEMS.length ? interpretScore(total) : '';
 		setFormData((prev) => {
-			const nextScore = total > 0 ? String(total) : prev.score === '0' ? '0' : '';
+			const nextScore = answered > 0 ? String(total) : '';
 			if (prev.score === nextScore && prev.interpretation === interp) return prev;
 			return { ...prev, score: nextScore, interpretation: interp };
 		});
@@ -1099,6 +1106,9 @@ export default function CognitiveAssessmentRecord() {
 												</div>
 											</div>
 										</div>
+										<p className="text-xs text-blue-900/70 -mt-2">
+											{SCORE_INTERPRETATION_BANDS.map((b) => `${b.min}~${b.max}점 : ${b.label}`).join(' / ')}
+										</p>
 
 										<div className="flex items-center gap-2">
 											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
@@ -1195,6 +1205,14 @@ export default function CognitiveAssessmentRecord() {
 								className="px-6 py-2 text-sm font-medium text-red-800 bg-red-50 border border-red-300 rounded hover:bg-red-100 whitespace-nowrap disabled:opacity-50"
 							>
 								삭제
+							</button>
+							<button
+								type="button"
+								onClick={handleBlankPrint}
+								disabled={isEditMode}
+								className="px-6 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 whitespace-nowrap disabled:opacity-50"
+							>
+								빈 양식 출력
 							</button>
 						</div>
 					</div>
