@@ -688,6 +688,14 @@ export default function CognitiveAssessmentRecord() {
 						>
 							{batchPrinting ? '출력 준비 중...' : `일괄출력 (${checkedMemberKeys.size}명)`}
 						</button>
+						<button
+							type="button"
+							onClick={handleBlankPrint}
+							disabled={isEditMode}
+							className="w-full px-2 py-1.5 text-xs font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							빈 양식 출력
+						</button>
 					</div>
 
 					<div className="mb-3">
@@ -1205,14 +1213,6 @@ export default function CognitiveAssessmentRecord() {
 								className="px-6 py-2 text-sm font-medium text-red-800 bg-red-50 border border-red-300 rounded hover:bg-red-100 whitespace-nowrap disabled:opacity-50"
 							>
 								삭제
-							</button>
-							<button
-								type="button"
-								onClick={handleBlankPrint}
-								disabled={isEditMode}
-								className="px-6 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 whitespace-nowrap disabled:opacity-50"
-							>
-								빈 양식 출력
 							</button>
 						</div>
 					</div>
