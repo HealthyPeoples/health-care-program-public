@@ -177,11 +177,17 @@ export async function POST(req) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
+    const origSdt = normalizeYmd(pickBody(body, 'ORIG_SDT', pickBody(body, 'origSdt', null))) || sdt;
+    const origEdt = normalizeYmd(pickBody(body, 'ORIG_EDT', pickBody(body, 'origEdt', null))) || edt;
+    const isEdit = Boolean(normalizeYmd(pickBody(body, 'ORIG_SDT', pickBody(body, 'origSdt', null))));
+
     const request = pool.request();
     request.input('ANCD', gate.sessionAncd);
     request.input('PNUM', String(pnum));
     request.input('SDT', sdt);
     request.input('EDT', edt);
+    request.input('ORIG_SDT', origSdt);
+    request.input('ORIG_EDT', origEdt);
 
     const editableKeys = [
       'JHEMP',
@@ -244,20 +250,43 @@ export async function POST(req) {
 
     const query = `
       MERGE ${TABLE_NAME} AS T
-      USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, CONVERT(date, @SDT) AS SDT, CONVERT(date, @EDT) AS EDT) AS S
+      USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, CONVERT(date, @ORIG_SDT) AS SDT, CONVERT(date, @ORIG_EDT) AS EDT) AS S
         ON (T.[ANCD] = S.[ANCD]
             AND CAST(T.[PNUM] AS VARCHAR) = CAST(S.[PNUM] AS VARCHAR)
             AND CONVERT(date, T.[SDT]) = S.[SDT]
             AND CONVERT(date, T.[EDT]) = S.[EDT])
       WHEN MATCHED THEN
         UPDATE SET
+          T.[SDT] = CONVERT(date, @SDT),
+          T.[EDT] = CONVERT(date, @EDT),
           ${setSql}
       WHEN NOT MATCHED THEN
         INSERT ([ANCD],[PNUM],[SDT],[EDT],${insertCols})
         VALUES (@ANCD,@PNUM,CONVERT(date, @SDT),CONVERT(date, @EDT),${insertVals});
     `;
 
-    await request.query(query);
+    if (isEdit) {
+      const upd = await request.query(`
+        UPDATE ${TABLE_NAME} SET
+          [SDT] = CONVERT(date, @SDT),
+          [EDT] = CONVERT(date, @EDT),
+          ${setSql.replace(/T\./g, '')}
+        WHERE [ANCD] = @ANCD
+          AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+          AND CONVERT(date, [SDT]) = CONVERT(date, @ORIG_SDT)
+          AND CONVERT(date, [EDT]) = CONVERT(date, @ORIG_EDT);
+        SELECT @@ROWCOUNT AS updated;
+      `);
+      const updated = Number(
+        (Array.isArray(upd?.recordsets) ? upd.recordsets[upd.recordsets.length - 1]?.[0] : upd?.recordset?.[0])
+          ?.updated ?? 0
+      );
+      if (!updated) {
+        return jsonError({ success: false, error: '수정할 기록을 찾지 못했습니다.' }, 404);
+      }
+    } else {
+      await request.query(query);
+    }
 
     return jsonOk({ success: true });
   } catch (err) {

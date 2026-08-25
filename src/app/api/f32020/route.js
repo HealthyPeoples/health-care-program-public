@@ -6,21 +6,49 @@
  *
  * @module app/api/f32020/route
  */
-import { connPool } from '../../../config/server';
+import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession } from '../../../config/sessionServer';
-
-import { normalizeYmdShort as normalizeYmd } from '../../../utils/normalizeYmd';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F32020]';
-
 
 function pickBody(body, k, fallback = null) {
   if (!body || typeof body !== 'object') return fallback;
   if (Object.prototype.hasOwnProperty.call(body, k)) return body[k];
-  // lower-case fallback (프론트에서 camelCase로 올 수도 있음)
   const alt = k.toLowerCase();
   if (alt !== k && Object.prototype.hasOwnProperty.call(body, alt)) return body[alt];
   return fallback;
+}
+
+/** SQL date는 UTC 자정 Date로 오므로 UTC 연월일을 쓴다. */
+function toYmd(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    const y = v.getUTCFullYear();
+    const m = String(v.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(v.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (s.includes('T') && /^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  return '';
+}
+
+function attachRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    TDT: toYmd(row.TDT),
+    INDT: toYmd(row.INDT),
+    JHEMPNM: row.PD_NM != null ? String(row.PD_NM).trim() : '',
+  };
+}
+
+function parseIntOrNull(v) {
+  if (v == null || v === '') return null;
+  const n = parseInt(String(v), 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 // F32020 조회
@@ -66,7 +94,7 @@ export async function GET(req) {
           AND CONVERT(date, [TDT]) = CONVERT(date, @TDT)
       `);
 
-      const row = result?.recordset?.[0] ? { ...result.recordset[0], TDT: normalizeYmd(result.recordset[0].TDT) } : null;
+      const row = result?.recordset?.[0] ? attachRow(result.recordset[0]) : null;
       return jsonOk({ success: true, data: row });
     }
 
@@ -79,11 +107,7 @@ export async function GET(req) {
       ORDER BY [TDT] DESC, [INDT] DESC
     `);
 
-    const data = (result.recordset || []).map((r) => ({
-      ...r,
-      TDT: normalizeYmd(r.TDT),
-      INDT: normalizeYmd(r.INDT),
-    }));
+    const data = (result.recordset || []).map(attachRow);
 
     return jsonOk({ success: true, data, count: data.length });
   } catch (err) {
@@ -111,7 +135,7 @@ export async function POST(req) {
       return jsonError({ success: false, error: 'PNUM, TDT는 필수입니다' }, 400);
     }
 
-    const tdtNorm = normalizeYmd(tdtRaw);
+    const tdtNorm = toYmd(tdtRaw);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tdtNorm)) {
       return jsonError({ success: false, error: 'TDT는 YYYY-MM-DD 형식이어야 합니다' }, 400);
     }
@@ -121,10 +145,22 @@ export async function POST(req) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
     }
 
+    const pnumInt = parseIntOrNull(pnum);
+    if (pnumInt == null) {
+      return jsonError({ success: false, error: 'PNUM이 올바르지 않습니다' }, 400);
+    }
+
+    const origRaw = pickBody(body, 'ORIG_TDT', pickBody(body, 'origTdt', null));
+    const origTdtNorm = toYmd(origRaw) || tdtNorm;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(origTdtNorm)) {
+      return jsonError({ success: false, error: 'ORIG_TDT는 YYYY-MM-DD 형식이어야 합니다' }, 400);
+    }
+
     const request = pool.request();
-    request.input('ANCD', gate.sessionAncd);
-    request.input('PNUM', String(pnum));
-    request.input('TDT', tdtNorm);
+    request.input('ANCD', sql.Int, Number(gate.sessionAncd));
+    request.input('PNUM', sql.Int, pnumInt);
+    request.input('TDT', sql.VarChar(10), tdtNorm);
+    request.input('ORIG_TDT', sql.VarChar(10), origTdtNorm);
 
     // 스키마 기반(이미지 참고): TCHK01~12, TCHK21~26, TCHK31~37 / TVAL 동일, TTEXT_1~4, TETC_1~5, TETCVAL_1~5, ETC, JHEMP
     const editableKeys = [
@@ -142,43 +178,99 @@ export async function POST(req) {
       'TETCVAL_1','TETCVAL_2','TETCVAL_3','TETCVAL_4','TETCVAL_5',
       'TTEXT_4',
       'ETC',
+      'T_SRT_TM',
+      'T_END_TM',
+      'PD_NM',
     ];
 
     editableKeys.forEach((k) => {
-      const v = pickBody(body, k, null);
+      const v = k === 'PD_NM' ? pickBody(body, 'PD_NM', pickBody(body, 'JHEMPNM', null)) : pickBody(body, k, null);
       if (k === 'JHEMP') {
-        const n = v == null || v === '' ? null : parseInt(String(v), 10);
-        request.input(k, Number.isNaN(n) ? null : n);
+        request.input(k, sql.Int, parseIntOrNull(v));
         return;
       }
-      request.input(k, v == null ? null : String(v));
+      request.input(k, v == null || v === '' ? null : String(v));
     });
 
-    const setSql = editableKeys
-      .map((k) => `T.[${k}] = @${k}`)
-      .concat(['T.[INDT] = GETDATE()'])
+    const setSql = ['[TDT] = CONVERT(date, @TDT)']
+      .concat(editableKeys.map((k) => `[${k}] = @${k}`))
+      .concat(['[INDT] = GETDATE()'])
       .join(',\n          ');
 
     const insertCols = editableKeys.map((k) => `[${k}]`).concat(['[INDT]']).join(',');
     const insertVals = editableKeys.map((k) => `@${k}`).concat(['GETDATE()']).join(',');
 
-    const query = `
-      MERGE ${TABLE_NAME} AS T
-      USING (SELECT @ANCD AS ANCD, @PNUM AS PNUM, CONVERT(date, @TDT) AS TDT) AS S
-        ON (T.[ANCD] = S.[ANCD]
-            AND CAST(T.[PNUM] AS VARCHAR) = CAST(S.[PNUM] AS VARCHAR)
-            AND CONVERT(date, T.[TDT]) = S.[TDT])
-      WHEN MATCHED THEN
-        UPDATE SET
+    const keyWhere = `
+        CAST([ANCD] AS VARCHAR) = CAST(@ANCD AS VARCHAR)
+        AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)`;
+
+    const isEdit = Boolean(toYmd(origRaw));
+
+    if (isEdit && origTdtNorm !== tdtNorm) {
+      const dup = await pool.request()
+        .input('ANCD', sql.Int, Number(gate.sessionAncd))
+        .input('PNUM', sql.Int, pnumInt)
+        .input('TDT', sql.VarChar(10), tdtNorm)
+        .query(`
+          SELECT TOP (1) 1 AS ok
+          FROM ${TABLE_NAME}
+          WHERE ${keyWhere}
+            AND CONVERT(date, [TDT]) = CONVERT(date, @TDT)
+        `);
+      if (dup?.recordset?.[0]) {
+        return jsonError({ success: false, error: '해당 치료일자에 이미 기록이 있습니다.' }, 409);
+      }
+    }
+
+    const upd = await request.query(`
+      ;WITH cte AS (
+        SELECT TOP (1) *
+        FROM ${TABLE_NAME}
+        WHERE ${keyWhere}
+          AND CONVERT(date, [TDT]) = CONVERT(date, @ORIG_TDT)
+        ORDER BY [INDT] DESC
+      )
+      UPDATE cte SET
           ${setSql}
-      WHEN NOT MATCHED THEN
-        INSERT ([ANCD],[PNUM],[TDT],${insertCols})
+      OUTPUT INSERTED.[PNUM] AS updatedPnum;
+    `);
+
+    const updated = (upd?.recordset || []).length > 0;
+    if (!updated) {
+      if (isEdit) {
+        return jsonError({ success: false, error: '수정할 기록을 찾지 못했습니다.' }, 404);
+      }
+      const ins = pool.request();
+      ins.input('ANCD', sql.Int, Number(gate.sessionAncd));
+      ins.input('PNUM', sql.Int, pnumInt);
+      ins.input('TDT', sql.VarChar(10), tdtNorm);
+      editableKeys.forEach((k) => {
+        const v = k === 'PD_NM' ? pickBody(body, 'PD_NM', pickBody(body, 'JHEMPNM', null)) : pickBody(body, k, null);
+        if (k === 'JHEMP') {
+          ins.input(k, sql.Int, parseIntOrNull(v));
+          return;
+        }
+        ins.input(k, v == null || v === '' ? null : String(v));
+      });
+      await ins.query(`
+        INSERT INTO ${TABLE_NAME} ([ANCD],[PNUM],[TDT],${insertCols})
         VALUES (@ANCD,@PNUM,CONVERT(date, @TDT),${insertVals});
-    `;
+      `);
+    }
 
-    await request.query(query);
+    const saved = await pool.request()
+      .input('ANCD', sql.Int, Number(gate.sessionAncd))
+      .input('PNUM', sql.Int, pnumInt)
+      .input('TDT', sql.VarChar(10), tdtNorm)
+      .query(`
+        SELECT TOP (1) *
+        FROM ${TABLE_NAME}
+        WHERE ${keyWhere}
+          AND CONVERT(date, [TDT]) = CONVERT(date, @TDT)
+        ORDER BY [INDT] DESC
+      `);
 
-    return jsonOk({ success: true });
+    return jsonOk({ success: true, data: attachRow(saved.recordset?.[0] || null) });
   } catch (err) {
     console.error('F32020 저장 오류:', err);
     return jsonError({ success: false, error: err.message, details: err.toString() });
@@ -201,7 +293,7 @@ export async function DELETE(req) {
       return jsonError({ success: false, error: 'pnum, tdt 파라미터가 필요합니다' }, 400);
     }
 
-    const tdtNorm = normalizeYmd(tdtRaw);
+    const tdtNorm = toYmd(tdtRaw);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(tdtNorm)) {
       return jsonError({ success: false, error: 'tdt는 YYYY-MM-DD 형식이어야 합니다' }, 400);
     }

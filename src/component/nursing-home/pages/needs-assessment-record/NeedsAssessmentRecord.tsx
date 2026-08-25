@@ -21,26 +21,47 @@ import {
 	hydrateFromF51012Row,
 	buildF51012RowPayload,
 	collectUiSnapshot,
-	PHYSICAL_ACTIVITY_ITEMS,
+	PHYSICAL_ACTIVITY_GROUPS,
+	ACTIVITY_LEVELS,
+	DISEASE1_CATEGORIES,
+	DISEASE2_CATEGORIES,
+	NURSING_GROUPS,
+	COG_GROUPS,
 	H01_OPTIONS,
 	H02_OPTIONS,
 	H03_OPTIONS,
+	H04_OPTIONS,
 	I01_OPTIONS,
 	I02_OPTIONS,
 	I03_OPTIONS,
-	I04_OPTIONS,
 	I05_OPTIONS,
+	I06_OPTIONS,
+	I07_OPTIONS,
+	I08_OPTIONS,
+	C20_OPTIONS,
+	C21_OPTIONS,
+	C22_OPTIONS,
+	C23_OPTIONS,
+	E13_OPTIONS,
+	E14_OPTIONS,
+	E16_OPTIONS,
+	E17_OPTIONS,
 	J01_OPTIONS,
 	J01_01_OPTIONS,
 	J02_OPTIONS,
 	J02_02_OPTIONS,
 	J02_04_OPTIONS,
 	J03_OPTIONS,
+	J04_OPTIONS,
+	J05_OPTIONS,
 	K01_OPTIONS,
+	COMMUNITY_SERVICE_ITEMS,
+	INDIVIDUAL_NEED_ITEMS,
 	type ActivityAssessment,
+	type ActivityLevel,
 	type F51012UiSnapshot,
 } from './f51012Mapper';
-import { openNeedsAssessmentBatchPrint, openNeedsAssessmentPrint } from './needsAssessmentRecordPrint';
+import { openNeedsAssessmentBatchPrint, openNeedsAssessmentPrint, openNeedsAssessmentBlankPrint, printMemberFromViewRow } from './needsAssessmentRecordPrint';
 
 interface MemberData {
 	ANCD: string;
@@ -66,7 +87,7 @@ export default function NeedsAssessmentRecord() {
 	const [batchPrintFrom, setBatchPrintFrom] = useState('');
 	const [batchPrintTo, setBatchPrintTo] = useState('');
 	const [batchPrinting, setBatchPrinting] = useState(false);
-	const [activeTab, setActiveTab] = useState<string>('신체');
+	const [activeTab, setActiveTab] = useState<string>('질병1');
 	/** false = 읽기모드, true = 수정모드 */
 	const [isEditMode, setIsEditMode] = useState(false);
 	/** 수정 취소 시 복원용 */
@@ -92,6 +113,8 @@ export default function NeedsAssessmentRecord() {
 	const [cognitionJudgmentBasis, setCognitionJudgmentBasis] = useState(initialSnap.cognitionJudgmentBasis);
 	const [communicationData, setCommunicationData] = useState(initialSnap.communicationData);
 	const [nutritionData, setNutritionData] = useState(initialSnap.nutritionData);
+	const [physicalExtra, setPhysicalExtra] = useState(initialSnap.physicalExtra);
+	const [rehabilitationExtra, setRehabilitationExtra] = useState(initialSnap.rehabilitationExtra);
 	const [familyEnvironmentData, setFamilyEnvironmentData] = useState(initialSnap.familyEnvironmentData);
 	const [resourceUtilizationData, setResourceUtilizationData] = useState(initialSnap.resourceUtilizationData);
 	const [individualNeedsData, setIndividualNeedsData] = useState(initialSnap.individualNeedsData);
@@ -111,6 +134,8 @@ export default function NeedsAssessmentRecord() {
 		setCognitionJudgmentBasis(s.cognitionJudgmentBasis);
 		setCommunicationData(s.communicationData);
 		setNutritionData(s.nutritionData);
+		setPhysicalExtra(s.physicalExtra);
+		setRehabilitationExtra(s.rehabilitationExtra);
 		setFamilyEnvironmentData(s.familyEnvironmentData);
 		setResourceUtilizationData(s.resourceUtilizationData);
 		setIndividualNeedsData(s.individualNeedsData);
@@ -132,6 +157,8 @@ export default function NeedsAssessmentRecord() {
 			cognitionJudgmentBasis,
 			communicationData,
 			nutritionData,
+			physicalExtra,
+			rehabilitationExtra,
 			familyEnvironmentData,
 			resourceUtilizationData,
 			individualNeedsData,
@@ -373,8 +400,9 @@ export default function NeedsAssessmentRecord() {
 				alert('출력할 기록을 찾을 수 없습니다.');
 				return;
 			}
-			const snap = hydrateFromF51012Row(result.data as Record<string, unknown>, selectedMember.P_NM || '');
-			openNeedsAssessmentPrint(snap, selectedMember);
+			const row = result.data as Record<string, unknown>;
+			const snap = hydrateFromF51012Row(row, selectedMember.P_NM || '');
+			openNeedsAssessmentPrint(snap, printMemberFromViewRow(row, selectedMember));
 		} catch (err) {
 			console.error('욕구사정 개별출력 오류:', err);
 			alert('출력 준비 중 오류가 발생했습니다.');
@@ -429,11 +457,9 @@ export default function NeedsAssessmentRecord() {
 					);
 					const detailJson = await detailRes.json();
 					if (detailJson?.success && detailJson.data && typeof detailJson.data === 'object') {
-						const snap = hydrateFromF51012Row(
-							detailJson.data as Record<string, unknown>,
-							member.P_NM || ''
-						);
-						printItems.push({ snap, member });
+						const row = detailJson.data as Record<string, unknown>;
+						const snap = hydrateFromF51012Row(row, member.P_NM || '');
+						printItems.push({ snap, member: printMemberFromViewRow(row, member) });
 					}
 				}
 			}
@@ -467,7 +493,7 @@ export default function NeedsAssessmentRecord() {
 		return dateStr;
 	};
 
-	const handleActivityChange = (index: number, value: '○' | '△' | 'X' | '') => {
+	const handleActivityChange = (index: number, value: ActivityLevel) => {
 		if (!isEditMode) return;
 		setActivities((prev) => {
 			const updatedActivities = [...prev];
@@ -632,6 +658,8 @@ export default function NeedsAssessmentRecord() {
 				cognitionJudgmentBasis,
 				communicationData,
 				nutritionData,
+				physicalExtra,
+				rehabilitationExtra,
 				familyEnvironmentData,
 				resourceUtilizationData,
 				individualNeedsData,
@@ -718,7 +746,7 @@ export default function NeedsAssessmentRecord() {
 		}
 	};
 
-	const tabs = ['신체', '질병1', '질병2', '재활', '간호', '인지', '의사소통', '영양', '가족환경', '자원이용', '개별욕구', '총평'];
+	const tabs = ['질병1', '질병2', '구강과 영양', '신체', '재활', '간호', '인지', '의사소통', '가족환경', '자원이용', '개별욕구', '총평'];
 
 	return (
 		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
@@ -750,6 +778,14 @@ export default function NeedsAssessmentRecord() {
 							className="w-full px-2 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
 						>
 							{batchPrinting ? '출력 준비 중...' : `일괄출력 (${checkedMemberKeys.size}명)`}
+						</button>
+						<button
+							type="button"
+							onClick={() => openNeedsAssessmentBlankPrint(selectedMember)}
+							disabled={isEditMode}
+							className="w-full px-2 py-1.5 text-xs font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							빈 양식 출력
 						</button>
 					</div>
 
@@ -1162,61 +1198,86 @@ export default function NeedsAssessmentRecord() {
 
 										<div className="p-4 bg-white border border-blue-300 rounded-lg">
 											<div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-												<h3 className="text-base font-semibold text-blue-900">활동 평가 (F51012 C01~C12)</h3>
-												<p className="text-xs text-blue-900/80">
-													<span className="font-semibold">X</span> 완전도움(1) ·{' '}
-													<span className="font-semibold">△</span> 부분도움(2) ·{' '}
-													<span className="font-semibold">○</span> 완전자립(3)
-												</p>
+												<h3 className="text-base font-semibold text-blue-900">활동 평가</h3>
+												<p className="text-xs text-blue-900/80">완전자립 · 간접도움 · 직접도움 · 완전도움</p>
 											</div>
-											<div className="grid grid-cols-3 gap-4">
-												{PHYSICAL_ACTIVITY_ITEMS.map((item, index) => {
-													const val = activities[index]?.value ?? '';
-													const btnBase =
-														'w-8 h-8 text-sm border rounded flex items-center justify-center';
-													const selectedCls = 'bg-blue-500 text-white border-blue-500';
-													const idleCls = isReadOnly
-														? 'bg-white text-blue-900/50 border-blue-200'
-														: 'bg-white text-blue-900 border-blue-300 hover:bg-blue-50';
-													return (
-													<div key={item.key} className="flex items-center gap-2">
-														<div className="flex items-center gap-1 shrink-0">
-															<button
-																type="button"
-																onClick={() => handleActivityChange(index, 'X')}
-																tabIndex={isReadOnly ? -1 : 0}
-																title="완전도움 (1)"
-																className={`${btnBase} ${val === 'X' ? selectedCls : idleCls}`}
-															>
-																X
-															</button>
-															<button
-																type="button"
-																onClick={() => handleActivityChange(index, '△')}
-																tabIndex={isReadOnly ? -1 : 0}
-																title="부분도움 (2)"
-																className={`${btnBase} ${val === '△' ? selectedCls : idleCls}`}
-															>
-																△
-															</button>
-															<button
-																type="button"
-																onClick={() => handleActivityChange(index, '○')}
-																tabIndex={isReadOnly ? -1 : 0}
-																title="완전자립 (3)"
-																className={`${btnBase} ${val === '○' ? selectedCls : idleCls}`}
-															>
-																○
-															</button>
-														</div>
-														<span className="text-sm text-blue-900">
-															<span className="text-[10px] text-blue-700/70 mr-1">{item.key}</span>
-															{item.label}
-														</span>
+											{PHYSICAL_ACTIVITY_GROUPS.map((grp) => (
+												<div key={grp.group} className="mb-4">
+													<div className="mb-2 text-sm font-semibold text-blue-800 bg-blue-50 px-2 py-1 border border-blue-200 rounded">
+														{grp.group}
 													</div>
-													);
-												})}
-											</div>
+													<div className="overflow-x-auto">
+														<table className="w-full text-xs border-collapse">
+															<thead>
+																<tr className="bg-blue-50">
+																	<th className="px-2 py-1.5 text-left border border-blue-200">항목</th>
+																	{ACTIVITY_LEVELS.map((lv) => (
+																		<th key={lv.code} className="px-1 py-1.5 text-center border border-blue-200 whitespace-nowrap">
+																			{lv.label}
+																		</th>
+																	))}
+																</tr>
+															</thead>
+															<tbody>
+																{grp.items.map((item) => {
+																	const idx = activities.findIndex((a) => a.key === item.key);
+																	const val = idx >= 0 ? activities[idx]?.value ?? '' : '';
+																	return (
+																		<tr key={item.key}>
+																			<td className="px-2 py-1 border border-blue-200 text-blue-900">
+																				{item.label}
+																			</td>
+																			{ACTIVITY_LEVELS.map((lv) => (
+																				<td key={lv.code} className="px-1 py-1 text-center border border-blue-200">
+																					<input
+																						type="radio"
+																						name={`act-${item.key}`}
+																						checked={val === lv.code}
+																						onChange={() => handleActivityChange(idx, lv.code)}
+																						disabled={isReadOnly || idx < 0}
+																						className="w-4 h-4"
+																					/>
+																				</td>
+																			))}
+																		</tr>
+																	);
+																})}
+															</tbody>
+														</table>
+													</div>
+												</div>
+											))}
+										</div>
+
+										<div className="p-4 bg-white border border-blue-300 rounded-lg space-y-3">
+											<h3 className="text-base font-semibold text-blue-900">배뇨/배변 기능 및 방법</h3>
+											{[
+												{ label: '배설양상', col: 'I05', value: nutritionData.excretionPattern, opts: I05_OPTIONS, onChange: (v: string) => setNutritionData((p) => ({ ...p, excretionPattern: v })) },
+												{ label: '배뇨기능', col: 'C20', value: physicalExtra.urineFunction, opts: C20_OPTIONS, onChange: (v: string) => setPhysicalExtra((p) => ({ ...p, urineFunction: v })) },
+												{ label: '배변기능', col: 'C21', value: physicalExtra.bowelFunction, opts: C21_OPTIONS, onChange: (v: string) => setPhysicalExtra((p) => ({ ...p, bowelFunction: v })) },
+												{ label: '배뇨방법', col: 'C22', value: physicalExtra.urineMethod, opts: C22_OPTIONS, onChange: (v: string) => setPhysicalExtra((p) => ({ ...p, urineMethod: v })) },
+												{ label: '배변방법', col: 'C23', value: physicalExtra.bowelMethod, opts: C23_OPTIONS, onChange: (v: string) => setPhysicalExtra((p) => ({ ...p, bowelMethod: v })) },
+											].map((row) => (
+												<div key={row.col} className="flex items-center gap-2">
+													<label className="w-28 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														{row.label}
+														<span className="block text-[10px] font-normal text-blue-800/70">{row.col}</span>
+													</label>
+													<select
+														value={row.value}
+														onChange={(e) => row.onChange(e.target.value)}
+														disabled={isReadOnly}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+													>
+														<option value="">선택</option>
+														{row.opts.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
+													</select>
+												</div>
+											))}
 										</div>
 
 										<div className="flex items-start gap-2">
@@ -1241,16 +1302,7 @@ export default function NeedsAssessmentRecord() {
 									<>
 										{/* 질병 체크박스 그리드 */}
 										<div className="space-y-2">
-											{[
-												{ category: '내분.대사', diseases: ['당뇨', '갑상선질환', '탈수', '영양상태이상', '만성간염', '자기면역질환', '빈혈', '기타'] },
-												{ category: '소화기계', diseases: ['위염', '위궤양', '십이지궤양', '변비', '간경변증', '기타'] },
-												{ category: '순환기계', diseases: ['고혈압', '저혈압', '협심증', '심근경색증', '뇌혈관질환', '기타'] },
-												{ category: '근골격계', diseases: ['관절염', '요통,좌골통', '기타 척추질환', '골다공증', '기타'] },
-												{ category: '신경계', diseases: ['치매', '뇌경색', '파킨슨병', '두통', '두통외 통증', '기타'] },
-												{ category: '정신.행동', diseases: ['신경증', '우울증', '수면장애', '기타'] },
-												{ category: '호흡기계', diseases: ['폐결핵', '만성기관지염', '호흡곤란', '기타'] },
-												{ category: '눈.귀질환', diseases: ['시각장애', '난청', '기타'] }
-											].map((row, rowIndex) => (
+											{DISEASE1_CATEGORIES.map((row, rowIndex) => (
 												<div key={rowIndex} className="flex items-center gap-2">
 													<div className="w-32 px-2 py-1 text-sm font-medium text-blue-900 border border-blue-300 rounded bg-blue-50">{row.category}</div>
 													<div className="flex flex-wrap items-center flex-1 gap-2">
@@ -1311,10 +1363,7 @@ export default function NeedsAssessmentRecord() {
 									<>
 										{/* 질병 체크박스 그리드 */}
 										<div className="space-y-2">
-											{[
-												{ category: '비뇨.생식', diseases: ['전립선비대', '요실금', '만성방광염', '기타'] },
-												{ category: '만성신장', diseases: ['만성신부전증', '기타'] }
-											].map((row, rowIndex) => (
+											{DISEASE2_CATEGORIES.map((row, rowIndex) => (
 												<div key={rowIndex} className="flex items-center gap-2">
 													<div className="w-32 px-2 py-1 text-sm font-medium text-blue-900 border border-blue-300 rounded bg-blue-50">{row.category}</div>
 													<div className="flex flex-wrap items-center flex-1 gap-2">
@@ -1335,6 +1384,18 @@ export default function NeedsAssessmentRecord() {
 													</div>
 												</div>
 											))}
+										</div>
+
+										<div className="mt-4">
+											<label className="block mb-1 text-sm font-medium text-blue-900">기타 질환 상세 (암, 알레르기, 기타) · D11_NOTE</label>
+											<textarea
+												value={diseaseFormData.otherDiseaseNote}
+												onChange={(e) => setDiseaseFormData((prev) => ({ ...prev, otherDiseaseNote: e.target.value }))}
+												disabled={isReadOnly}
+												className="w-full px-3 py-2 text-sm border border-blue-300 rounded bg-white min-h-[120px] disabled:bg-gray-50"
+												rows={5}
+												placeholder="암 종류·치료력, 알레르기 원인물질, 기타 질환을 구체적으로 적어 주세요."
+											/>
 										</div>
 
 										{/* 과거병력, 현 진단명, 판단근거 */}
@@ -1404,6 +1465,64 @@ export default function NeedsAssessmentRecord() {
 												</div>
 											))}
 										</div>
+										<div className="p-4 mt-4 space-y-3 bg-white border border-blue-300 rounded-lg">
+											<h3 className="text-base font-semibold text-blue-900">운동장애 · 신체기능</h3>
+											{[
+												{ label: '관절구축', col: 'E13', value: rehabilitationExtra.contractureYn, opts: E13_OPTIONS, onChange: (v: string) => setRehabilitationExtra((p) => ({ ...p, contractureYn: v })) },
+												{ label: '마비(운동장애)', col: 'E14', value: rehabilitationExtra.paralysis, opts: E14_OPTIONS, onChange: (v: string) => setRehabilitationExtra((p) => ({ ...p, paralysis: v })) },
+												{ label: '근위축', col: 'E15', value: rehabilitationExtra.atrophyYn, opts: E13_OPTIONS, onChange: (v: string) => setRehabilitationExtra((p) => ({ ...p, atrophyYn: v })) },
+												{ label: '보행', col: 'E16', value: rehabilitationExtra.gait, opts: E16_OPTIONS, onChange: (v: string) => setRehabilitationExtra((p) => ({ ...p, gait: v })) },
+												{ label: '신체기능', col: 'E17', value: rehabilitationExtra.physicalFunction, opts: E17_OPTIONS, onChange: (v: string) => setRehabilitationExtra((p) => ({ ...p, physicalFunction: v })) },
+											].map((row) => (
+												<div key={row.col} className="flex items-center gap-2">
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														{row.label}
+														<span className="block text-[10px] font-normal text-blue-800/70">{row.col}</span>
+													</label>
+													<select
+														value={row.value}
+														onChange={(e) => row.onChange(e.target.value)}
+														disabled={isReadOnly}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+													>
+														<option value="">선택</option>
+														{row.opts.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
+													</select>
+												</div>
+											))}
+											<div className="flex items-center gap-2">
+												<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													관절구축 부위
+													<span className="block text-[10px] font-normal text-blue-800/70">E13_01</span>
+												</label>
+												<input
+													type="text"
+													value={rehabilitationExtra.contractureSite}
+													onChange={(e) => setRehabilitationExtra((p) => ({ ...p, contractureSite: e.target.value }))}
+													disabled={isReadOnly}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+													placeholder="예) 우측 어깨, 좌측 무릎"
+												/>
+											</div>
+											<div className="flex items-center gap-2">
+												<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													근위축 부위
+													<span className="block text-[10px] font-normal text-blue-800/70">E15_01</span>
+												</label>
+												<input
+													type="text"
+													value={rehabilitationExtra.atrophySite}
+													onChange={(e) => setRehabilitationExtra((p) => ({ ...p, atrophySite: e.target.value }))}
+													disabled={isReadOnly}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+													placeholder="예) 양하지"
+												/>
+											</div>
+										</div>
 										<div className="flex items-start gap-2 mt-4">
 											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">판단근거</label>
 											<textarea
@@ -1419,21 +1538,24 @@ export default function NeedsAssessmentRecord() {
 								{/* 간호 탭 */}
 								{activeTab === '간호' && (
 									<>
-										<div className="grid grid-cols-5 gap-4">
-											{[
-												'기관지 절개관 간호', '흡인', '산소요법', '욕창간호', '경관영양',
-												'통증간호', '장루간호', '도뇨관리', '투석간호', '당뇨발간호',
-												'상처간호'
-											].map((item) => (
-												<label key={item} className="flex items-center gap-2 cursor-pointer">
-													<input
-														type="checkbox"
-														checked={nursingData[item] || false}
-														onChange={(e) => setNursingData(prev => ({ ...prev, [item]: e.target.checked }))}
-														className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-													/>
-													<span className="text-sm text-blue-900">{item}</span>
-												</label>
+										<div className="space-y-4">
+											{NURSING_GROUPS.map((grp) => (
+												<div key={grp.group} className="p-3 bg-white border border-blue-300 rounded-lg">
+													<div className="mb-2 text-sm font-semibold text-blue-800">{grp.group}</div>
+													<div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+														{grp.items.map((item) => (
+															<label key={item} className="flex items-center gap-2 cursor-pointer">
+																<input
+																	type="checkbox"
+																	checked={nursingData[item] || false}
+																	onChange={(e) => setNursingData((prev) => ({ ...prev, [item]: e.target.checked }))}
+																	className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
+																/>
+																<span className="text-sm text-blue-900">{item}</span>
+															</label>
+														))}
+													</div>
+												</div>
 											))}
 										</div>
 										<div className="flex items-start gap-2 mt-4">
@@ -1451,34 +1573,24 @@ export default function NeedsAssessmentRecord() {
 								{/* 인지 탭 */}
 								{activeTab === '인지' && (
 									<>
-										<div className="space-y-2">
-											{[
-												{ num: 1, label: '지남력' },
-												{ num: 2, label: '기억력' },
-												{ num: 3, label: '주의집중 및 계산' },
-												{ num: 4, label: '언어적기능' },
-												{ num: 5, label: '판단력' },
-												{ num: 6, label: '편집증과 망상' },
-												{ num: 7, label: '환각' },
-												{ num: 8, label: '배회' },
-												{ num: 9, label: '반복적인 활동' },
-												{ num: 10, label: '부적절한 행동' },
-												{ num: 11, label: '언어폭팔' },
-												{ num: 12, label: '신체적 공격 또는 폭력행위' },
-												{ num: 13, label: '우울' },
-												{ num: 14, label: '일반적인 불안' },
-												{ num: '', label: '혼자 남겨짐에 대한 공포' }
-											].map((item) => (
-												<label key={item.label} className="flex items-center gap-2 cursor-pointer">
-													<span className="w-8 text-sm text-blue-900">{item.num}</span>
-													<input
-														type="checkbox"
-														checked={cognitionData[item.label] || false}
-														onChange={(e) => setCognitionData(prev => ({ ...prev, [item.label]: e.target.checked }))}
-														className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-													/>
-													<span className="text-sm text-blue-900">{item.label}</span>
-												</label>
+										<div className="space-y-4">
+											{COG_GROUPS.map((grp) => (
+												<div key={grp.group} className="p-3 bg-white border border-blue-300 rounded-lg">
+													<div className="mb-2 text-sm font-semibold text-blue-800">{grp.group}</div>
+													<div className="space-y-2">
+														{grp.labels.map((label) => (
+															<label key={label} className="flex items-center gap-2 cursor-pointer">
+																<input
+																	type="checkbox"
+																	checked={cognitionData[label] || false}
+																	onChange={(e) => setCognitionData((prev) => ({ ...prev, [label]: e.target.checked }))}
+																	className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
+																/>
+																<span className="text-sm text-blue-900">{label}</span>
+															</label>
+														))}
+													</div>
+												</div>
 											))}
 										</div>
 										<div className="flex items-start gap-2 mt-4">
@@ -1564,6 +1676,24 @@ export default function NeedsAssessmentRecord() {
 													))}
 												</select>
 											</div>
+											<div className="flex items-center gap-2">
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													시력상태
+													<span className="block text-[10px] font-normal text-blue-800/70">H04</span>
+												</label>
+												<select
+													value={communicationData.visionStatus}
+													onChange={(e) => setCommunicationData((prev) => ({ ...prev, visionStatus: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+												>
+													<option value="">선택</option>
+													{H04_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
+												</select>
+											</div>
 										</div>
 										<div className="flex items-start gap-2 mt-4">
 											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
@@ -1580,8 +1710,8 @@ export default function NeedsAssessmentRecord() {
 									</>
 								)}
 
-								{/* 영양 탭 */}
-								{activeTab === '영양' && (
+								{/* 구강과 영양 탭 */}
+								{activeTab === '구강과 영양' && (
 									<>
 										<div className="flex items-center justify-end mb-1">
 											<label className="flex items-center gap-2 text-sm text-blue-900">
@@ -1593,7 +1723,7 @@ export default function NeedsAssessmentRecord() {
 													}
 													className="w-4 h-4 border-blue-300 rounded"
 												/>
-												<span className="font-medium">영양상태 입력완료 (I99)</span>
+												<span className="font-medium">구강과 영양 입력완료 (I99)</span>
 											</label>
 										</div>
 										<div className="space-y-4">
@@ -1615,6 +1745,39 @@ export default function NeedsAssessmentRecord() {
 													))}
 												</select>
 											</div>
+											<div className="flex items-center gap-2">
+												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+													구강건강
+													<span className="block text-[10px] font-normal text-blue-800/70">I06</span>
+												</label>
+												<select
+													value={nutritionData.oralHealth}
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, oralHealth: e.target.value }))}
+													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+												>
+													<option value="">선택</option>
+													{I06_OPTIONS.map((o) => (
+														<option key={o.code} value={o.code}>
+															{o.code}. {o.label}
+														</option>
+													))}
+												</select>
+											</div>
+											{nutritionData.oralHealth === '5' && (
+												<div className="flex items-center gap-2">
+													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-50 border border-blue-300 rounded whitespace-nowrap">
+														구강건강 기타
+														<span className="block text-[10px] font-normal text-blue-800/70">I06_01</span>
+													</label>
+													<input
+														type="text"
+														value={nutritionData.oralHealthOther}
+														onChange={(e) => setNutritionData((prev) => ({ ...prev, oralHealthOther: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+														placeholder="기타 구강건강 내용"
+													/>
+												</div>
+											)}
 											<div className="flex items-center gap-2">
 												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
 													식사시문제점
@@ -1653,40 +1816,70 @@ export default function NeedsAssessmentRecord() {
 											</div>
 											<div className="flex items-center gap-2">
 												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
-													도구사용
-													<span className="block text-[10px] font-normal text-blue-800/70">I04</span>
+													치료식
+													<span className="block text-[10px] font-normal text-blue-800/70">I07</span>
 												</label>
 												<select
-													value={nutritionData.toolUsage}
-													onChange={(e) => setNutritionData((prev) => ({ ...prev, toolUsage: e.target.value }))}
+													value={nutritionData.therapeuticDiet}
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, therapeuticDiet: e.target.value }))}
 													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
 													<option value="">선택</option>
-													{I04_OPTIONS.map((o) => (
+													{I07_OPTIONS.map((o) => (
 														<option key={o.code} value={o.code}>
 															{o.code}. {o.label}
 														</option>
 													))}
 												</select>
 											</div>
+											{nutritionData.therapeuticDiet === '4' && (
+												<div className="flex items-center gap-2">
+													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-50 border border-blue-300 rounded whitespace-nowrap">
+														치료식 기타
+														<span className="block text-[10px] font-normal text-blue-800/70">I07_01</span>
+													</label>
+													<input
+														type="text"
+														value={nutritionData.therapeuticDietOther}
+														onChange={(e) => setNutritionData((prev) => ({ ...prev, therapeuticDietOther: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+														placeholder="기타 치료식 내용"
+													/>
+												</div>
+											)}
 											<div className="flex items-center gap-2">
 												<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
-													배설양상
-													<span className="block text-[10px] font-normal text-blue-800/70">I05</span>
+													영양상태
+													<span className="block text-[10px] font-normal text-blue-800/70">I08</span>
 												</label>
 												<select
-													value={nutritionData.excretionPattern}
-													onChange={(e) => setNutritionData((prev) => ({ ...prev, excretionPattern: e.target.value }))}
+													value={nutritionData.nutritionStatus}
+													onChange={(e) => setNutritionData((prev) => ({ ...prev, nutritionStatus: e.target.value }))}
 													className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
 												>
 													<option value="">선택</option>
-													{I05_OPTIONS.map((o) => (
+													{I08_OPTIONS.map((o) => (
 														<option key={o.code} value={o.code}>
 															{o.code}. {o.label}
 														</option>
 													))}
 												</select>
 											</div>
+											{nutritionData.nutritionStatus === '5' && (
+												<div className="flex items-center gap-2">
+													<label className="w-32 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-50 border border-blue-300 rounded whitespace-nowrap">
+														영양상태 기타
+														<span className="block text-[10px] font-normal text-blue-800/70">I08_01</span>
+													</label>
+													<input
+														type="text"
+														value={nutritionData.nutritionStatusOther}
+														onChange={(e) => setNutritionData((prev) => ({ ...prev, nutritionStatusOther: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+														placeholder="기타 영양상태 내용"
+													/>
+												</div>
+											)}
 										</div>
 										<div className="flex items-start gap-2 mt-4">
 											<label className="w-24 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
@@ -1871,6 +2064,57 @@ export default function NeedsAssessmentRecord() {
 														))}
 													</select>
 												</div>
+												<div className="flex items-center gap-2">
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														주거형태
+														<span className="block text-[10px] font-normal text-blue-800/70">J04</span>
+													</label>
+													<select
+														value={familyEnvironmentData.housingType}
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, housingType: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+													>
+														<option value="">선택</option>
+														{J04_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
+													</select>
+												</div>
+												{familyEnvironmentData.housingType === '6' && (
+													<div className="flex items-center gap-2">
+														<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-50 border border-blue-300 rounded whitespace-nowrap">
+															주거형태 기타
+															<span className="block text-[10px] font-normal text-blue-800/70">J04_01</span>
+														</label>
+														<input
+															type="text"
+															value={familyEnvironmentData.housingTypeOther}
+															onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, housingTypeOther: e.target.value }))}
+															className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-50"
+															placeholder="기타 주거형태"
+														/>
+													</div>
+												)}
+												<div className="flex items-center gap-2">
+													<label className="w-36 px-3 py-2 text-sm font-medium text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
+														사회적교류
+														<span className="block text-[10px] font-normal text-blue-800/70">J05</span>
+													</label>
+													<select
+														value={familyEnvironmentData.socialExchange}
+														onChange={(e) => setFamilyEnvironmentData((prev) => ({ ...prev, socialExchange: e.target.value }))}
+														className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+													>
+														<option value="">선택</option>
+														{J05_OPTIONS.map((o) => (
+															<option key={o.code} value={o.code}>
+																{o.code}. {o.label}
+															</option>
+														))}
+													</select>
+												</div>
 											</div>
 										</div>
 										<div className="flex items-start gap-2 mt-4">
@@ -1945,54 +2189,39 @@ export default function NeedsAssessmentRecord() {
 														<span className="block text-[10px] font-normal text-blue-800/70">K03</span>
 													</label>
 													<div className="flex-1 space-y-2">
-														<label className="flex items-center gap-2 cursor-pointer">
-															<input
-																type="checkbox"
-																checked={resourceUtilizationData.communityServices['급식 및 도시락배달'] || false}
-																onChange={(e) =>
-																	setResourceUtilizationData((prev) => ({
-																		...prev,
-																		communityServices: {
-																			...prev.communityServices,
-																			'급식 및 도시락배달': e.target.checked,
-																		},
-																	}))
-																}
-																className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-															/>
-															<span className="text-sm text-blue-900">급식 (K03_01)</span>
-														</label>
-														<label className="flex items-center gap-2 cursor-pointer">
-															<input
-																type="checkbox"
-																checked={resourceUtilizationData.communityServices['이미용'] || false}
-																onChange={(e) =>
-																	setResourceUtilizationData((prev) => ({
-																		...prev,
-																		communityServices: {
-																			...prev.communityServices,
-																			이미용: e.target.checked,
-																		},
-																	}))
-																}
-																className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-															/>
-															<span className="text-sm text-blue-900">이미용 (K03_02)</span>
-														</label>
-														<label className="flex items-center gap-2 cursor-pointer">
-															<input
-																type="checkbox"
-																checked={resourceUtilizationData.housingImprovementProject}
-																onChange={(e) =>
-																	setResourceUtilizationData((prev) => ({
-																		...prev,
-																		housingImprovementProject: e.target.checked,
-																	}))
-																}
-																className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-															/>
-															<span className="text-sm text-blue-900">주거 (K03_03)</span>
-														</label>
+														{COMMUNITY_SERVICE_ITEMS.map((it) => {
+															const checked =
+																it.col === 'K03_03'
+																	? resourceUtilizationData.housingImprovementProject
+																	: !!resourceUtilizationData.communityServices[it.key];
+															return (
+																<label key={it.col} className="flex items-center gap-2 cursor-pointer">
+																	<input
+																		type="checkbox"
+																		checked={checked}
+																		onChange={(e) => {
+																			const on = e.target.checked;
+																			if (it.col === 'K03_03') {
+																				setResourceUtilizationData((prev) => ({
+																					...prev,
+																					housingImprovementProject: on,
+																				}));
+																			} else {
+																				setResourceUtilizationData((prev) => ({
+																					...prev,
+																					communityServices: {
+																						...prev.communityServices,
+																						[it.key]: on,
+																					},
+																				}));
+																			}
+																		}}
+																		className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
+																	/>
+																	<span className="text-sm text-blue-900">{it.label} ({it.col})</span>
+																</label>
+															);
+														})}
 													</div>
 												</div>
 											</div>
@@ -2064,49 +2293,39 @@ export default function NeedsAssessmentRecord() {
 								{activeTab === '개별욕구' && (
 									<>
 										<div className="p-4 bg-white border border-blue-300 rounded-lg">
-											<h3 className="mb-4 text-base font-semibold text-blue-900">수급자 및 보호자 개별 욕구</h3>
-											<div className="grid grid-cols-3 gap-4 mb-4">
-												<div className="flex flex-col items-center gap-2">
-													<div className="text-sm font-medium text-blue-900">약물투약요구</div>
-													<label className="flex items-center gap-2 cursor-pointer">
+											<h3 className="mb-1 text-base font-semibold text-blue-900">수급자 및 보호자가 희망하는 서비스</h3>
+											<p className="mb-4 text-xs text-blue-800/80">해당 항목에 표시하고, 아래 서술란에 구체적 희망 내용을 적어 주세요.</p>
+											<div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-3 lg:grid-cols-5">
+												{INDIVIDUAL_NEED_ITEMS.map((it) => (
+													<label key={it.col} className="flex items-center gap-2 cursor-pointer">
 														<input
 															type="checkbox"
-															checked={individualNeedsData.medicationAdministrationRequest}
-															onChange={(e) => setIndividualNeedsData(prev => ({ ...prev, medicationAdministrationRequest: e.target.checked }))}
+															checked={!!(individualNeedsData as Record<string, unknown>)[it.field]}
+															onChange={(e) =>
+																setIndividualNeedsData((prev) => ({ ...prev, [it.field]: e.target.checked }))
+															}
 															className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
 														/>
+														<span className="text-sm text-blue-900">{it.label}</span>
 													</label>
-												</div>
-												<div className="flex flex-col items-center gap-2">
-													<div className="text-sm font-medium text-blue-900">병원동행</div>
-													<label className="flex items-center gap-2 cursor-pointer">
-														<input
-															type="checkbox"
-															checked={individualNeedsData.hospitalAccompaniment}
-															onChange={(e) => setIndividualNeedsData(prev => ({ ...prev, hospitalAccompaniment: e.target.checked }))}
-															className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-														/>
-													</label>
-												</div>
-												<div className="flex flex-col items-center gap-2">
-													<div className="text-sm font-medium text-blue-900">외출동행(은행등)</div>
-													<label className="flex items-center gap-2 cursor-pointer">
-														<input
-															type="checkbox"
-															checked={individualNeedsData.outingAccompaniment}
-															onChange={(e) => setIndividualNeedsData(prev => ({ ...prev, outingAccompaniment: e.target.checked }))}
-															className="w-4 h-4 text-blue-500 border-blue-300 rounded focus:ring-blue-500"
-														/>
-													</label>
-												</div>
+												))}
 											</div>
-											<div className="mt-4">
+											<div className="mt-4 space-y-3">
+												<label className="block text-sm font-medium text-blue-900">수급자 희망 내용 (L01)</label>
 												<textarea
 													value={individualNeedsData.notes}
-													onChange={(e) => setIndividualNeedsData(prev => ({ ...prev, notes: e.target.value }))}
-													className="w-full px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[200px]"
-													rows={8}
-													placeholder="- 과거에 골절 시술 및 수술을 한 이력이 있어 더이상 악화되지 않고 유지 되기를 희망하심.&#10;- 촉탁의를 통한 진료 및 약처방을 원하심."
+													onChange={(e) => setIndividualNeedsData((prev) => ({ ...prev, notes: e.target.value }))}
+													className="w-full px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[140px]"
+													rows={5}
+													placeholder={'예시)\n- 식사 시 부분적 도움을 받고 싶음\n- 보행 연습을 통해 현재 기능을 유지하고 싶음\n- 화장실 이용 시 도움이 필요함'}
+												/>
+												<label className="block text-sm font-medium text-blue-900">보호자 희망 내용 (L03)</label>
+												<textarea
+													value={individualNeedsData.guardianNotes}
+													onChange={(e) => setIndividualNeedsData((prev) => ({ ...prev, guardianNotes: e.target.value }))}
+													className="w-full px-3 py-2 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-h-[140px]"
+													rows={5}
+													placeholder={'예시)\n- 건강이 더 악화되지 않기를 바람\n- 정기적인 진료 및 투약 관리\n- 정서적으로 안정된 생활을 하기를 바람'}
 												/>
 											</div>
 										</div>

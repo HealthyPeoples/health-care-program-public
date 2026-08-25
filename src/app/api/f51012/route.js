@@ -11,9 +11,125 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
+const fs = require('fs');
+const path = require('path');
 
 const { normalizeYmdStrictPrefix: normalizeYmd } = require('../../../utils/normalizeYmd');
 const TABLE = '[돌봄시설DB].[dbo].[F51012]';
+const VIEW = '[돌봄시설DB].[dbo].[V51012]';
+
+let ensureColumnsPromise = null;
+
+const NEW_CHAR_COLS = [
+	'D08_04',
+	'D08_05',
+	'D11_01',
+	'D11_02',
+	'D11_03',
+	'C13',
+	'C14',
+	'C15',
+	'C16',
+	'C17',
+	'C18',
+	'C19',
+	'C20',
+	'C21',
+	'C22',
+	'C23',
+	'I06',
+	'I07',
+	'I08',
+	'E13',
+	'E14',
+	'E15',
+	'E16',
+	'E17',
+	'F12',
+	'F13',
+	'F14',
+	'F15',
+	'F16',
+	'F17',
+	'F18',
+	'F19',
+	'F20',
+	'F21',
+	'F22',
+	'H04',
+	'J04',
+	'J05',
+	'K03_05',
+	'K03_06',
+	'K03_07',
+	'K03_08',
+	'K03_09',
+	'L01_04',
+	'L01_05',
+	'L01_06',
+	'L01_07',
+	'L01_08',
+	'L01_09',
+	'L01_10',
+];
+const NEW_NVARCHAR_MAX_COLS = ['D11_NOTE', 'L03'];
+const NEW_NVARCHAR_200_COLS = ['E13_01', 'E15_01', 'I06_01', 'I07_01', 'I08_01', 'J04_01'];
+
+async function ensureColumns(pool) {
+	if (!pool) return;
+	if (!ensureColumnsPromise) {
+		ensureColumnsPromise = (async () => {
+			const stmts = [];
+			for (const col of NEW_CHAR_COLS) {
+				stmts.push(
+					`IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F51012]', N'${col}') IS NULL ALTER TABLE ${TABLE} ADD [${col}] CHAR(1) NULL;`
+				);
+			}
+			for (const col of NEW_NVARCHAR_MAX_COLS) {
+				stmts.push(
+					`IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F51012]', N'${col}') IS NULL ALTER TABLE ${TABLE} ADD [${col}] NVARCHAR(MAX) NULL;`
+				);
+			}
+			for (const col of NEW_NVARCHAR_200_COLS) {
+				stmts.push(
+					`IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F51012]', N'${col}') IS NULL ALTER TABLE ${TABLE} ADD [${col}] NVARCHAR(200) NULL;`
+				);
+			}
+			await pool.request().query(stmts.join('\n'));
+
+			await pool.request().query(`
+				IF NOT EXISTS (SELECT 1 FROM [돌봄시설DB].[dbo].[F01002] WHERE CODE = 'DZ' AND UCD = 'A')
+					INSERT INTO [돌봄시설DB].[dbo].[F01002] (CODE, UCD, DSC1, DSC2, SEQ, DEL) VALUES ('DZ', 'A', N'완전자립', N'  ○', 4, 'I');
+				IF NOT EXISTS (SELECT 1 FROM [돌봄시설DB].[dbo].[F01002] WHERE CODE = 'DZ' AND UCD = 'B')
+					INSERT INTO [돌봄시설DB].[dbo].[F01002] (CODE, UCD, DSC1, DSC2, SEQ, DEL) VALUES ('DZ', 'B', N'간접도움', N' △', 5, 'I');
+				IF NOT EXISTS (SELECT 1 FROM [돌봄시설DB].[dbo].[F01002] WHERE CODE = 'DZ' AND UCD = 'C')
+					INSERT INTO [돌봄시설DB].[dbo].[F01002] (CODE, UCD, DSC1, DSC2, SEQ, DEL) VALUES ('DZ', 'C', N'직접도움', N' ▲', 6, 'I');
+				IF NOT EXISTS (SELECT 1 FROM [돌봄시설DB].[dbo].[F01002] WHERE CODE = 'DZ' AND UCD = 'D')
+					INSERT INTO [돌봄시설DB].[dbo].[F01002] (CODE, UCD, DSC1, DSC2, SEQ, DEL) VALUES ('DZ', 'D', N'완전도움', N'Ⅹ', 7, 'I');
+			`);
+
+			const viewHasNew = await pool.request().query(`
+				SELECT 1 AS ok
+				FROM [돌봄시설DB].INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'V51012' AND COLUMN_NAME = N'C13'
+			`);
+			if (!viewHasNew.recordset?.length) {
+				try {
+					const viewPath = path.join(process.cwd(), 'sql', 'V51012.sql');
+					const viewSql = fs.readFileSync(viewPath, 'utf8').replace(/\r\n/g, '\n').replace(/^\uFEFF/, '').trim();
+					const escaped = viewSql.replace(/'/g, "''");
+					await pool.request().query(`EXEC [돌봄시설DB].sys.sp_executesql N'${escaped}'`);
+				} catch (viewErr) {
+					console.error('V51012 뷰 갱신 실패:', viewErr);
+				}
+			}
+		})().catch((err) => {
+			ensureColumnsPromise = null;
+			throw err;
+		});
+	}
+	await ensureColumnsPromise;
+}
 
 /** MERGE에 포함할 컬럼(키 ANCD,PNUM,RQDT 및 INDT 제외) */
 const DATA_COLUMNS = [
@@ -32,6 +148,17 @@ const DATA_COLUMNS = [
 	'C10',
 	'C11',
 	'C12',
+	'C13',
+	'C14',
+	'C15',
+	'C16',
+	'C17',
+	'C18',
+	'C19',
+	'C20',
+	'C21',
+	'C22',
+	'C23',
 	'C90',
 	'C99',
 	'D01_01',
@@ -76,6 +203,8 @@ const DATA_COLUMNS = [
 	'D08_01',
 	'D08_02',
 	'D08_03',
+	'D08_04',
+	'D08_05',
 	'D09_01',
 	'D09_02',
 	'D09_03',
@@ -83,6 +212,10 @@ const DATA_COLUMNS = [
 	'D10_01',
 	'D10_02',
 	'D10_02_01',
+	'D11_01',
+	'D11_02',
+	'D11_03',
+	'D11_NOTE',
 	'D20',
 	'D21',
 	'D90',
@@ -102,6 +235,13 @@ const DATA_COLUMNS = [
 	'E09_02',
 	'E10_01',
 	'E10_02',
+	'E13',
+	'E13_01',
+	'E14',
+	'E15',
+	'E15_01',
+	'E16',
+	'E17',
 	'E90',
 	'F01',
 	'F02',
@@ -114,6 +254,17 @@ const DATA_COLUMNS = [
 	'F09',
 	'F10',
 	'F11',
+	'F12',
+	'F13',
+	'F14',
+	'F15',
+	'F16',
+	'F17',
+	'F18',
+	'F19',
+	'F20',
+	'F21',
+	'F22',
 	'F90',
 	'G01',
 	'G02',
@@ -134,6 +285,7 @@ const DATA_COLUMNS = [
 	'H01',
 	'H02',
 	'H03',
+	'H04',
 	'H90',
 	'H99',
 	'I01',
@@ -141,6 +293,12 @@ const DATA_COLUMNS = [
 	'I03',
 	'I04',
 	'I05',
+	'I06',
+	'I06_01',
+	'I07',
+	'I07_01',
+	'I08',
+	'I08_01',
 	'I90',
 	'I99',
 	'J01',
@@ -152,6 +310,9 @@ const DATA_COLUMNS = [
 	'J02_03',
 	'J02_04',
 	'J03',
+	'J04',
+	'J04_01',
+	'J05',
 	'J90',
 	'J99',
 	'K01',
@@ -162,13 +323,26 @@ const DATA_COLUMNS = [
 	'K03_02',
 	'K03_03',
 	'K03_04',
+	'K03_05',
+	'K03_06',
+	'K03_07',
+	'K03_08',
+	'K03_09',
 	'K90',
 	'K99',
 	'L01',
 	'L01_01',
 	'L01_02',
 	'L01_03',
+	'L01_04',
+	'L01_05',
+	'L01_06',
+	'L01_07',
+	'L01_08',
+	'L01_09',
+	'L01_10',
 	'L02',
+	'L03',
 ];
 
 
@@ -220,16 +394,24 @@ function bindDataInputs(request, row) {
 				'D20',
 				'D21',
 				'D90',
+				'D11_NOTE',
 				'E90',
+				'E13_01',
+				'E15_01',
 				'F90',
 				'G90',
 				'H90',
 				'I90',
+				'I06_01',
+				'I07_01',
+				'I08_01',
 				'J90',
+				'J02_03',
+				'J04_01',
 				'K90',
 				'L01',
 				'L02',
-				'J02_03',
+				'L03',
 				'K01_01',
 				'K02',
 				'K02_01',
@@ -249,8 +431,8 @@ function bindDataInputs(request, row) {
 			}
 			continue;
 		}
-		// 의사소통 H01~H03, H99 : 코드 char(1)
-		if (['H01', 'H02', 'H03', 'H99'].includes(col)) {
+		// 의사소통 H01~H04, H99 : 코드 char(1)
+		if (['H01', 'H02', 'H03', 'H04', 'H99'].includes(col)) {
 			if (v == null || v === '') {
 				request.input(col, sql.Char(1), null);
 			} else {
@@ -258,9 +440,36 @@ function bindDataInputs(request, row) {
 			}
 			continue;
 		}
-		// 영양·가족·자원이용 일부 : 코드 1~9
-		// 영양 I01~I05, I99 / 가족·자원이용 일부 : 코드 1~9
-		if (['I01', 'I02', 'I03', 'I04', 'I05', 'I99', 'J01', 'J01_01', 'J02', 'J02_02', 'J02_04', 'J03', 'J99', 'K01', 'K99'].includes(col)) {
+		// 영양·가족·자원·재활 일부 : 코드 1~9 (Y/N 아님)
+		if (
+			[
+				'I01',
+				'I02',
+				'I03',
+				'I04',
+				'I05',
+				'I06',
+				'I07',
+				'I08',
+				'I99',
+				'J01',
+				'J01_01',
+				'J02',
+				'J02_02',
+				'J02_04',
+				'J03',
+				'J04',
+				'J05',
+				'J99',
+				'K01',
+				'K99',
+				'E13',
+				'E14',
+				'E15',
+				'E16',
+				'E17',
+			].includes(col)
+		) {
 			if (v == null || v === '') {
 				request.input(col, sql.Char(1), null);
 			} else {
@@ -295,6 +504,8 @@ export async function GET(req) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
+		await ensureColumns(pool);
+
 		const request = pool.request();
 		request.input('sessionAncd', gate.sessionAncd);
 		request.input('pnum', sql.VarChar(30), String(pnum).trim());
@@ -306,19 +517,33 @@ export async function GET(req) {
 			}
 			// 문자열 날짜 비교 — Date 객체 timezone 이슈로 단건 누락 방지
 			request.input('rqdt', sql.VarChar(10), ymd);
-			const result = await request.query(`
-        SELECT TOP 1
-          t.*,
-          e.[EMPNM] AS RQEMP_NM
-        FROM ${TABLE} t
-        LEFT JOIN [돌봄시설DB].[dbo].[F01010] e
-          ON t.[ANCD] = e.[ANCD]
-          AND t.[RQEMP] = e.[EMPNO]
-        WHERE t.[ANCD] = @sessionAncd
-          AND CAST(t.[PNUM] AS VARCHAR(30)) = @pnum
-          AND CONVERT(varchar(10), CAST(t.[RQDT] AS DATE), 23) = @rqdt
+			const viewResult = await request.query(`
+        SELECT TOP 1 v.*
+        FROM ${VIEW} v
+        WHERE v.[ANCD] = @sessionAncd
+          AND CAST(v.[PNUM] AS VARCHAR(30)) = @pnum
+          AND CONVERT(varchar(10), CAST(v.[RQDT] AS DATE), 23) = @rqdt
       `);
-			const row = serializeRow(result.recordset?.[0] || null);
+			let row = serializeRow(viewResult.recordset?.[0] || null);
+			if (!row) {
+				const fb = pool.request();
+				fb.input('sessionAncd', gate.sessionAncd);
+				fb.input('pnum', sql.VarChar(30), String(pnum).trim());
+				fb.input('rqdt', sql.VarChar(10), ymd);
+				const tableResult = await fb.query(`
+          SELECT TOP 1
+            t.*,
+            e.[EMPNM] AS RQEMP_NM
+          FROM ${TABLE} t
+          LEFT JOIN [돌봄시설DB].[dbo].[F01010] e
+            ON t.[ANCD] = e.[ANCD]
+            AND t.[RQEMP] = e.[EMPNO]
+          WHERE t.[ANCD] = @sessionAncd
+            AND CAST(t.[PNUM] AS VARCHAR(30)) = @pnum
+            AND CONVERT(varchar(10), CAST(t.[RQDT] AS DATE), 23) = @rqdt
+        `);
+				row = serializeRow(tableResult.recordset?.[0] || null);
+			}
 			return jsonOk({ success: true, data: row });
 		}
 
@@ -357,6 +582,8 @@ export async function POST(req) {
 		if (!pool) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
+
+		await ensureColumns(pool);
 
 		const request = pool.request();
 		request.input('ANCD', sql.VarChar(30), String(gate.sessionAncd));

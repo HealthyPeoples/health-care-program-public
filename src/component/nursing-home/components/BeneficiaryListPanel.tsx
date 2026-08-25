@@ -32,11 +32,18 @@ export interface BeneficiaryMember {
   [key: string]: unknown;
 }
 
+export function beneficiaryMemberKey(m: Pick<BeneficiaryMember, "ANCD" | "PNUM">) {
+  return `${String(m.ANCD ?? "").trim()}::${String(m.PNUM ?? "").trim()}`;
+}
+
 type Props = {
   title?: string;
   selectedMember: BeneficiaryMember | null;
   onSelect: (m: BeneficiaryMember) => void;
   className?: string;
+  checkedKeys?: Set<string>;
+  onToggleCheck?: (member: BeneficiaryMember, checked: boolean) => void;
+  onToggleCheckAll?: (checked: boolean, members: BeneficiaryMember[]) => void;
 };
 
 function calculateAge(birthDate: unknown) {
@@ -52,6 +59,9 @@ export default function BeneficiaryListPanel({
   selectedMember,
   onSelect,
   className,
+  checkedKeys,
+  onToggleCheck,
+  onToggleCheckAll,
 }: Props) {
   const [memberList, setMemberList] = useState<BeneficiaryMember[]>([]);
   const [loading, setLoading] = useState(false);
@@ -145,6 +155,12 @@ export default function BeneficiaryListPanel({
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentMembers = filteredMembers.slice(startIndex, endIndex);
+  const enableCheck = typeof onToggleCheck === "function";
+  const allFilteredChecked =
+    enableCheck &&
+    filteredMembers.length > 0 &&
+    filteredMembers.every((m) => checkedKeys?.has(beneficiaryMemberKey(m)));
+  const colSpan = enableCheck ? 7 : 6;
 
   return (
     <div className={`flex flex-col min-h-0 w-full p-3 sm:p-4 bg-white border-r border-blue-200 ${className ?? ""}`}>
@@ -212,6 +228,17 @@ export default function BeneficiaryListPanel({
           <table className="w-full min-w-[320px] text-xs">
             <thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
               <tr>
+                {enableCheck ? (
+                  <th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200 w-8">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredChecked}
+                      onChange={(e) => onToggleCheckAll?.(e.target.checked, filteredMembers)}
+                      className="w-3.5 h-3.5 border-blue-300 rounded"
+                      title="현재 필터 수급자 전체 선택"
+                    />
+                  </th>
+                ) : null}
                 <th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
                 <th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">현황</th>
                 <th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
@@ -223,18 +250,21 @@ export default function BeneficiaryListPanel({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">
+                  <td colSpan={colSpan} className="px-2 py-4 text-center text-blue-900/60">
                     로딩 중...
                   </td>
                 </tr>
               ) : filteredMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">
+                  <td colSpan={colSpan} className="px-2 py-4 text-center text-blue-900/60">
                     수급자 데이터가 없습니다
                   </td>
                 </tr>
               ) : (
-                currentMembers.map((member, index) => (
+                currentMembers.map((member, index) => {
+                  const key = beneficiaryMemberKey(member);
+                  const isChecked = !!checkedKeys?.has(key);
+                  return (
                   <tr
                     key={`${member.ANCD}-${member.PNUM}-${index}`}
                     onClick={() => onSelect(member)}
@@ -242,6 +272,19 @@ export default function BeneficiaryListPanel({
                       selectedMember?.ANCD === member.ANCD && selectedMember?.PNUM === member.PNUM ? "bg-blue-100" : ""
                     }`}
                   >
+                    {enableCheck ? (
+                      <td
+                        className="px-1 py-1.5 text-center border-r border-blue-100"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => onToggleCheck?.(member, e.target.checked)}
+                          className="w-3.5 h-3.5 border-blue-300 rounded"
+                        />
+                      </td>
+                    ) : null}
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">{startIndex + index + 1}</td>
                     <td className="px-2 py-1.5 text-center border-r border-blue-100">
                       {String(member.P_ST ?? "").trim() === "1" ? "입소" : String(member.P_ST ?? "").trim() === "9" ? "퇴소" : "-"}
@@ -255,7 +298,8 @@ export default function BeneficiaryListPanel({
                     </td>
                     <td className="px-2 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>

@@ -14,16 +14,19 @@ import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
 import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
-	CATHETER_TIME_SLOTS,
+	URINE_BAG_POSITIONS,
+	bagPosToLabel,
 	catheterFormToPayload,
 	createEmptyCatheterForm,
 	formatDateYmd,
 	formatDateYyMmDd,
 	isCheckedFlag,
+	resolveManagementTime,
 	rowToCatheterForm,
 	type CatheterFormData,
 	type F33050Row,
 } from '../../utils/indwellingCatheterFields';
+import { printIndwellingCatheter } from './indwellingCatheterPrint';
 
 interface MemberData {
 	ANCD: string;
@@ -40,12 +43,25 @@ interface MemberData {
 interface CatheterData extends F33050Row {
 	MGDT: string;
 	MGTM: string;
-	TOTURVOL: string;
 	CATH: string;
-	URPULSE: string;
+	BAGPOS: string;
 	DISINF: string;
 	REMARKS: string;
 	OBSERVER: string;
+}
+
+function memberKey(m: { ANCD?: unknown; PNUM?: unknown }) {
+	return `${String(m.ANCD ?? '').trim()}-${String(m.PNUM ?? '').trim()}`;
+}
+
+function monthStartYmd() {
+	const d = new Date();
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+function todayYmd() {
+	const d = new Date();
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export default function IndwellingCatheter() {
@@ -58,7 +74,12 @@ export default function IndwellingCatheter() {
 	const listItemsPerPage = 10;
 
 	const [formData, setFormData] = useState<CatheterFormData>(createEmptyCatheterForm());
+	const [editingBackup, setEditingBackup] = useState<CatheterFormData | null>(null);
 	const [defaultObserver, setDefaultObserver] = useState('');
+	const [checkedMemberKeys, setCheckedMemberKeys] = useState<Set<string>>(new Set());
+	const [printFrom, setPrintFrom] = useState(monthStartYmd);
+	const [printTo, setPrintTo] = useState(todayYmd);
+	const [printing, setPrinting] = useState(false);
 
 	// 수급자 목록 데이터
 	const [memberList, setMemberList] = useState<MemberData[]>([]);
@@ -153,6 +174,31 @@ export default function IndwellingCatheter() {
 		setCurrentPage(page);
 	};
 
+	const allFilteredChecked =
+		filteredMembers.length > 0 && filteredMembers.every((m) => checkedMemberKeys.has(memberKey(m)));
+
+	const toggleAllFilteredChecked = (checked: boolean) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			for (const m of filteredMembers) {
+				const key = memberKey(m);
+				if (checked) next.add(key);
+				else next.delete(key);
+			}
+			return next;
+		});
+	};
+
+	const toggleMemberChecked = (member: MemberData, checked: boolean) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			const key = memberKey(member);
+			if (checked) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	};
+
 	useEffect(() => {
 		fetchMembers();
 		void (async () => {
@@ -206,10 +252,9 @@ export default function IndwellingCatheter() {
 			const mapped: CatheterData[] = list.map((r: F33050Row) => ({
 				...r,
 				MGDT: r.VDT != null && r.VDT !== '' ? String(r.VDT) : '',
-				MGTM: String(r.VTM_GU ?? ''),
-				TOTURVOL: r.PSS_VAL != null ? String(r.PSS_VAL) : '',
+				MGTM: resolveManagementTime(r),
 				CATH: String(r.CH_01 ?? '0'),
-				URPULSE: String(r.CH_02 ?? '0'),
+				BAGPOS: String(r.BAG_POS ?? ''),
 				DISINF: String(r.CH_03 ?? '0'),
 				REMARKS: String(r.ETC ?? ''),
 				OBSERVER: String(r.INEMPNM ?? ''),
@@ -223,17 +268,29 @@ export default function IndwellingCatheter() {
 		}
 	};
 
+	const exitEditMode = () => {
+		setIsEditMode(false);
+		setEditingBackup(null);
+	};
+
+	const confirmLeaveEdit = () => {
+		if (!isEditMode) return true;
+		return confirm('수정 중인 내용이 저장되지 않습니다. 이동할까요?');
+	};
+
 	const handleSelectMember = (member: MemberData) => {
+		if (!confirmLeaveEdit()) return;
+		exitEditMode();
 		setSelectedMember(member);
 		setSelectedRecordIndex(null);
-		setIsEditMode(false);
 		setFormData(createEmptyCatheterForm(member.P_NM || '', defaultObserver));
 		fetchCatheterRecords(member.ANCD, member.PNUM);
 	};
 
 	const handleSelectRecord = (index: number, record: CatheterData) => {
+		if (!confirmLeaveEdit()) return;
+		exitEditMode();
 		setSelectedRecordIndex(index);
-		setIsEditMode(false);
 		setFormData(rowToCatheterForm(record, selectedMember?.P_NM || ''));
 	};
 
@@ -241,20 +298,97 @@ export default function IndwellingCatheter() {
 
 	const formatTimeDisplay = (timeStr: string) => {
 		if (!timeStr) return '';
-		if (timeStr.includes(':')) return timeStr;
-		const slot = CATHETER_TIME_SLOTS.find((s) => s.vtmGu === String(timeStr).padStart(2, '0').slice(-2));
-		return slot?.label ?? timeStr;
+		if (timeStr.includes(':')) return timeStr.slice(0, 5);
+		return timeStr;
 	};
 
-	// 저장 함수
-	const handleSave = async () => {
+	const handlePrint = async () => {
+		const from = String(printFrom || '').slice(0, 10);
+		const to = String(printTo || '').slice(0, 10);
+		if (!from || !to) {
+			alert('출력 기간(시작일·종료일)을 설정해주세요.');
+			return;
+		}
+		if (from > to) {
+			alert('기간 시작일이 종료일보다 늦을 수 없습니다.');
+			return;
+		}
+
+		const targets = filteredMembers.filter((m) => checkedMemberKeys.has(memberKey(m)));
+		if (targets.length === 0) {
+			alert('출력할 수급자를 목록에서 체크해주세요.');
+			return;
+		}
+
+		setPrinting(true);
+		try {
+			const items: Array<{ member: MemberData; rows: F33050Row[] }> = [];
+			for (const member of targets) {
+				const params = new URLSearchParams({
+					ancd: String(member.ANCD ?? ''),
+					pnum: String(member.PNUM ?? ''),
+					startDate: from,
+					endDate: to,
+				});
+				const response = await fetch(`/api/f33050?${params.toString()}`);
+				const result = await response.json().catch(() => ({}));
+				if (!response.ok || !result?.success) {
+					throw new Error(result?.error || `${member.P_NM || '수급자'} 조회 실패`);
+				}
+				const rows = Array.isArray(result.data) ? (result.data as F33050Row[]) : [];
+				if (rows.length > 0) {
+					items.push({ member, rows });
+				}
+			}
+			if (items.length === 0) {
+				alert('선택한 수급자·기간에 해당하는 기록이 없습니다.');
+				return;
+			}
+			printIndwellingCatheter({ items, startDate: from, endDate: to });
+		} catch (err) {
+			console.error('유치도뇨관 관리 출력 오류:', err);
+			alert(err instanceof Error ? err.message : '출력 중 오류가 발생했습니다.');
+		} finally {
+			setPrinting(false);
+		}
+	};
+
+	const handleAdd = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		if (!confirmLeaveEdit()) return;
+		setSelectedRecordIndex(null);
+		const next = createEmptyCatheterForm(selectedMember.P_NM || '', defaultObserver);
+		setFormData(next);
+		setEditingBackup(JSON.parse(JSON.stringify(next)) as CatheterFormData);
+		setIsEditMode(true);
+	};
+
+	const handleEditOrSave = async () => {
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
 
+		if (!isEditMode) {
+			if (selectedRecordIndex === null) {
+				alert('수정할 항목을 목록에서 선택해주세요.');
+				return;
+			}
+			setEditingBackup(JSON.parse(JSON.stringify(formData)) as CatheterFormData);
+			setIsEditMode(true);
+			return;
+		}
+
 		if (!formData.managementDate) {
 			alert('관리일자를 입력해주세요.');
+			return;
+		}
+
+		if (!formData.managementTime) {
+			alert('관리시간을 입력해주세요.');
 			return;
 		}
 
@@ -272,14 +406,15 @@ export default function IndwellingCatheter() {
 			}
 
 			alert(selectedRecordIndex !== null ? '유치도뇨관리가 수정되었습니다.' : '유치도뇨관리가 저장되었습니다.');
-			setIsEditMode(false);
-			setSelectedRecordIndex(null);
+			exitEditMode();
 
-			if (selectedMember) {
-				await fetchCatheterRecords(selectedMember.ANCD, selectedMember.PNUM);
+			const keepIndex = selectedRecordIndex;
+			await fetchCatheterRecords(selectedMember.ANCD, selectedMember.PNUM);
+
+			if (keepIndex === null) {
+				setSelectedRecordIndex(null);
+				setFormData(createEmptyCatheterForm(selectedMember.P_NM || '', defaultObserver));
 			}
-
-			setFormData(createEmptyCatheterForm(selectedMember.P_NM || '', defaultObserver));
 		} catch (err) {
 			console.error('유치도뇨관리 저장 오류:', err);
 			alert(err instanceof Error ? err.message : '유치도뇨관리 저장 중 오류가 발생했습니다.');
@@ -288,15 +423,25 @@ export default function IndwellingCatheter() {
 		}
 	};
 
-	// 삭제 함수
-	const handleDelete = async () => {
+	const handleCancelEdit = () => {
+		if (editingBackup) {
+			setFormData(JSON.parse(JSON.stringify(editingBackup)) as CatheterFormData);
+		} else if (selectedRecordIndex !== null) {
+			const record = catheterList[selectedRecordIndex];
+			if (record) setFormData(rowToCatheterForm(record, selectedMember?.P_NM || ''));
+		} else if (selectedMember) {
+			setFormData(createEmptyCatheterForm(selectedMember.P_NM || '', defaultObserver));
+		}
+		exitEditMode();
+	};
+
+	const handleDelete = async (record: CatheterData, index: number) => {
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
 
-		if (selectedRecordIndex === null) {
-			alert('삭제할 유치도뇨관리를 선택해주세요.');
+		if (isEditMode && !confirm('수정 중인 내용이 저장되지 않습니다. 삭제를 진행할까요?')) {
 			return;
 		}
 
@@ -306,9 +451,8 @@ export default function IndwellingCatheter() {
 
 		setLoadingRecords(true);
 		try {
-			const recordToDelete = catheterList[selectedRecordIndex];
-			const vdt = formatDateYmd(recordToDelete.MGDT || recordToDelete.VDT || formData.managementDate || '');
-			const vtmGu = String(recordToDelete.VTM_GU ?? '');
+			const vdt = formatDateYmd(record.MGDT || record.VDT || '');
+			const vtmGu = String(record.VTM_GU ?? '');
 			const url = `/api/f33050?ancd=${encodeURIComponent(selectedMember.ANCD)}&pnum=${encodeURIComponent(
 				selectedMember.PNUM
 			)}&vdt=${encodeURIComponent(vdt)}&vtmGu=${encodeURIComponent(vtmGu)}`;
@@ -319,14 +463,16 @@ export default function IndwellingCatheter() {
 			}
 
 			alert('유치도뇨관리가 삭제되었습니다.');
-			setIsEditMode(false);
+			exitEditMode();
 
-			if (selectedMember) {
-				await fetchCatheterRecords(selectedMember.ANCD, selectedMember.PNUM);
+			if (selectedRecordIndex === index) {
+				setSelectedRecordIndex(null);
+				setFormData(createEmptyCatheterForm(selectedMember.P_NM || '', defaultObserver));
+			} else if (selectedRecordIndex !== null && selectedRecordIndex > index) {
+				setSelectedRecordIndex(selectedRecordIndex - 1);
 			}
 
-			setFormData(createEmptyCatheterForm(selectedMember.P_NM || '', defaultObserver));
-			setSelectedRecordIndex(null);
+			await fetchCatheterRecords(selectedMember.ANCD, selectedMember.PNUM);
 		} catch (err) {
 			console.error('유치도뇨관리 삭제 오류:', err);
 			alert(err instanceof Error ? err.message : '유치도뇨관리 삭제 중 오류가 발생했습니다.');
@@ -334,6 +480,11 @@ export default function IndwellingCatheter() {
 			setLoadingRecords(false);
 		}
 	};
+
+	const fieldsLocked = !isEditMode;
+	const fieldCls = `flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded focus:outline-none focus:border-blue-500 ${
+		fieldsLocked ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'
+	}`;
 
 	// 목록 페이지네이션
 	const listTotalPages = Math.ceil(catheterList.length / listItemsPerPage);
@@ -348,6 +499,36 @@ export default function IndwellingCatheter() {
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
 					{/* 필터 헤더 */}
 					<div className="mb-3">
+						<div className="p-2 mb-3 space-y-2 border border-blue-200 rounded-lg bg-blue-50/60">
+							<div className="text-xs font-semibold text-blue-900">출력기간</div>
+							<div className="flex items-center gap-1">
+								<input
+									type="date"
+									value={printFrom}
+									onChange={(e) => setPrintFrom(e.target.value)}
+									className="flex-1 min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+								/>
+								<span className="text-xs text-blue-900 shrink-0">~</span>
+								<input
+									type="date"
+									value={printTo}
+									onChange={(e) => setPrintTo(e.target.value)}
+									className="flex-1 min-w-0 px-1 py-1 text-xs bg-white border border-blue-300 rounded"
+								/>
+							</div>
+							<button
+								type="button"
+								onClick={() => void handlePrint()}
+								disabled={printing}
+								className="w-full px-2 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50"
+							>
+								{printing
+									? '출력 준비 중...'
+									: checkedMemberKeys.size > 0
+										? `출력 (${checkedMemberKeys.size}명)`
+										: '출력'}
+							</button>
+						</div>
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
 						<div className="space-y-2">
 							{/* 이름 검색 */}
@@ -409,6 +590,15 @@ export default function IndwellingCatheter() {
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200 w-8">
+											<input
+												type="checkbox"
+												checked={allFilteredChecked}
+												onChange={(e) => toggleAllFilteredChecked(e.target.checked)}
+												className="w-3.5 h-3.5 border-blue-300 rounded"
+												title="현재 필터 수급자 전체 선택"
+											/>
+										</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">현황</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
@@ -420,14 +610,17 @@ export default function IndwellingCatheter() {
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
 										</tr>
 									) : filteredMembers.length === 0 ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
 										</tr>
 									) : (
-										currentMembers.map((member, index) => (
+										currentMembers.map((member, index) => {
+											const key = memberKey(member);
+											const isChecked = checkedMemberKeys.has(key);
+											return (
 											<tr
 												key={`${member.ANCD}-${member.PNUM}-${index}`}
 												onClick={() => handleSelectMember(member)}
@@ -435,6 +628,17 @@ export default function IndwellingCatheter() {
 													selectedMember?.ANCD === member.ANCD && selectedMember?.PNUM === member.PNUM ? 'bg-blue-100' : ''
 												}`}
 											>
+												<td
+													className="px-1 py-1.5 text-center border-r border-blue-100"
+													onClick={(e) => e.stopPropagation()}
+												>
+													<input
+														type="checkbox"
+														checked={isChecked}
+														onChange={(e) => toggleMemberChecked(member, e.target.checked)}
+														className="w-3.5 h-3.5 border-blue-300 rounded"
+													/>
+												</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">{startIndex + index + 1}</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">
 													{member.P_ST === '1' ? '입소' : member.P_ST === '9' ? '퇴소' : '-'}
@@ -448,7 +652,8 @@ export default function IndwellingCatheter() {
 												</td>
 												<td className="px-2 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>
 											</tr>
-										))
+											);
+										})
 									)}
 								</tbody>
 							</table>
@@ -517,25 +722,36 @@ export default function IndwellingCatheter() {
 					>
 				{/* 중간 패널: 유치도뇨관리 목록 테이블 */}
 				<div className="flex flex-col w-full lg:w-1/3 min-w-0 shrink-0 bg-white border-r border-blue-200 border-b lg:border-b-0 lg:h-full lg:min-h-0 lg:overflow-hidden">
+					<div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-blue-200 bg-blue-50 shrink-0">
+						<span className="text-sm font-medium text-blue-900">유치도뇨관리 목록</span>
+						<button
+							type="button"
+							onClick={handleAdd}
+							disabled={!selectedMember || loadingRecords}
+							className="px-3 py-1 text-sm font-medium text-blue-900 border border-blue-400 rounded bg-blue-100 hover:bg-blue-200 disabled:opacity-40 disabled:cursor-not-allowed"
+						>
+							신규
+						</button>
+					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto">
 							<table className="w-full text-xs border-collapse table-fixed">
 								<colgroup>
 									<col className="w-[18%]" />
-									<col className="w-[28%]" />
+									<col className="w-[16%]" />
 									<col className="w-[14%]" />
-									<col className="w-[13%]" />
-									<col className="w-[13%]" />
-									<col className="w-[14%]" />
+									<col className="w-[24%]" />
+									<col className="w-[12%]" />
+									<col className="w-[16%]" />
 								</colgroup>
 								<thead className="sticky top-0 z-10 bg-blue-50">
 									<tr>
 										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">관리일자</th>
 										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">관리시간</th>
-										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">소변총량</th>
-										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">도뇨관</th>
-										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">소변맥</th>
-										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-blue-200 bg-blue-50">소독</th>
+										<th className="px-1 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50 leading-tight">삽입<br />교체</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">소변백 위치</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-r border-blue-200 bg-blue-50">소독</th>
+										<th className="px-2 py-2 font-semibold text-center text-blue-900 border-b border-blue-200 bg-blue-50">삭제</th>
 									</tr>
 								</thead>
 								<tbody>
@@ -562,15 +778,27 @@ export default function IndwellingCatheter() {
 												>
 													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">{formatDateDisplay(record.MGDT || record.VDT || '')}</td>
 													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">{formatTimeDisplay(record.MGTM || '')}</td>
-													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">{record.TOTURVOL || '-'}</td>
 													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">
 														{isCheckedFlag(record.CATH) ? '✓' : '-'}
 													</td>
 													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">
-														{isCheckedFlag(record.URPULSE) ? '✓' : '-'}
+														{bagPosToLabel(record.BAGPOS) || '-'}
 													</td>
-													<td className="px-2 py-2 text-center text-blue-900">
+													<td className="px-2 py-2 text-center text-blue-900 border-r border-blue-100">
 														{isCheckedFlag(record.DISINF) ? '✓' : '-'}
+													</td>
+													<td className="px-1 py-2 text-center text-blue-900">
+														<button
+															type="button"
+															onClick={(e) => {
+																e.stopPropagation();
+																void handleDelete(record, globalIndex);
+															}}
+															disabled={loadingRecords}
+															className="px-2 py-0.5 text-xs font-medium text-red-900 bg-red-100 border border-red-400 rounded hover:bg-red-200 disabled:opacity-50"
+														>
+															삭제
+														</button>
 													</td>
 												</tr>
 											);
@@ -657,57 +885,49 @@ export default function IndwellingCatheter() {
 								type="date"
 								value={formData.managementDate}
 								onChange={(e) => setFormData(prev => ({ ...prev, managementDate: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								disabled={fieldsLocked}
+								className={fieldCls}
 							/>
 						</div>
 
 						{/* 관리시간 */}
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">관리시간</label>
-							<select
+							<input
+								type="time"
 								value={formData.managementTime}
 								onChange={(e) => setFormData(prev => ({ ...prev, managementTime: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-							>
-								{CATHETER_TIME_SLOTS.map((slot) => (
-									<option key={slot.vtmGu} value={slot.label}>{slot.label}</option>
-								))}
-							</select>
-						</div>
-
-						{/* 소변총량 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">소변총량</label>
-							<input
-								type="number"
-								value={formData.totalUrineVolume}
-								onChange={(e) => setFormData(prev => ({ ...prev, totalUrineVolume: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-								placeholder="소변총량(ml)"
-								min={0}
+								disabled={fieldsLocked}
+								className={fieldCls}
 							/>
 						</div>
 
-						{/* 도뇨관 */}
+						{/* 유치도뇨관 삽입·교체 */}
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">도뇨관</label>
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">삽입·교체</label>
 							<input
 								type="checkbox"
 								checked={formData.catheter}
 								onChange={(e) => setFormData(prev => ({ ...prev, catheter: e.target.checked }))}
-								className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
+								disabled={fieldsLocked}
+								className="w-4 h-4 accent-blue-600 disabled-checked-blue border border-blue-300 rounded focus:ring-blue-500 disabled:cursor-not-allowed"
 							/>
 						</div>
 
-						{/* 소변맥 */}
+						{/* 소변백 위치 */}
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">소변맥</label>
-							<input
-								type="checkbox"
-								checked={formData.urinePulse}
-								onChange={(e) => setFormData(prev => ({ ...prev, urinePulse: e.target.checked }))}
-								className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-							/>
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">소변백 위치</label>
+							<select
+								value={formData.bagPosition}
+								onChange={(e) => setFormData(prev => ({ ...prev, bagPosition: e.target.value }))}
+								disabled={fieldsLocked}
+								className={fieldCls}
+							>
+								<option value="">선택</option>
+								{URINE_BAG_POSITIONS.map((opt) => (
+									<option key={opt.code} value={opt.code}>{opt.label}</option>
+								))}
+							</select>
 						</div>
 
 						{/* 소독 */}
@@ -717,7 +937,8 @@ export default function IndwellingCatheter() {
 								type="checkbox"
 								checked={formData.disinfection}
 								onChange={(e) => setFormData(prev => ({ ...prev, disinfection: e.target.checked }))}
-								className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
+								disabled={fieldsLocked}
+								className="w-4 h-4 accent-blue-600 disabled-checked-blue border border-blue-300 rounded focus:ring-blue-500 disabled:cursor-not-allowed"
 							/>
 						</div>
 
@@ -728,20 +949,22 @@ export default function IndwellingCatheter() {
 								type="text"
 								value={formData.remarks}
 								onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								disabled={fieldsLocked}
+								className={fieldCls}
 								placeholder="비고를 입력하세요"
 							/>
 						</div>
 
-						{/* 관찰자 */}
+						{/* 서명 */}
 						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">관찰자</label>
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">서명</label>
 							<input
 								type="text"
 								value={formData.observer}
 								onChange={(e) => setFormData(prev => ({ ...prev, observer: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-								placeholder="관찰자를 입력하세요"
+								disabled={fieldsLocked}
+								className={fieldCls}
+								placeholder="서명을 입력하세요"
 							/>
 						</div>
 					</div>
@@ -749,17 +972,27 @@ export default function IndwellingCatheter() {
 					{/* 하단 버튼 영역 */}
 					<div className="flex justify-end gap-2 mt-6">
 						<button
-							onClick={handleSave}
-							className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
+							type="button"
+							onClick={() => void handleEditOrSave()}
+							disabled={!selectedMember || loadingRecords || (!isEditMode && selectedRecordIndex === null)}
+							className={`px-6 py-2 text-sm font-medium border rounded disabled:opacity-50 disabled:cursor-not-allowed ${
+								isEditMode
+									? 'text-green-900 bg-green-100 border-green-400 hover:bg-green-200'
+									: 'text-blue-900 bg-blue-200 border-blue-400 hover:bg-blue-300'
+							}`}
 						>
-							저장
+							{isEditMode ? (loadingRecords ? '저장중' : '저장') : '수정'}
 						</button>
-						<button
-							onClick={handleDelete}
-							className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
-						>
-							삭제
-						</button>
+						{isEditMode && (
+							<button
+								type="button"
+								onClick={handleCancelEdit}
+								disabled={loadingRecords}
+								className="px-6 py-2 text-sm font-medium text-gray-800 bg-gray-100 border border-gray-400 rounded hover:bg-gray-200 disabled:opacity-50"
+							>
+								취소
+							</button>
+						)}
 					</div>
 				</div>
 					</div>

@@ -10,33 +10,54 @@
  * F51012(욕구사정기록) 화면 상태 ↔ DB 컬럼 매핑
  */
 
-export type ActivityAssessment = { activity: string; value: '○' | '△' | 'X' | '' };
+/** A 완전자립 / B 간접도움 / C 직접도움 / D 완전도움 (구 1·2·3 기호는 hydrate 시 변환) */
+export type ActivityLevel = '' | 'A' | 'B' | 'C' | 'D';
+export type ActivityAssessment = { key: string; activity: string; value: ActivityLevel };
 
-const ACTIVITY_ORDER = [
-	'옷벗고 입기',
-	'식사 하기',
-	'일어나 앉기',
-	'화장실 이용하기',
-	'세수하기',
-	'목욕하기',
-	'옮겨 앉기',
-	'대변 조절하기',
-	'양치질하기',
-	'체위변경 하기',
-	'방밖으로 나오기',
-	'소변조절하기',
-] as const;
+export const ACTIVITY_LEVELS: { code: ActivityLevel; label: string }[] = [
+	{ code: 'A', label: '완전자립' },
+	{ code: 'B', label: '간접도움' },
+	{ code: 'C', label: '직접도움' },
+	{ code: 'D', label: '완전도움' },
+];
 
-const C_KEYS = ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C07', 'C08', 'C09', 'C10', 'C11', 'C12'] as const;
+export const PHYSICAL_ACTIVITY_GROUPS: { group: string; items: { key: string; label: string }[] }[] = [
+	{
+		group: '위생관리',
+		items: [
+			{ key: 'C05', label: '세수하기' },
+			{ key: 'C09', label: '양치질하기' },
+			{ key: 'C06', label: '목욕하기' },
+		],
+	},
+	{
+		group: '일상생활',
+		items: [
+			{ key: 'C01', label: '옷벗고 입기' },
+			{ key: 'C02', label: '식사하기' },
+			{ key: 'C04', label: '화장실 이용하기' },
+			{ key: 'C13', label: '음식삼키기' },
+		],
+	},
+	{
+		group: '도구적일상생활',
+		items: [
+			{ key: 'C14', label: '전화사용' },
+			{ key: 'C15', label: '물건사기' },
+			{ key: 'C16', label: '식사준비' },
+			{ key: 'C17', label: '집안일' },
+			{ key: 'C18', label: '교통수단이용' },
+			{ key: 'C19', label: '금전관리' },
+		],
+	},
+];
 
-/** F51012 신체(C01~C12) — 화면/문서용 */
-export const PHYSICAL_ACTIVITY_ITEMS: { key: (typeof C_KEYS)[number]; label: string }[] = C_KEYS.map((key, i) => ({
-	key,
-	label: ACTIVITY_ORDER[i],
-}));
+export const PHYSICAL_ACTIVITY_ITEMS: { key: string; label: string }[] = PHYSICAL_ACTIVITY_GROUPS.flatMap((g) => g.items);
+
+const UNUSED_C_KEYS = ['C03', 'C07', 'C08', 'C10', 'C11', 'C12'] as const;
 
 export function createEmptyActivities(): ActivityAssessment[] {
-	return ACTIVITY_ORDER.map((activity) => ({ activity, value: '' }));
+	return PHYSICAL_ACTIVITY_ITEMS.map((it) => ({ key: it.key, activity: it.label, value: '' }));
 }
 
 function getRowVal(row: Record<string, unknown>, key: string): unknown {
@@ -57,25 +78,22 @@ function coerceScalar(v: unknown): string {
 	return String(v).replace(/\u0000/g, '').trim();
 }
 
-function activityToDb(v: '○' | '△' | 'X' | ''): string | null {
-	if (v === '○') return '3';
-	if (v === '△') return '2';
-	if (v === 'X') return '1';
+function activityToDb(v: ActivityLevel | string): string | null {
+	if (v === 'A' || v === 'B' || v === 'C' || v === 'D') return v;
 	return null;
 }
 
-/** DB C01~C12 → 화면: 1=X, 2=△, 3=○ */
-function dbToActivity(c: unknown): '○' | '△' | 'X' | '' {
+/** 구코드 1=완전도움 2=부분도움 3=완전자립 · 기호 X/△/○ → A~D */
+function dbToActivity(c: unknown): ActivityLevel {
 	const s = coerceScalar(c);
 	if (!s) return '';
-	// 숫자 코드
-	if (s === '1' || s.startsWith('1')) return 'X';
-	if (s === '2' || s.startsWith('2')) return '△';
-	if (s === '3' || s.startsWith('3')) return '○';
-	// 이미 기호로 저장된 경우
-	if (s === 'X' || s === 'x' || s === '×' || s === '✕') return 'X';
-	if (s === '△' || s === '▲' || s === '^') return '△';
-	if (s === '○' || s === 'O' || s === 'o' || s === '●' || s === '◯') return '○';
+	if (s === 'A' || s === 'B' || s === 'C' || s === 'D') return s;
+	if (s === '4' || s === '○' || s === 'O' || s === 'o' || s === '●' || s === '◯') return 'A';
+	if (s === '3') return 'A';
+	if (s === '△' || s === '^') return 'B';
+	if (s === '2') return 'B';
+	if (s === '▲') return 'C';
+	if (s === 'X' || s === 'x' || s === '×' || s === '✕' || s === '1' || s === 'Ⅹ') return 'D';
 	return '';
 }
 
@@ -131,6 +149,8 @@ const DISEASE1_COLS: string[] = [
 	'D08_01',
 	'D08_02',
 	'D08_03',
+	'D08_04',
+	'D08_05',
 ];
 
 const DISEASE1_UI_KEYS: string[] = [
@@ -173,12 +193,14 @@ const DISEASE1_UI_KEYS: string[] = [
 	'호흡기계-만성기관지염',
 	'호흡기계-호흡곤란',
 	'호흡기계-기타',
-	'눈.귀질환-시각장애',
+	'눈.귀질환-백내장',
+	'눈.귀질환-녹내장',
 	'눈.귀질환-난청',
-	'눈.귀질환-기타',
+	'눈.귀질환-만성중이염',
+	'눈.귀질환-이명',
 ];
 
-const DISEASE2_COLS = ['D09_01', 'D09_02', 'D09_03', 'D09_04', 'D10_01', 'D10_02'] as const;
+const DISEASE2_COLS = ['D09_01', 'D09_02', 'D09_03', 'D09_04', 'D10_01', 'D10_02', 'D11_01', 'D11_02', 'D11_03'] as const;
 const DISEASE2_UI_KEYS = [
 	'비뇨.생식-전립선비대',
 	'비뇨.생식-요실금',
@@ -186,7 +208,27 @@ const DISEASE2_UI_KEYS = [
 	'비뇨.생식-기타',
 	'만성신장-만성신부전증',
 	'만성신장-기타',
+	'기타질환-암',
+	'기타질환-알레르기',
+	'기타질환-기타',
 ] as const;
+
+export const DISEASE1_CATEGORIES: { category: string; diseases: string[] }[] = [
+	{ category: '내분.대사', diseases: ['당뇨', '갑상선질환', '탈수', '영양상태이상', '만성간염', '자기면역질환', '빈혈', '기타'] },
+	{ category: '소화기계', diseases: ['위염', '위궤양', '십이지궤양', '변비', '간경변증', '기타'] },
+	{ category: '순환기계', diseases: ['고혈압', '저혈압', '협심증', '심근경색증', '뇌혈관질환', '기타'] },
+	{ category: '근골격계', diseases: ['관절염', '요통,좌골통', '기타 척추질환', '골다공증', '기타'] },
+	{ category: '신경계', diseases: ['치매', '뇌경색', '파킨슨병', '두통', '두통외 통증', '기타'] },
+	{ category: '정신.행동', diseases: ['신경증', '우울증', '수면장애', '기타'] },
+	{ category: '호흡기계', diseases: ['폐결핵', '만성기관지염', '호흡곤란', '기타'] },
+	{ category: '눈.귀질환', diseases: ['백내장', '녹내장', '난청', '만성중이염', '이명'] },
+];
+
+export const DISEASE2_CATEGORIES: { category: string; diseases: string[] }[] = [
+	{ category: '비뇨.생식', diseases: ['전립선비대', '요실금', '만성방광염', '기타'] },
+	{ category: '만성신장', diseases: ['만성신부전증', '기타'] },
+	{ category: '기타질환', diseases: ['암', '알레르기', '기타'] },
+];
 
 const REHAB_UI_TO_COL: Record<string, string> = {
 	우측상지: 'E01',
@@ -207,6 +249,15 @@ const REHAB_UI_TO_COL: Record<string, string> = {
 	'발목관절(좌)': 'E10_02',
 };
 
+export const NURSING_GROUPS: { group: string; items: string[] }[] = [
+	{ group: '호흡기', items: ['기관지 절개관 간호', '흡인', '산소요법'] },
+	{ group: '피부·상처', items: ['욕창간호', '상처간호', '당뇨발간호'] },
+	{ group: '영양', items: ['경관영양', '위루간호', '정맥영양'] },
+	{ group: '배설', items: ['도뇨관리', '유치도뇨', '단순도뇨', '방광루', '장루간호', '투석간호'] },
+	{ group: '통증', items: ['통증간호'] },
+	{ group: '기타 간호관리', items: ['혈압측정', '혈당측정', '주사', '투약관리', '암관리', '호스피스'] },
+];
+
 const NURSING_UI_TO_COL: Record<string, string> = {
 	'기관지 절개관 간호': 'F01',
 	흡인: 'F02',
@@ -219,25 +270,29 @@ const NURSING_UI_TO_COL: Record<string, string> = {
 	투석간호: 'F09',
 	당뇨발간호: 'F10',
 	상처간호: 'F11',
+	위루간호: 'F12',
+	정맥영양: 'F13',
+	유치도뇨: 'F14',
+	단순도뇨: 'F15',
+	방광루: 'F16',
+	혈압측정: 'F17',
+	혈당측정: 'F18',
+	주사: 'F19',
+	투약관리: 'F20',
+	암관리: 'F21',
+	호스피스: 'F22',
 };
 
-const COG_LABELS = [
-	'지남력',
-	'기억력',
-	'주의집중 및 계산',
-	'언어적기능',
-	'판단력',
-	'편집증과 망상',
-	'환각',
-	'배회',
-	'반복적인 활동',
-	'부적절한 행동',
-	'언어폭팔',
-	'신체적 공격 또는 폭력행위',
-	'우울',
-	'일반적인 불안',
-	'혼자 남겨짐에 대한 공포',
-] as const;
+export const COG_GROUPS: { group: string; labels: readonly string[] }[] = [
+	{ group: '인지기능', labels: ['지남력', '기억력', '주의집중 및 계산', '언어적기능', '판단력'] },
+	{
+		group: '행동증상',
+		labels: ['편집증과 망상', '환각', '배회', '반복적인 활동', '부적절한 행동', '언어폭팔', '신체적 공격 또는 폭력행위'],
+	},
+	{ group: '심리 증상', labels: ['우울', '일반적인 불안', '혼자 남겨짐에 대한 공포'] },
+];
+
+const COG_LABELS = COG_GROUPS.flatMap((g) => g.labels);
 
 /** 의사소통 H01 청취능력 */
 export const H01_OPTIONS: { code: string; label: string }[] = [
@@ -262,6 +317,15 @@ export const H03_OPTIONS: { code: string; label: string }[] = [
 	{ code: '2', label: '응얼거리는 소리로만 한다' },
 	{ code: '3', label: '간혹 어눌한 발음이 섞인다' },
 	{ code: '4', label: '전혀 발음하지 못한다' },
+];
+
+/** 의사소통 H04 시력상태 */
+export const H04_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '정상(안경사용포함)' },
+	{ code: '2', label: '조금 보인다' },
+	{ code: '3', label: '거의 보이지 않는다' },
+	{ code: '4', label: '보이지 않는다' },
+	{ code: '5', label: '판단불능' },
 ];
 
 const H1_LABEL_TO_CODE: Record<string, string> = Object.fromEntries([
@@ -299,11 +363,11 @@ function normalizeHCode(raw: string, max: number, labelToCode: Record<string, st
 	return labelToCode[s] || '';
 }
 
-/** 영양 I01 치아상태 */
+/** 구강과 영양 I01 치아상태 */
 export const I01_OPTIONS: { code: string; label: string }[] = [
 	{ code: '1', label: '양호' },
-	{ code: '2', label: '불량' },
-	{ code: '3', label: '의치' },
+	{ code: '2', label: '의치착용(부분)' },
+	{ code: '3', label: '의치착용(완전)' },
 	{ code: '4', label: '잔존치아없음' },
 ];
 
@@ -345,6 +409,9 @@ export const I05_OPTIONS: { code: string; label: string }[] = [
 const I1_LABEL_TO_CODE: Record<string, string> = Object.fromEntries([
 	...I01_OPTIONS.map((o) => [o.label, o.code] as const),
 	['보통', '1'],
+	['불량', '2'],
+	['의치', '3'],
+	['의치착용', '3'],
 ]);
 const I2_LABEL_TO_CODE: Record<string, string> = Object.fromEntries([
 	...I02_OPTIONS.map((o) => [o.label, o.code] as const),
@@ -365,6 +432,132 @@ const I5_LABEL_TO_CODE: Record<string, string> = Object.fromEntries([
 	...I05_OPTIONS.map((o) => [o.label, o.code] as const),
 	['실금', '1'],
 ]);
+
+/** 구강건강 I06 */
+export const I06_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '양호' },
+	{ code: '2', label: '구취/위생불량' },
+	{ code: '3', label: '잇몸출혈/통증' },
+	{ code: '4', label: '구강건조' },
+	{ code: '5', label: '기타' },
+];
+
+/** 치료식 I07 */
+export const I07_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '해당없음' },
+	{ code: '2', label: '당뇨식' },
+	{ code: '3', label: '저염식' },
+	{ code: '4', label: '기타' },
+];
+
+/** 영양상태 I08 */
+export const I08_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '양호' },
+	{ code: '2', label: '식욕부진' },
+	{ code: '3', label: '체중감소' },
+	{ code: '4', label: '체중과다' },
+	{ code: '5', label: '기타' },
+];
+
+/** 배뇨기능 C20 */
+export const C20_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '정상' },
+	{ code: '2', label: '요실금' },
+	{ code: '3', label: '배뇨곤란' },
+	{ code: '4', label: '기타' },
+];
+
+/** 배변기능 C21 */
+export const C21_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '정상' },
+	{ code: '2', label: '변비' },
+	{ code: '3', label: '설사' },
+	{ code: '4', label: '실변' },
+	{ code: '5', label: '기타' },
+];
+
+/** 배뇨방법 C22 */
+export const C22_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '화장실' },
+	{ code: '2', label: '이동식변기' },
+	{ code: '3', label: '기저귀' },
+	{ code: '4', label: '유치도뇨' },
+	{ code: '5', label: '기타' },
+];
+
+/** 배변방법 C23 */
+export const C23_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '화장실' },
+	{ code: '2', label: '이동식변기' },
+	{ code: '3', label: '기저귀' },
+	{ code: '4', label: '장루' },
+	{ code: '5', label: '기타' },
+];
+
+export const E13_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '유' },
+	{ code: '2', label: '무' },
+];
+
+export const E14_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '없음' },
+	{ code: '2', label: '편마비(좌)' },
+	{ code: '3', label: '편마비(우)' },
+	{ code: '4', label: '사지마비' },
+];
+
+export const E16_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '독립보행' },
+	{ code: '2', label: '보조보행' },
+	{ code: '3', label: '휠체어' },
+	{ code: '4', label: '와상' },
+];
+
+export const E17_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '자립' },
+	{ code: '2', label: '준와상' },
+	{ code: '3', label: '와상' },
+];
+
+export const J04_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '자가' },
+	{ code: '2', label: '전세' },
+	{ code: '3', label: '월세' },
+	{ code: '4', label: '무상' },
+	{ code: '5', label: '시설' },
+	{ code: '6', label: '기타' },
+];
+
+export const J05_OPTIONS: { code: string; label: string }[] = [
+	{ code: '1', label: '자주 한다' },
+	{ code: '2', label: '가끔 한다' },
+	{ code: '3', label: '거의 하지 않는다' },
+	{ code: '4', label: '전혀 하지 않는다' },
+];
+
+export const COMMUNITY_SERVICE_ITEMS: { key: string; col: string; label: string }[] = [
+	{ key: '급식 및 도시락배달', col: 'K03_01', label: '급식 및 도시락배달' },
+	{ key: '이미용', col: 'K03_02', label: '이미용' },
+	{ key: '주거개선사업', col: 'K03_03', label: '주거개선사업' },
+	{ key: '노인맞춤돌봄서비스', col: 'K03_05', label: '노인맞춤돌봄서비스' },
+	{ key: '노인복지관', col: 'K03_06', label: '노인복지관' },
+	{ key: '보건의료서비스', col: 'K03_07', label: '보건의료서비스' },
+	{ key: '이동지원서비스', col: 'K03_08', label: '이동지원서비스' },
+	{ key: '장애인활동지원서비스', col: 'K03_09', label: '장애인활동지원서비스' },
+];
+
+export const INDIVIDUAL_NEED_ITEMS: { field: string; col: string; label: string }[] = [
+	{ field: 'medicationAdministrationRequest', col: 'L01_01', label: '약물투약요구' },
+	{ field: 'hospitalAccompaniment', col: 'L01_02', label: '병원동행' },
+	{ field: 'outingAccompaniment', col: 'L01_03', label: '외출동행(은행 등)' },
+	{ field: 'physicalActivitySupport', col: 'L01_04', label: '신체활동지원' },
+	{ field: 'cognitiveActivitySupport', col: 'L01_05', label: '인지활동지원' },
+	{ field: 'emotionalSupport', col: 'L01_06', label: '정서지원' },
+	{ field: 'rehabTraining', col: 'L01_07', label: '기능회복훈련' },
+	{ field: 'oralCare', col: 'L01_08', label: '구강관리' },
+	{ field: 'nutritionCare', col: 'L01_09', label: '영양관리' },
+	{ field: 'familyCounseling', col: 'L01_10', label: '가족상담' },
+];
 
 function normalizeICode(raw: string, max: number, labelToCode: Record<string, string>): string {
 	return normalizeHCode(raw, max, labelToCode);
@@ -476,7 +669,7 @@ export type F51012UiSnapshot = {
 	activities: ActivityAssessment[];
 	disease1Data: Record<string, boolean>;
 	disease2Data: Record<string, boolean>;
-	diseaseFormData: { pastMedicalHistory: string; currentDiagnosis: string; judgmentBasis: string };
+	diseaseFormData: { pastMedicalHistory: string; currentDiagnosis: string; judgmentBasis: string; otherDiseaseNote: string };
 	rehabilitationData: Record<string, boolean>;
 	rehabilitationJudgmentBasis: string;
 	nursingData: Record<string, boolean>;
@@ -490,6 +683,8 @@ export type F51012UiSnapshot = {
 		communication: string;
 		/** H03 코드 1~4 */
 		pronunciationAbility: string;
+		/** H04 시력상태 */
+		visionStatus: string;
 		judgmentBasis: string;
 		/** H99 */
 		inputComplete: boolean;
@@ -501,13 +696,37 @@ export type F51012UiSnapshot = {
 		eatingProblems: string;
 		/** I03 코드 */
 		eatingStatus: string;
-		/** I04 코드 */
+		/** I04 코드 — 화면에서 삭제, 구데이터만 유지 */
 		toolUsage: string;
-		/** I05 코드 */
+		/** I05 코드 — 신체 탭에서 입력 */
 		excretionPattern: string;
+		/** I06 구강건강 */
+		oralHealth: string;
+		oralHealthOther: string;
+		/** I07 치료식 */
+		therapeuticDiet: string;
+		therapeuticDietOther: string;
+		/** I08 영양상태 */
+		nutritionStatus: string;
+		nutritionStatusOther: string;
 		judgmentBasis: string;
 		/** I99 */
 		inputComplete: boolean;
+	};
+	physicalExtra: {
+		urineFunction: string;
+		bowelFunction: string;
+		urineMethod: string;
+		bowelMethod: string;
+	};
+	rehabilitationExtra: {
+		contractureYn: string;
+		contractureSite: string;
+		paralysis: string;
+		atrophyYn: string;
+		atrophySite: string;
+		gait: string;
+		physicalFunction: string;
 	};
 	familyEnvironmentData: {
 		/** J01 */
@@ -528,6 +747,11 @@ export type F51012UiSnapshot = {
 		spouseSurvivalStatus: string;
 		/** J02_04 */
 		primaryCaregiverEconomicStatus: string;
+		/** J04 주거형태 */
+		housingType: string;
+		housingTypeOther: string;
+		/** J05 사회적교류 */
+		socialExchange: string;
 		/** J90 */
 		judgmentBasis: string;
 		/** J99 */
@@ -557,7 +781,17 @@ export type F51012UiSnapshot = {
 		medicationAdministrationRequest: boolean;
 		hospitalAccompaniment: boolean;
 		outingAccompaniment: boolean;
+		physicalActivitySupport: boolean;
+		cognitiveActivitySupport: boolean;
+		emotionalSupport: boolean;
+		rehabTraining: boolean;
+		oralCare: boolean;
+		nutritionCare: boolean;
+		familyCounseling: boolean;
+		/** L01 수급자 희망 */
 		notes: string;
+		/** L03 보호자 희망 */
+		guardianNotes: string;
 	};
 	overallAssessmentData: { content: string };
 };
@@ -572,35 +806,36 @@ export function hydrateFromF51012Row(row: Record<string, unknown> | null | undef
 		return emptySnapshot(beneficiaryName, '');
 	}
 
-	const activities: ActivityAssessment[] = ACTIVITY_ORDER.map((activity, i) => ({
-		activity,
-		value: dbToActivity(getRowVal(row, C_KEYS[i])),
+	const activities: ActivityAssessment[] = PHYSICAL_ACTIVITY_ITEMS.map((it) => ({
+		key: it.key,
+		activity: it.label,
+		value: dbToActivity(getRowVal(row, it.key)),
 	}));
 
 	const disease1Data: Record<string, boolean> = {};
 	DISEASE1_UI_KEYS.forEach((key, i) => {
-		disease1Data[key] = parseYn(row[DISEASE1_COLS[i]]);
+		disease1Data[key] = parseYn(getRowVal(row, DISEASE1_COLS[i]));
 	});
 
 	const disease2Data: Record<string, boolean> = {};
 	DISEASE2_UI_KEYS.forEach((key, i) => {
-		disease2Data[key] = parseYn(row[DISEASE2_COLS[i]]);
+		disease2Data[key] = parseYn(getRowVal(row, DISEASE2_COLS[i]));
 	});
 
 	const rehabilitationData: Record<string, boolean> = {};
 	Object.keys(REHAB_UI_TO_COL).forEach((label) => {
-		rehabilitationData[label] = parseYn(row[REHAB_UI_TO_COL[label]]);
+		rehabilitationData[label] = parseYn(getRowVal(row, REHAB_UI_TO_COL[label]));
 	});
 
 	const nursingData: Record<string, boolean> = {};
 	Object.keys(NURSING_UI_TO_COL).forEach((label) => {
-		nursingData[label] = parseYn(row[NURSING_UI_TO_COL[label]]);
+		nursingData[label] = parseYn(getRowVal(row, NURSING_UI_TO_COL[label]));
 	});
 
 	const cognitionData: Record<string, boolean> = {};
 	COG_LABELS.forEach((label, i) => {
 		const col = `G${String(i + 1).padStart(2, '0')}`;
-		cognitionData[label] = parseYn(row[col]);
+		cognitionData[label] = parseYn(getRowVal(row, col));
 	});
 
 	const h1c = normalizeHCode(rowStr(row, 'H01'), 5, H1_LABEL_TO_CODE);
@@ -609,9 +844,9 @@ export function hydrateFromF51012Row(row: Record<string, unknown> | null | undef
 
 	return {
 		formData: {
-			beneficiary: beneficiaryName,
+			beneficiary: beneficiaryName || rowStr(row, '수급자성명'),
 			creationDate: normalizeYmdFromRow(row.RQDT ?? row.rqdt),
-			creator: rowStr(row, 'RQEMP_NM') || rowStr(row, 'EMPNM') || '',
+			creator: rowStr(row, '검사자') || rowStr(row, 'RQEMP_NM') || rowStr(row, 'EMPNM') || '',
 			creatorEmpno: rowStr(row, 'RQEMP') || '',
 			height: rowStr(row, 'HEIGHT') || '0.0',
 			weight: rowStr(row, 'WEIGHT') || '0.0',
@@ -625,9 +860,19 @@ export function hydrateFromF51012Row(row: Record<string, unknown> | null | undef
 			pastMedicalHistory: rowStr(row, 'D20'),
 			currentDiagnosis: rowStr(row, 'D21'),
 			judgmentBasis: rowStr(row, 'D90'),
+			otherDiseaseNote: rowStr(row, 'D11_NOTE'),
 		},
 		rehabilitationData,
 		rehabilitationJudgmentBasis: rowStr(row, 'E90'),
+		rehabilitationExtra: {
+			contractureYn: normalizeCodeFromOptions(rowStr(row, 'E13'), E13_OPTIONS),
+			contractureSite: rowStr(row, 'E13_01'),
+			paralysis: normalizeCodeFromOptions(rowStr(row, 'E14'), E14_OPTIONS),
+			atrophyYn: normalizeCodeFromOptions(rowStr(row, 'E15'), E13_OPTIONS),
+			atrophySite: rowStr(row, 'E15_01'),
+			gait: normalizeCodeFromOptions(rowStr(row, 'E16'), E16_OPTIONS),
+			physicalFunction: normalizeCodeFromOptions(rowStr(row, 'E17'), E17_OPTIONS),
+		},
 		nursingData,
 		nursingJudgmentBasis: rowStr(row, 'F90'),
 		cognitionData,
@@ -636,6 +881,7 @@ export function hydrateFromF51012Row(row: Record<string, unknown> | null | undef
 			listeningAbility: h1c,
 			communication: h2c,
 			pronunciationAbility: h3c,
+			visionStatus: normalizeCodeFromOptions(rowStr(row, 'H04'), H04_OPTIONS),
 			judgmentBasis: rowStr(row, 'H90'),
 			inputComplete: rowStr(row, 'H99') === '1',
 		},
@@ -645,8 +891,20 @@ export function hydrateFromF51012Row(row: Record<string, unknown> | null | undef
 			eatingStatus: normalizeICode(rowStr(row, 'I03'), 5, I3_LABEL_TO_CODE),
 			toolUsage: normalizeICode(rowStr(row, 'I04'), 4, I4_LABEL_TO_CODE),
 			excretionPattern: normalizeICode(rowStr(row, 'I05'), 4, I5_LABEL_TO_CODE),
+			oralHealth: normalizeCodeFromOptions(rowStr(row, 'I06'), I06_OPTIONS),
+			oralHealthOther: rowStr(row, 'I06_01'),
+			therapeuticDiet: normalizeCodeFromOptions(rowStr(row, 'I07'), I07_OPTIONS),
+			therapeuticDietOther: rowStr(row, 'I07_01'),
+			nutritionStatus: normalizeCodeFromOptions(rowStr(row, 'I08'), I08_OPTIONS),
+			nutritionStatusOther: rowStr(row, 'I08_01'),
 			judgmentBasis: rowStr(row, 'I90'),
 			inputComplete: rowStr(row, 'I99') === '1',
+		},
+		physicalExtra: {
+			urineFunction: normalizeCodeFromOptions(rowStr(row, 'C20'), C20_OPTIONS),
+			bowelFunction: normalizeCodeFromOptions(rowStr(row, 'C21'), C21_OPTIONS),
+			urineMethod: normalizeCodeFromOptions(rowStr(row, 'C22'), C22_OPTIONS),
+			bowelMethod: normalizeCodeFromOptions(rowStr(row, 'C23'), C23_OPTIONS),
 		},
 		familyEnvironmentData: {
 			maritalStatus: normalizeCodeFromOptions(rowStr(row, 'J01'), J01_OPTIONS, J01_EXTRA),
@@ -658,6 +916,9 @@ export function hydrateFromF51012Row(row: Record<string, unknown> | null | undef
 			otherRelationship: rowStr(row, 'J02_03'),
 			primaryCaregiverEconomicStatus: normalizeCodeFromOptions(rowStr(row, 'J02_04'), J02_04_OPTIONS, J02_04_EXTRA),
 			cohabitant: normalizeCodeFromOptions(rowStr(row, 'J03'), J03_OPTIONS, J03_EXTRA),
+			housingType: normalizeCodeFromOptions(rowStr(row, 'J04'), J04_OPTIONS),
+			housingTypeOther: rowStr(row, 'J04_01'),
+			socialExchange: normalizeCodeFromOptions(rowStr(row, 'J05'), J05_OPTIONS),
 			judgmentBasis: rowStr(row, 'J90'),
 			inputComplete: rowStr(row, 'J99') === '1',
 		},
@@ -666,20 +927,27 @@ export function hydrateFromF51012Row(row: Record<string, unknown> | null | undef
 			religionOther: rowStr(row, 'K01_01'),
 			primaryMedicalInstitution: rowStr(row, 'K02'),
 			phoneNumber: rowStr(row, 'K02_01'),
-			communityServices: {
-				'급식 및 도시락배달': parseYn(row['K03_01']),
-				이미용: parseYn(row['K03_02']),
-			},
-			housingImprovementProject: parseYn(row['K03_03']),
+			communityServices: Object.fromEntries(
+				COMMUNITY_SERVICE_ITEMS.filter((it) => it.col !== 'K03_03').map((it) => [it.key, parseYn(getRowVal(row, it.col))])
+			),
+			housingImprovementProject: parseYn(getRowVal(row, 'K03_03')),
 			other: rowStr(row, 'K03_04'),
 			judgmentBasis: rowStr(row, 'K90'),
 			inputComplete: rowStr(row, 'K99') === '1',
 		},
 		individualNeedsData: {
-			medicationAdministrationRequest: parseYn(row['L01_01']),
-			hospitalAccompaniment: parseYn(row['L01_02']),
-			outingAccompaniment: parseYn(row['L01_03']),
+			medicationAdministrationRequest: parseYn(getRowVal(row, 'L01_01')),
+			hospitalAccompaniment: parseYn(getRowVal(row, 'L01_02')),
+			outingAccompaniment: parseYn(getRowVal(row, 'L01_03')),
+			physicalActivitySupport: parseYn(getRowVal(row, 'L01_04')),
+			cognitiveActivitySupport: parseYn(getRowVal(row, 'L01_05')),
+			emotionalSupport: parseYn(getRowVal(row, 'L01_06')),
+			rehabTraining: parseYn(getRowVal(row, 'L01_07')),
+			oralCare: parseYn(getRowVal(row, 'L01_08')),
+			nutritionCare: parseYn(getRowVal(row, 'L01_09')),
+			familyCounseling: parseYn(getRowVal(row, 'L01_10')),
 			notes: rowStr(row, 'L01'),
+			guardianNotes: rowStr(row, 'L03'),
 		},
 		overallAssessmentData: { content: rowStr(row, 'L02') },
 	};
@@ -728,9 +996,18 @@ export function emptySnapshot(beneficiaryName: string, creationDate: string): F5
 		activities: createEmptyActivities(),
 		disease1Data: disease1,
 		disease2Data: disease2,
-		diseaseFormData: { pastMedicalHistory: '', currentDiagnosis: '', judgmentBasis: '' },
+		diseaseFormData: { pastMedicalHistory: '', currentDiagnosis: '', judgmentBasis: '', otherDiseaseNote: '' },
 		rehabilitationData: rehab,
 		rehabilitationJudgmentBasis: '',
+		rehabilitationExtra: {
+			contractureYn: '',
+			contractureSite: '',
+			paralysis: '',
+			atrophyYn: '',
+			atrophySite: '',
+			gait: '',
+			physicalFunction: '',
+		},
 		nursingData: nurse,
 		nursingJudgmentBasis: '',
 		cognitionData: cog,
@@ -739,6 +1016,7 @@ export function emptySnapshot(beneficiaryName: string, creationDate: string): F5
 			listeningAbility: '',
 			communication: '',
 			pronunciationAbility: '',
+			visionStatus: '',
 			judgmentBasis: '',
 			inputComplete: false,
 		},
@@ -748,8 +1026,20 @@ export function emptySnapshot(beneficiaryName: string, creationDate: string): F5
 			eatingStatus: '',
 			toolUsage: '',
 			excretionPattern: '',
+			oralHealth: '',
+			oralHealthOther: '',
+			therapeuticDiet: '',
+			therapeuticDietOther: '',
+			nutritionStatus: '',
+			nutritionStatusOther: '',
 			judgmentBasis: '',
 			inputComplete: false,
+		},
+		physicalExtra: {
+			urineFunction: '',
+			bowelFunction: '',
+			urineMethod: '',
+			bowelMethod: '',
 		},
 		familyEnvironmentData: {
 			maritalStatus: '',
@@ -761,6 +1051,9 @@ export function emptySnapshot(beneficiaryName: string, creationDate: string): F5
 			otherRelationship: '',
 			spouseSurvivalStatus: '',
 			primaryCaregiverEconomicStatus: '',
+			housingType: '',
+			housingTypeOther: '',
+			socialExchange: '',
 			judgmentBasis: '',
 			inputComplete: false,
 		},
@@ -769,7 +1062,9 @@ export function emptySnapshot(beneficiaryName: string, creationDate: string): F5
 			religionOther: '',
 			primaryMedicalInstitution: '',
 			phoneNumber: '',
-			communityServices: { '급식 및 도시락배달': false, 이미용: false },
+			communityServices: Object.fromEntries(
+				COMMUNITY_SERVICE_ITEMS.filter((it) => it.col !== 'K03_03').map((it) => [it.key, false])
+			),
 			housingImprovementProject: false,
 			other: '',
 			judgmentBasis: '',
@@ -779,7 +1074,15 @@ export function emptySnapshot(beneficiaryName: string, creationDate: string): F5
 			medicationAdministrationRequest: false,
 			hospitalAccompaniment: false,
 			outingAccompaniment: false,
+			physicalActivitySupport: false,
+			cognitiveActivitySupport: false,
+			emotionalSupport: false,
+			rehabTraining: false,
+			oralCare: false,
+			nutritionCare: false,
+			familyCounseling: false,
 			notes: '',
+			guardianNotes: '',
 		},
 		overallAssessmentData: { content: '' },
 	};
@@ -806,9 +1109,17 @@ export function buildF51012RowPayload(
 		C99: ui.formData.physicalInputComplete ? '1' : '0',
 	};
 
-	C_KEYS.forEach((ck, i) => {
-		row[ck] = activityToDb(ui.activities[i]?.value || '');
+	PHYSICAL_ACTIVITY_ITEMS.forEach((it) => {
+		const found = ui.activities.find((a) => a.key === it.key);
+		row[it.key] = activityToDb(found?.value || '');
 	});
+	UNUSED_C_KEYS.forEach((ck) => {
+		row[ck] = row[ck] ?? null;
+	});
+	row.C20 = ui.physicalExtra.urineFunction || null;
+	row.C21 = ui.physicalExtra.bowelFunction || null;
+	row.C22 = ui.physicalExtra.urineMethod || null;
+	row.C23 = ui.physicalExtra.bowelMethod || null;
 
 	DISEASE1_UI_KEYS.forEach((key, i) => {
 		row[DISEASE1_COLS[i]] = yn(!!ui.disease1Data[key]);
@@ -821,11 +1132,19 @@ export function buildF51012RowPayload(
 	row.D20 = ui.diseaseFormData.pastMedicalHistory || null;
 	row.D21 = ui.diseaseFormData.currentDiagnosis || null;
 	row.D90 = ui.diseaseFormData.judgmentBasis || null;
+	row.D11_NOTE = ui.diseaseFormData.otherDiseaseNote || null;
 	row.D10_02_01 = null;
 
 	Object.keys(REHAB_UI_TO_COL).forEach((label) => {
 		row[REHAB_UI_TO_COL[label]] = yn(!!ui.rehabilitationData[label]);
 	});
+	row.E13 = ui.rehabilitationExtra.contractureYn || null;
+	row.E13_01 = ui.rehabilitationExtra.contractureSite || null;
+	row.E14 = ui.rehabilitationExtra.paralysis || null;
+	row.E15 = ui.rehabilitationExtra.atrophyYn || null;
+	row.E15_01 = ui.rehabilitationExtra.atrophySite || null;
+	row.E16 = ui.rehabilitationExtra.gait || null;
+	row.E17 = ui.rehabilitationExtra.physicalFunction || null;
 	row.E90 = ui.rehabilitationJudgmentBasis || null;
 
 	Object.keys(NURSING_UI_TO_COL).forEach((label) => {
@@ -842,6 +1161,7 @@ export function buildF51012RowPayload(
 	row.H01 = normalizeHCode(ui.communicationData.listeningAbility, 5, H1_LABEL_TO_CODE) || null;
 	row.H02 = normalizeHCode(ui.communicationData.communication, 4, H2_LABEL_TO_CODE) || null;
 	row.H03 = normalizeHCode(ui.communicationData.pronunciationAbility, 4, H3_LABEL_TO_CODE) || null;
+	row.H04 = ui.communicationData.visionStatus || null;
 	row.H90 = ui.communicationData.judgmentBasis || null;
 	row.H99 = ui.communicationData.inputComplete ? '1' : '0';
 
@@ -850,6 +1170,12 @@ export function buildF51012RowPayload(
 	row.I03 = normalizeICode(ui.nutritionData.eatingStatus, 5, I3_LABEL_TO_CODE) || null;
 	row.I04 = normalizeICode(ui.nutritionData.toolUsage, 4, I4_LABEL_TO_CODE) || null;
 	row.I05 = normalizeICode(ui.nutritionData.excretionPattern, 4, I5_LABEL_TO_CODE) || null;
+	row.I06 = ui.nutritionData.oralHealth || null;
+	row.I06_01 = ui.nutritionData.oralHealthOther || null;
+	row.I07 = ui.nutritionData.therapeuticDiet || null;
+	row.I07_01 = ui.nutritionData.therapeuticDietOther || null;
+	row.I08 = ui.nutritionData.nutritionStatus || null;
+	row.I08_01 = ui.nutritionData.nutritionStatusOther || null;
 	row.I90 = ui.nutritionData.judgmentBasis || null;
 	row.I99 = ui.nutritionData.inputComplete ? '1' : '0';
 
@@ -864,6 +1190,9 @@ export function buildF51012RowPayload(
 	row.J02_03 = ui.familyEnvironmentData.otherRelationship || null;
 	row.J02_04 = normalizeCodeFromOptions(ui.familyEnvironmentData.primaryCaregiverEconomicStatus, J02_04_OPTIONS, J02_04_EXTRA) || null;
 	row.J03 = normalizeCodeFromOptions(ui.familyEnvironmentData.cohabitant, J03_OPTIONS, J03_EXTRA) || null;
+	row.J04 = ui.familyEnvironmentData.housingType || null;
+	row.J04_01 = ui.familyEnvironmentData.housingTypeOther || null;
+	row.J05 = ui.familyEnvironmentData.socialExchange || null;
 	row.J90 = ui.familyEnvironmentData.judgmentBasis || null;
 	row.J99 = ui.familyEnvironmentData.inputComplete ? '1' : '0';
 
@@ -871,17 +1200,22 @@ export function buildF51012RowPayload(
 	row.K01_01 = ui.resourceUtilizationData.religionOther || null;
 	row.K02 = ui.resourceUtilizationData.primaryMedicalInstitution || null;
 	row.K02_01 = ui.resourceUtilizationData.phoneNumber || null;
-	row.K03_01 = yn(!!ui.resourceUtilizationData.communityServices['급식 및 도시락배달']);
-	row.K03_02 = yn(!!ui.resourceUtilizationData.communityServices['이미용']);
-	row.K03_03 = yn(ui.resourceUtilizationData.housingImprovementProject);
+	for (const it of COMMUNITY_SERVICE_ITEMS) {
+		if (it.col === 'K03_03') {
+			row.K03_03 = yn(ui.resourceUtilizationData.housingImprovementProject);
+		} else {
+			row[it.col] = yn(!!ui.resourceUtilizationData.communityServices[it.key]);
+		}
+	}
 	row.K03_04 = ui.resourceUtilizationData.other || null;
 	row.K90 = ui.resourceUtilizationData.judgmentBasis || null;
 	row.K99 = ui.resourceUtilizationData.inputComplete ? '1' : '0';
 
 	row.L01 = ui.individualNeedsData.notes || null;
-	row.L01_01 = yn(ui.individualNeedsData.medicationAdministrationRequest);
-	row.L01_02 = yn(ui.individualNeedsData.hospitalAccompaniment);
-	row.L01_03 = yn(ui.individualNeedsData.outingAccompaniment);
+	row.L03 = ui.individualNeedsData.guardianNotes || null;
+	for (const it of INDIVIDUAL_NEED_ITEMS) {
+		row[it.col] = yn(!!(ui.individualNeedsData as Record<string, unknown>)[it.field]);
+	}
 	row.L02 = ui.overallAssessmentData.content || null;
 
 	return row;
@@ -895,12 +1229,14 @@ export function collectUiSnapshot(st: {
 	diseaseFormData: F51012UiSnapshot['diseaseFormData'];
 	rehabilitationData: Record<string, boolean>;
 	rehabilitationJudgmentBasis: string;
+	rehabilitationExtra: F51012UiSnapshot['rehabilitationExtra'];
 	nursingData: Record<string, boolean>;
 	nursingJudgmentBasis: string;
 	cognitionData: Record<string, boolean>;
 	cognitionJudgmentBasis: string;
 	communicationData: F51012UiSnapshot['communicationData'];
 	nutritionData: F51012UiSnapshot['nutritionData'];
+	physicalExtra: F51012UiSnapshot['physicalExtra'];
 	familyEnvironmentData: F51012UiSnapshot['familyEnvironmentData'];
 	resourceUtilizationData: F51012UiSnapshot['resourceUtilizationData'];
 	individualNeedsData: F51012UiSnapshot['individualNeedsData'];
@@ -914,12 +1250,14 @@ export function collectUiSnapshot(st: {
 		diseaseFormData: st.diseaseFormData,
 		rehabilitationData: st.rehabilitationData,
 		rehabilitationJudgmentBasis: st.rehabilitationJudgmentBasis,
+		rehabilitationExtra: st.rehabilitationExtra,
 		nursingData: st.nursingData,
 		nursingJudgmentBasis: st.nursingJudgmentBasis,
 		cognitionData: st.cognitionData,
 		cognitionJudgmentBasis: st.cognitionJudgmentBasis,
 		communicationData: st.communicationData,
 		nutritionData: st.nutritionData,
+		physicalExtra: st.physicalExtra,
 		familyEnvironmentData: st.familyEnvironmentData,
 		resourceUtilizationData: st.resourceUtilizationData,
 		individualNeedsData: st.individualNeedsData,

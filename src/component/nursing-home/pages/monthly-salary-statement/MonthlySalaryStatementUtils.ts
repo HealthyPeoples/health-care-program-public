@@ -112,6 +112,7 @@ export function f40100ToStatementRow(r: Record<string, unknown>): StatementRow {
 	const esal = num(r.ESAL);
 	const sumBs = b1 + b2 + b3 + b4 + b6 + b7 + b8 + b9;
 	/** 급여합계 = 공단부담금 + 수급자부담금 (V40100). 비급여는 수급자부담금합계에만 포함 */
+	/** BSAL1/BSAL2 = 계약 식대·간식비 1회가 있는 수급자만. 저녁 간식은 부담금에 넣지 않음 */
 	const benefitTotal = sal1 + sal2;
 	const recipientBurdenTotal = sal2 + sumBs + esal;
 	return {

@@ -16,6 +16,7 @@ import {
 	calcTotalScore,
 	interpretScore,
 	isAutoOpinionSummary,
+	SCORE_INTERPRETATION_BANDS,
 	type F51015UiSnapshot,
 } from './f51015Mapper';
 
@@ -288,7 +289,7 @@ export default function CognitiveAssessmentModal({
 					</div>
 
 					<p className="mb-3 text-sm text-blue-900/80">
-						- 치매 선별용 한국어판 간이정신상태검사 (MMSE-DS) · 0=맞음, 1=틀림
+						- 치매 선별용 한국어판 간이정신상태검사 (MMSE-DS) · 틀림=0점, 맞음=1점 (총점 30점 만점)
 					</p>
 
 					<div className="overflow-hidden border border-blue-300 rounded">
@@ -326,7 +327,7 @@ export default function CognitiveAssessmentModal({
 													<span className="whitespace-pre-line">{it.label}</span>
 													<span className="ml-2 text-[10px] text-blue-800/60">{it.colId}</span>
 												</td>
-												<td className="w-[7.5rem] px-2 py-2 text-center border border-blue-200 whitespace-nowrap">
+												<td className="w-[10.5rem] px-2 py-2 text-center border border-blue-200 whitespace-nowrap">
 													<label className="inline-flex items-center gap-1 mr-3 cursor-pointer">
 														<input
 															type="radio"
@@ -335,7 +336,7 @@ export default function CognitiveAssessmentModal({
 															onChange={() => setAnswer(it.field, '0')}
 															className="w-4 h-4 text-blue-600 border-blue-400"
 														/>
-														<span>0</span>
+														<span>틀림(0)</span>
 													</label>
 													<label className="inline-flex items-center gap-1 cursor-pointer">
 														<input
@@ -345,7 +346,7 @@ export default function CognitiveAssessmentModal({
 															onChange={() => setAnswer(it.field, '1')}
 															className="w-4 h-4 text-blue-600 border-blue-400"
 														/>
-														<span>1</span>
+														<span>맞음(1)</span>
 													</label>
 												</td>
 											</tr>
@@ -363,6 +364,9 @@ export default function CognitiveAssessmentModal({
 							</span>
 							<span className="text-lg font-bold text-blue-900 min-w-[4.5rem]">{scoreN} / 30</span>
 							<span className="text-sm font-semibold text-blue-800">{interpretation}</span>
+							<div className="w-full text-xs text-blue-900/80 leading-relaxed">
+								{SCORE_INTERPRETATION_BANDS.map((b) => `${b.min}~${b.max}점 : ${b.label}`).join(' / ')}
+							</div>
 						</div>
 
 						<div>

@@ -11,6 +11,7 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const sql = require('mssql');
+const { adjustSnackCopayAfterSalaryCalc } = require('../../../lib/adjustSnackCopayAfterSalaryCalc');
 
 /** 급여 HEAD — 스키마: ANCD, SALMM(YYYYMM), PNUM 복합키 */
 const TABLE = '[돌봄시설DB].[dbo].[F40100]';
@@ -425,6 +426,17 @@ export async function PUT(req) {
 			.input('pv_wonflag', sql.Int, wonflag)
 			.input('pv_pnum', sql.Int, pnum)
 			.execute('[돌봄시설DB].[dbo].[Usp_P40100]');
+
+		try {
+			await adjustSnackCopayAfterSalaryCalc(pool, gate.sessionAncd, salmm, pnum);
+		} catch (snackErr) {
+			console.error('급여계산 후 비급여 식대·간식 보정 실패:', snackErr);
+			return jsonError({
+				success: false,
+				error: `급여계산은 완료됐으나 비급여 식대·간식 보정에 실패했습니다: ${snackErr.message}`,
+				details: String(snackErr),
+			});
+		}
 
 		return jsonOk({
 				success: true,

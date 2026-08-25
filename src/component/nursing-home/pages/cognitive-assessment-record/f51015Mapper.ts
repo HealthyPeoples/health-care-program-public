@@ -8,7 +8,7 @@
  */
 /**
  * F51015(인지상태평가 / MMSE-DS) 화면 상태 ↔ DB 컬럼 매핑
- * E01~E30: 0=맞음, 1=틀림 / E80 합계(맞음 개수) / E81 해석 / E90 의견 / E91 학력 / E99 입력완료
+ * E01~E30: 0=틀림(0점), 1=맞음(1점) / E80 총점(맞음 개수, 만점 30) / E81 해석 / E90 의견 / E91 학력 / E99 입력완료
  */
 
 export type F51015ScoreCode = '0' | '1' | '';
@@ -156,7 +156,7 @@ export type F51015UiSnapshot = {
 	e28: string;
 	e29: string;
 	e30: string;
-	/** E80 — 맞음(0) 개수 */
+	/** E80 — 맞음(1) 개수, 만점 30 */
 	score: string;
 	/** E81 */
 	interpretation: string;
@@ -210,7 +210,23 @@ function normalize01(raw: string): string {
 	return '';
 }
 
-/** 맞음(0) 개수 = 총점 (만점 30) */
+/** 총점 구간 해석 (MMSE 30점 만점) */
+export const SCORE_INTERPRETATION_BANDS = [
+	{ min: 0, max: 17, label: '분명한 인지기능 장애' },
+	{ min: 18, max: 23, label: '경도 인지기능 장애' },
+	{ min: 24, max: 30, label: '인지적 손상 없음' },
+] as const;
+
+export function countAnswered(ui: Partial<F51015UiSnapshot>): number {
+	let n = 0;
+	for (const item of ASSESSMENT_ITEMS) {
+		const v = normalize01(String((ui as any)[item.field] ?? ''));
+		if (v === '0' || v === '1') n += 1;
+	}
+	return n;
+}
+
+/** 맞음(1) 개수 = 총점 (만점 30). 틀림(0)은 0점. */
 export function calcTotalScore(ui: Partial<F51015UiSnapshot>, opts?: { requireAll?: boolean }): number {
 	const requireAll = opts?.requireAll === true;
 	let correct = 0;
@@ -222,27 +238,27 @@ export function calcTotalScore(ui: Partial<F51015UiSnapshot>, opts?: { requireAl
 			continue;
 		}
 		answered += 1;
-		if (v === '0') correct += 1;
+		if (v === '1') correct += 1;
 	}
 	if (requireAll && answered < ASSESSMENT_ITEMS.length) return 0;
 	return correct;
 }
 
 export function interpretScore(total: number): string {
-	if (!Number.isFinite(total) || total < 0) return '';
-	if (total >= 24) return '정상범위';
-	if (total >= 18) return '경도인지저하 의심';
-	if (total >= 10) return '중등도인지저하 의심';
-	return '고도인지저하 의심';
+	if (!Number.isFinite(total) || total < 0 || total > 30) return '';
+	if (total <= 17) return '분명한 인지기능 장애';
+	if (total <= 23) return '경도 인지기능 장애';
+	return '인지적 손상 없음';
 }
 
 export function buildOpinionSummary(total: number, interpretation: string): string {
 	if (!Number.isFinite(total) || !interpretation) return '';
-	return `인지상태평가 ${total}/30점으로 ${interpretation}으로 평가됨.`;
+	return `인지상태평가 ${total}/30점, ${interpretation}.`;
 }
 
 export function isAutoOpinionSummary(text: string): boolean {
-	return /^인지상태평가 \d+\/30점으로 .+으로 평가됨\.?$/.test(String(text ?? '').trim());
+	return /^인지상태평가 \d+\/30점[,，] .+\.?$/.test(String(text ?? '').trim())
+		|| /^인지상태평가 \d+\/30점으로 .+으로 평가됨\.?$/.test(String(text ?? '').trim());
 }
 
 export function emptySnapshot(beneficiary = '', inspectionDate = ''): F51015UiSnapshot {
@@ -266,11 +282,10 @@ export function hydrateFromF51015Row(row: Record<string, unknown>, beneficiaryNa
 	for (const item of ASSESSMENT_ITEMS) {
 		(snap as any)[item.field] = normalize01(rowStr(row, item.colId));
 	}
-	const scoreRaw = rowStr(row, 'E80');
-	const scoreN = parseInt(scoreRaw, 10);
+	const answered = countAnswered(snap);
 	const calc = calcTotalScore(snap);
-	snap.score = Number.isFinite(scoreN) && scoreN >= 0 ? String(scoreN) : calc > 0 ? String(calc) : String(calc);
-	snap.interpretation = rowStr(row, 'E81') || interpretScore(parseInt(snap.score, 10) || 0);
+	snap.score = answered > 0 ? String(calc) : '';
+	snap.interpretation = answered === ASSESSMENT_ITEMS.length ? interpretScore(calc) : '';
 	snap.examiner = rowStr(row, 'RQEMP_NM');
 	snap.examinerEmpno = rowStr(row, 'RQEMP');
 	snap.opinion = rowStr(row, 'E90');

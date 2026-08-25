@@ -101,11 +101,11 @@ export function scheduleCellLabel(row: WorkSchedulePrintRow): string {
 /**
  * 출력용 기호
  * 1 근무: 파란 글씨 주/야/심 (JOBSH)
- * 2 연차: 빨간 "연"
- * 3 월차: 빨간 "월"
+ * 2 연차: 빨간 "연차"
+ * 3 월차: 빨간 "월차"
  * 4 정기휴무: 주황 동그라미
- * 5 대휴: 빨간 "대"
- * 6 병가: 빨간 굵은 "병"
+ * 5 대휴: 빨간 "대휴"
+ * 6 병가: 빨간 "병가"
  * 7 경조사: 빨간 별 ✮
  * 9 결근: 빨간 세모
  */
@@ -121,15 +121,15 @@ export function wguPrintMarkHtml(row: WorkSchedulePrintRow | string): string {
 			return `<span class="mark mark-shift-blue" title="${shiftTitle}">${short}</span>`;
 		}
 		case "2":
-			return `<span class="mark mark-text-red" title="${title}">연</span>`;
+			return `<span class="mark mark-text-red" title="${title}">연차</span>`;
 		case "3":
-			return `<span class="mark mark-text-red" title="${title}">월</span>`;
+			return `<span class="mark mark-text-red" title="${title}">월차</span>`;
 		case "4":
 			return `<span class="mark mark-orange-circle" title="${title}"></span>`;
 		case "5":
-			return `<span class="mark mark-text-red" title="${title}">대</span>`;
+			return `<span class="mark mark-text-red" title="${title}">대휴</span>`;
 		case "6":
-			return `<span class="mark mark-sick" title="${title}">병</span>`;
+			return `<span class="mark mark-text-red" title="${title}">병가</span>`;
 		case "7":
 			return `<span class="mark mark-star" title="${title}">✮</span>`;
 		case "9":
@@ -232,8 +232,8 @@ export function buildWorkScheduleStatusPrintHtml(opts: {
       word-break: keep-all;
     }
     table.main thead th { background: #f0f0f0; font-weight: 600; }
-    table.main .c-name { width: 70px; text-align: left; padding-left: 4px; }
-    table.main .c-job { width: 60px; }
+    table.main .c-name { width: 56px; text-align: left; padding-left: 3px; }
+    table.main .c-job { width: 78px; }
     table.main .c-day { font-size: 8pt; line-height: 1.2; }
     table.main .c-day .dow { font-weight: normal; font-size: 7pt; }
     table.main .c-cell { font-size: 7.5pt; height: 22px; }
@@ -256,12 +256,6 @@ export function buildWorkScheduleStatusPrintHtml(opts: {
       color: #dc2626;
       font-weight: 700;
       font-size: 10pt;
-      line-height: 1;
-    }
-    .mark-sick {
-      color: #dc2626;
-      font-weight: 900;
-      font-size: 11pt;
       line-height: 1;
     }
     .mark-star {
@@ -297,7 +291,6 @@ export function buildWorkScheduleStatusPrintHtml(opts: {
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>
-  <div class="meta">출력일시: ${escapeHtml(new Date().toLocaleString("ko-KR"))}</div>
   <table class="main">
     <thead>
       <tr>
@@ -314,11 +307,11 @@ export function buildWorkScheduleStatusPrintHtml(opts: {
     <span class="legend-item"><span class="mark mark-shift-blue">주</span> 주간</span>
     <span class="legend-item"><span class="mark mark-shift-blue">야</span> 야간</span>
     <span class="legend-item"><span class="mark mark-shift-blue">심</span> 심야</span>
-    <span class="legend-item"><span class="mark mark-text-red">연</span> 연차</span>
-    <span class="legend-item"><span class="mark mark-text-red">월</span> 월차</span>
+    <span class="legend-item"><span class="mark mark-text-red">연차</span></span>
+    <span class="legend-item"><span class="mark mark-text-red">월차</span></span>
     <span class="legend-item"><span class="mark mark-orange-circle"></span> 정기휴무</span>
-    <span class="legend-item"><span class="mark mark-text-red">대</span> 대휴</span>
-    <span class="legend-item"><span class="mark mark-sick">병</span> 병가</span>
+    <span class="legend-item"><span class="mark mark-text-red">대휴</span></span>
+    <span class="legend-item"><span class="mark mark-text-red">병가</span></span>
     <span class="legend-item"><span class="mark mark-star">✮</span> 경조사</span>
     <span class="legend-item"><span class="mark mark-triangle"></span> 결근</span>
   </div>
