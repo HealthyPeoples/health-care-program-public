@@ -21,6 +21,41 @@ export function fmtInt(n: number): string {
 	return String(Math.round(n));
 }
 
+export function formatWon(n: number): string {
+	return `${Math.round(n).toLocaleString("ko-KR")}원`;
+}
+
+/** 식대합계 = 비급여식대 + 비급여간식 */
+export function rowMealTotal(row: Pick<StatementRow, "nonBenefitMeal" | "nonBenefitSnack">): number {
+	return num(row.nonBenefitMeal) + num(row.nonBenefitSnack);
+}
+
+/** 기타합계 = 비급여의료비 + 촉탁의료비 + 처방비 + 기타비용 */
+export function rowOtherTotal(
+	row: Pick<StatementRow, "outpatientFee" | "contractedMedical" | "contractedPrescription" | "otherCostsRecipient">
+): number {
+	return (
+		num(row.outpatientFee) +
+		num(row.contractedMedical) +
+		num(row.contractedPrescription) +
+		num(row.otherCostsRecipient)
+	);
+}
+
+export function sumMealTotal(
+	rows: Array<Pick<StatementRow, "nonBenefitMeal" | "nonBenefitSnack">>
+): number {
+	return rows.reduce((s, r) => s + rowMealTotal(r), 0);
+}
+
+export function sumOtherTotal(
+	rows: Array<
+		Pick<StatementRow, "outpatientFee" | "contractedMedical" | "contractedPrescription" | "otherCostsRecipient">
+	>
+): number {
+	return rows.reduce((s, r) => s + rowOtherTotal(r), 0);
+}
+
 export function formatBirthFromDb(v: unknown): string {
 	if (v == null) return "";
 	const s = String(v).trim();

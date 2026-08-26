@@ -89,6 +89,7 @@ import ConnectionRecord from '@/component/nursing-home/pages/connection-record/C
 import VitalSigns from '@/component/nursing-home/pages/vital-signs/VitalSigns';
 import VitalSignsPeriodic from '@/component/nursing-home/pages/vital-signs-periodic/VitalSignsPeriodic';
 import OutpatientRecord from '@/component/nursing-home/pages/outpatient-record/OutpatientRecord';
+import HomeDashboard from '@/component/nursing-home/pages/home-dashboard/HomeDashboard';
 
 interface TabItem {
   id: string; // href 기반 고유키
@@ -429,7 +430,7 @@ export default function TabHost() {
   };
 
   if (tabs.length === 0) {
-    return <div className="mt-20 text-center text-gray-400">좌측 메뉴를 클릭해 탭을 여세요</div>;
+    return <HomeDashboard />;
   }
 
   return (

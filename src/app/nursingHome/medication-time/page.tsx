@@ -1,5 +1,5 @@
 /**
- * @file App Router 페이지 — 투약시간
+ * @file App Router 페이지 — 복용약물(F30110)
  *
  * @description
  * /nursingHome/medication-time thin wrapper. 실제 UI는 component/nursing-home/pages/medication-time 를 렌더합니다.

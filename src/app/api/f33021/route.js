@@ -1,8 +1,9 @@
 /**
- * @file API /api/f33021 — 욕창관리 F33021
+ * @file API /api/f33021 — 배설관찰 F33021
  *
  * @description
- * 욕창관리 F33021 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ * 배설관찰 F33021 Next.js Route Handler. 세션 ANCD 게이트·MSSQL 직접 접근 패턴을 따릅니다.
+ * 정확한 관찰시각(VTM_ST/VTM_EN), 소변·대변 양(PSS_AMT_GU/DNG_AMT_GU), 기저귀 교환시각(NPPY_CNG_TM)은 필요 시 ALTER 합니다.
  *
  * @module app/api/f33021/route
  */
@@ -12,46 +13,69 @@ import { assertAnCdMatchesSession } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F33021]';
 
-let ensureTimeColumnsPromise = null;
+let ensureColumnsPromise = null;
 
-async function ensureTimeColumns(pool) {
+async function ensureColumns(pool) {
 	if (!pool) return;
-	if (!ensureTimeColumnsPromise) {
-		ensureTimeColumnsPromise = pool
+	if (!ensureColumnsPromise) {
+		ensureColumnsPromise = pool
 			.request()
 			.query(`
-      IF NOT EXISTS (
-        SELECT 1 FROM [돌봄시설DB].sys.columns c
-        INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
-        WHERE t.name = N'F33021' AND c.name = N'VTM_ST'
-      )
-      BEGIN
+      IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F33021]', N'VTM_ST') IS NULL
         ALTER TABLE ${TABLE_NAME} ADD [VTM_ST] VARCHAR(8) NULL;
-      END
-
-      IF NOT EXISTS (
-        SELECT 1 FROM [돌봄시설DB].sys.columns c
-        INNER JOIN [돌봄시설DB].sys.tables t ON c.object_id = t.object_id
-        WHERE t.name = N'F33021' AND c.name = N'VTM_EN'
-      )
-      BEGIN
+      IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F33021]', N'VTM_EN') IS NULL
         ALTER TABLE ${TABLE_NAME} ADD [VTM_EN] VARCHAR(8) NULL;
-      END
+      IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F33021]', N'PSS_AMT_GU') IS NULL
+        ALTER TABLE ${TABLE_NAME} ADD [PSS_AMT_GU] CHAR(1) NULL;
+      IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F33021]', N'DNG_AMT_GU') IS NULL
+        ALTER TABLE ${TABLE_NAME} ADD [DNG_AMT_GU] CHAR(1) NULL;
+      IF COL_LENGTH(N'[돌봄시설DB].[dbo].[F33021]', N'NPPY_CNG_TM') IS NULL
+        ALTER TABLE ${TABLE_NAME} ADD [NPPY_CNG_TM] VARCHAR(8) NULL;
     `)
 			.catch((err) => {
-				ensureTimeColumnsPromise = null;
+				ensureColumnsPromise = null;
 				throw err;
 			});
 	}
-	await ensureTimeColumnsPromise;
+	await ensureColumnsPromise;
+}
+
+function normalizeAmtGu(v) {
+	const s = String(v ?? '').trim();
+	if (s === '1' || s === '2' || s === '3') return s;
+	return '0';
 }
 
 function toYmd(v) {
-	if (!v) return '';
-	const s = String(v);
-	if (s.includes('T')) return s.split('T')[0];
+	if (v == null || v === '') return '';
+	if (v instanceof Date && !Number.isNaN(v.getTime())) {
+		const y = v.getFullYear();
+		const m = String(v.getMonth() + 1).padStart(2, '0');
+		const d = String(v.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	const s = String(v).trim();
+	if (!s) return '';
+	if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+		const dt = new Date(s);
+		if (!Number.isNaN(dt.getTime())) {
+			const y = dt.getFullYear();
+			const m = String(dt.getMonth() + 1).padStart(2, '0');
+			const d = String(dt.getDate()).padStart(2, '0');
+			return `${y}-${m}-${d}`;
+		}
+		return s.slice(0, 10);
+	}
+	if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
 	if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-	return s.slice(0, 10);
+	const parsed = new Date(s);
+	if (!Number.isNaN(parsed.getTime())) {
+		const y = parsed.getFullYear();
+		const m = String(parsed.getMonth() + 1).padStart(2, '0');
+		const d = String(parsed.getDate()).padStart(2, '0');
+		return `${y}-${m}-${d}`;
+	}
+	return '';
 }
 
 function ymdToDigits(v) {
@@ -93,6 +117,9 @@ function mapRow(r) {
 		VTM_GU: normalizeVtmGu(r.VTM_GU),
 		VTM_ST: normalizeTimeHm(r.VTM_ST),
 		VTM_EN: normalizeTimeHm(r.VTM_EN),
+		PSS_AMT_GU: r.PSS_AMT_GU != null ? String(r.PSS_AMT_GU).trim() : '',
+		DNG_AMT_GU: r.DNG_AMT_GU != null ? String(r.DNG_AMT_GU).trim() : '',
+		NPPY_CNG_TM: normalizeTimeHm(r.NPPY_CNG_TM),
 	};
 }
 
@@ -119,7 +146,7 @@ export async function GET(req) {
 		}
 
 		if (mode !== 'dates') {
-			await ensureTimeColumns(pool);
+			await ensureColumns(pool);
 		}
 
 		const request = pool.request();
@@ -168,7 +195,7 @@ export async function GET(req) {
       SELECT
         [ANCD],
         [PNUM],
-        [VDT],
+        CONVERT(varchar(10), [VDT], 120) AS [VDT],
         [VTM_GU],
         [VTM_ST],
         [VTM_EN],
@@ -179,7 +206,10 @@ export async function GET(req) {
         [INTK_VAL],
         [PSS_GU],
         [DNG_GU],
+        [PSS_AMT_GU],
+        [DNG_AMT_GU],
         [NPPY_CNG_GU],
+        [NPPY_CNG_TM],
         [INEMPNO],
         [INEMPNM]
       FROM ${TABLE_NAME}
@@ -233,7 +263,13 @@ export async function POST(req) {
 			return jsonError({ success: false, error: '데이터베이스 연결 실패' });
 		}
 
-		await ensureTimeColumns(pool);
+		await ensureColumns(pool);
+
+		const pssAmt = normalizeAmtGu(body?.PSS_AMT_GU ?? body?.pssAmtGu ?? '');
+		const dngAmt = normalizeAmtGu(body?.DNG_AMT_GU ?? body?.dngAmtGu ?? '');
+		const nppyCngTm = normalizeTimeHm(body?.NPPY_CNG_TM ?? body?.nppyCngTm ?? '');
+		const pssGu = pssAmt !== '0' ? '1' : String(body?.PSS_GU ?? body?.pssGu ?? '0');
+		const dngGu = dngAmt !== '0' ? '1' : String(body?.DNG_GU ?? body?.dngGu ?? '0');
 
 		const request = pool.request();
 		request.input('ANCD', gate.sessionAncd);
@@ -248,9 +284,12 @@ export async function POST(req) {
 		request.input('PSS_NPPY_VAL_GU', body?.PSS_NPPY_VAL_GU ?? body?.pssNppyValGu ?? '0');
 		request.input('PSS_CTHT_VAL', body?.PSS_CTHT_VAL ?? body?.pssCthtVal ?? '');
 		request.input('INTK_VAL', body?.INTK_VAL ?? body?.intkVal ?? '');
-		request.input('PSS_GU', body?.PSS_GU ?? body?.pssGu ?? '0');
-		request.input('DNG_GU', body?.DNG_GU ?? body?.dngGu ?? '0');
+		request.input('PSS_GU', pssGu);
+		request.input('DNG_GU', dngGu);
+		request.input('PSS_AMT_GU', pssAmt);
+		request.input('DNG_AMT_GU', dngAmt);
 		request.input('NPPY_CNG_GU', body?.NPPY_CNG_GU ?? body?.nppyCngGu ?? '0');
+		request.input('NPPY_CNG_TM', nppyCngTm || null);
 		request.input('INEMPNO', body?.INEMPNO ?? body?.inempno ?? null);
 		request.input('INEMPNM', body?.INEMPNM ?? body?.inempnm ?? null);
 
@@ -273,7 +312,10 @@ export async function POST(req) {
           [INTK_VAL] = @INTK_VAL,
           [PSS_GU] = @PSS_GU,
           [DNG_GU] = @DNG_GU,
+          [PSS_AMT_GU] = @PSS_AMT_GU,
+          [DNG_AMT_GU] = @DNG_AMT_GU,
           [NPPY_CNG_GU] = @NPPY_CNG_GU,
+          [NPPY_CNG_TM] = @NPPY_CNG_TM,
           [INEMPNO] = @INEMPNO,
           [INEMPNM] = @INEMPNM
       WHEN NOT MATCHED THEN
@@ -281,14 +323,16 @@ export async function POST(req) {
           [ANCD],[PNUM],[VDT],[VTM_GU],[VTM_ST],[VTM_EN],
           [ANNT_STAT_GU],[ANNT_STAT_DESC],
           [PSS_NPPY_VAL_GU],[PSS_CTHT_VAL],[INTK_VAL],
-          [PSS_GU],[DNG_GU],[NPPY_CNG_GU],
+          [PSS_GU],[DNG_GU],[PSS_AMT_GU],[DNG_AMT_GU],
+          [NPPY_CNG_GU],[NPPY_CNG_TM],
           [INEMPNO],[INEMPNM]
         )
         VALUES (
           @ANCD,@PNUM,CONVERT(date, @VDT, 112),@VTM_GU,@VTM_ST,@VTM_EN,
           @ANNT_STAT_GU,@ANNT_STAT_DESC,
           @PSS_NPPY_VAL_GU,@PSS_CTHT_VAL,@INTK_VAL,
-          @PSS_GU,@DNG_GU,@NPPY_CNG_GU,
+          @PSS_GU,@DNG_GU,@PSS_AMT_GU,@DNG_AMT_GU,
+          @NPPY_CNG_GU,@NPPY_CNG_TM,
           @INEMPNO,@INEMPNM
         );
     `;

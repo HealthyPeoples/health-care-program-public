@@ -121,6 +121,32 @@ describe("MonthlySalaryStatementUtils — pure helpers", () => {
 		assert.equal(U.fmtInt(10.6), "11");
 	});
 
+	it("식대합계 / 기타합계", () => {
+		const rows = [
+			{
+				nonBenefitMeal: "1000",
+				nonBenefitSnack: "200",
+				outpatientFee: "10",
+				contractedMedical: "20",
+				contractedPrescription: "30",
+				otherCostsRecipient: "40",
+			},
+			{
+				nonBenefitMeal: "100",
+				nonBenefitSnack: "50",
+				outpatientFee: "1",
+				contractedMedical: "2",
+				contractedPrescription: "3",
+				otherCostsRecipient: "4",
+			},
+		];
+		assert.equal(U.rowMealTotal(rows[0]), 1200);
+		assert.equal(U.rowOtherTotal(rows[0]), 100);
+		assert.equal(U.sumMealTotal(rows), 1350);
+		assert.equal(U.sumOtherTotal(rows), 110);
+		assert.match(U.formatWon(1350), /1,350원/);
+	});
+
 	it("f40100ToStatementRow 기본 매핑", () => {
 		const row = U.f40100ToStatementRow({
 			PNUM: " 100 ",

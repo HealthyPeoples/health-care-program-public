@@ -15,15 +15,20 @@ import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
 import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
 import {
 	ANNT_STAT_OPTIONS,
-	EXCRETION_TIME_SLOTS,
 	createEmptyExcretionForm,
 	excretionFormToPayload,
 	formatDateYmd,
+	normalizeTimeHm,
+	rowObservationTime,
 	rowToExcretionForm,
-	vtmGuToLabel,
 	type ExcretionFormData,
 	type F33021Row,
 } from '../../utils/excretionObservationFields';
+import {
+	buildExcretionObservationPrintHtml,
+	monthRangeFromYmd,
+	openExcretionObservationPrint,
+} from './excretionObservationPrint';
 
 interface MemberData {
 	ANCD: string;
@@ -42,6 +47,129 @@ interface ObservationRecord extends F33021Row {
 	OBSTM: string;
 }
 
+const AMT_OPTIONS = [
+	{ code: '1', label: '소량' },
+	{ code: '2', label: '보통' },
+	{ code: '3', label: '다량' },
+] as const;
+
+const timeInputClass =
+	'w-14 px-2 py-1.5 text-sm text-center border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500';
+const checkboxCls =
+	'w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500 accent-blue-600';
+
+function todayYmd(): string {
+	return formatDateYmd(new Date().toISOString()) || '';
+}
+
+function currentYearMonth(): string {
+	const ymd = todayYmd();
+	return /^\d{4}-\d{2}-\d{2}$/.test(ymd) ? ymd.slice(0, 7) : '';
+}
+
+function splitHm(value: string): { hour: string; minute: string } {
+	const hm = String(value ?? '').trim();
+	const m = /^(\d{0,2}):(\d{0,2})$/.exec(hm);
+	if (m) return { hour: m[1], minute: m[2] };
+	return { hour: '', minute: '' };
+}
+
+function padTimePart(raw: string, max: number): string {
+	const digits = String(raw ?? '').replace(/\D/g, '').slice(0, 2);
+	if (!digits) return '';
+	const n = Math.min(max, Math.max(0, Number(digits)));
+	if (!Number.isFinite(n)) return '';
+	return String(n).padStart(2, '0');
+}
+
+function joinRawHm(hour: string, minute: string): string {
+	if (!hour && !minute) return '';
+	return `${hour}:${minute}`;
+}
+
+function normalizeHm(hour: string, minute: string): string {
+	if (!hour && !minute) return '';
+	return `${padTimePart(hour, 23) || '00'}:${padTimePart(minute, 59) || '00'}`;
+}
+
+function AmountRadios({
+	name,
+	value,
+	onChange,
+}: {
+	name: string;
+	value: string;
+	onChange: (next: string) => void;
+}) {
+	return (
+		<div className="flex flex-wrap items-center gap-3">
+			{AMT_OPTIONS.map((opt) => (
+				<label key={opt.code} className="flex items-center gap-1 text-sm text-blue-900 cursor-pointer">
+					<input
+						type="radio"
+						name={name}
+						value={opt.code}
+						checked={value === opt.code}
+						onChange={() => onChange(opt.code)}
+						onClick={(e) => {
+							if (value === opt.code) {
+								e.preventDefault();
+								onChange('');
+							}
+						}}
+						className={`${checkboxCls} cursor-pointer`}
+					/>
+					{opt.label}
+				</label>
+			))}
+		</div>
+	);
+}
+
+function TimeHmInput({
+	value,
+	onChange,
+}: {
+	value: string;
+	onChange: (next: string) => void;
+}) {
+	const { hour, minute } = splitHm(value);
+
+	return (
+		<div className="flex items-center gap-1 min-w-0">
+			<input
+				type="text"
+				inputMode="numeric"
+				maxLength={2}
+				value={hour}
+				onChange={(e) => onChange(joinRawHm(e.target.value.replace(/\D/g, '').slice(0, 2), minute))}
+				onBlur={() => {
+					if (!hour && !minute) return;
+					onChange(normalizeHm(hour, minute));
+				}}
+				className={timeInputClass}
+				placeholder="시"
+				aria-label="시"
+			/>
+			<span className="text-sm text-blue-900">:</span>
+			<input
+				type="text"
+				inputMode="numeric"
+				maxLength={2}
+				value={minute}
+				onChange={(e) => onChange(joinRawHm(hour, e.target.value.replace(/\D/g, '').slice(0, 2)))}
+				onBlur={() => {
+					if (!hour && !minute) return;
+					onChange(normalizeHm(hour, minute));
+				}}
+				className={timeInputClass}
+				placeholder="분"
+				aria-label="분"
+			/>
+		</div>
+	);
+}
+
 export default function ExcretionObservation() {
 	const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
 	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
@@ -53,6 +181,9 @@ export default function ExcretionObservation() {
 	const observationDateItemsPerPage = 10;
 	const [observationTimePage, setObservationTimePage] = useState(1);
 	const observationTimeItemsPerPage = 10;
+	const [printMonth, setPrintMonth] = useState(currentYearMonth);
+	const [checkedMemberKeys, setCheckedMemberKeys] = useState<Set<string>>(new Set());
+	const [printing, setPrinting] = useState(false);
 
 	const [formData, setFormData] = useState<ExcretionFormData>(createEmptyExcretionForm());
 	const [defaultObserver, setDefaultObserver] = useState('');
@@ -146,6 +277,33 @@ export default function ExcretionObservation() {
 	const endIndex = startIndex + itemsPerPage;
 	const currentMembers = filteredMembers.slice(startIndex, endIndex);
 
+	const memberKey = (m: Pick<MemberData, 'ANCD' | 'PNUM'>) => `${m.ANCD}-${m.PNUM}`;
+
+	const allFilteredChecked =
+		filteredMembers.length > 0 && filteredMembers.every((m) => checkedMemberKeys.has(memberKey(m)));
+
+	const toggleMemberChecked = (member: MemberData, checked: boolean) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			const key = memberKey(member);
+			if (checked) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	};
+
+	const toggleAllFilteredChecked = (checked: boolean) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			for (const m of filteredMembers) {
+				const key = memberKey(m);
+				if (checked) next.add(key);
+				else next.delete(key);
+			}
+			return next;
+		});
+	};
+
 	const handlePageChange = (page: number) => {
 		setCurrentPage(page);
 	};
@@ -185,10 +343,10 @@ export default function ExcretionObservation() {
 	}, [selectedStatus, selectedGrade, selectedFloor, searchTerm]);
 
 	// 관찰일자 목록 조회
-	const fetchObservationDates = async (ancd: string, pnum: string) => {
+	const fetchObservationDates = async (ancd: string, pnum: string, keepDate?: string) => {
 		if (!ancd || !pnum) {
 			setObservationDates([]);
-			return;
+			return [] as string[];
 		}
 
 		setLoadingObservations(true);
@@ -203,10 +361,17 @@ export default function ExcretionObservation() {
 			const dates = list
 				.map((r: { VDT?: string }) => formatDateYmd(r?.VDT ?? ''))
 				.filter((d: string) => d && /^\d{4}-\d{2}-\d{2}$/.test(d));
-			setObservationDates(dates);
+			const keep = formatDateYmd(keepDate || '');
+			const next = [...dates];
+			if (keep && /^\d{4}-\d{2}-\d{2}$/.test(keep) && !next.includes(keep)) {
+				next.unshift(keep);
+			}
+			setObservationDates(next);
+			return next as string[];
 		} catch (err) {
 			console.error('관찰일자 조회 오류:', err);
 			setObservationDates([]);
+			return [] as string[];
 		} finally {
 			setLoadingObservations(false);
 		}
@@ -231,7 +396,7 @@ export default function ExcretionObservation() {
 			const mapped: ObservationRecord[] = list.map((r: F33021Row) => ({
 				...r,
 				OBSDT: formatDateYmd(r.VDT),
-				OBSTM: vtmGuToLabel(String(r.VTM_GU ?? '')),
+				OBSTM: rowObservationTime(r),
 			}));
 			setObservationRecords(mapped);
 		} catch (err) {
@@ -248,8 +413,45 @@ export default function ExcretionObservation() {
 		setSelectedDateIndex(null);
 		setSelectedTimeIndex(null);
 		setObservationRecords([]);
-		setFormData(createEmptyExcretionForm(member.P_NM || '', defaultObserver));
+		setFormData({
+			...createEmptyExcretionForm(member.P_NM || '', defaultObserver),
+			observationDate: '',
+		});
 		fetchObservationDates(member.ANCD, member.PNUM);
+	};
+
+	const applyEmptyFormForDate = (date: string) => {
+		setFormData((prev) => ({
+			...createEmptyExcretionForm(selectedMember?.P_NM || prev.beneficiary, defaultObserver || prev.observer),
+			observationDate: date,
+		}));
+	};
+
+	const handleCreateDate = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		const date = todayYmd();
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+			alert('관찰일자를 생성할 수 없습니다.');
+			return;
+		}
+
+		const existingIdx = observationDates.indexOf(date);
+		if (existingIdx >= 0) {
+			handleSelectDate(existingIdx);
+			return;
+		}
+
+		const nextDates = [date, ...observationDates];
+		setObservationDates(nextDates);
+		setObservationDatePage(1);
+		setSelectedDateIndex(0);
+		setSelectedTimeIndex(null);
+		setObservationTimePage(1);
+		setObservationRecords([]);
+		applyEmptyFormForDate(date);
 	};
 
 	// 관찰일자 선택 함수
@@ -259,11 +461,9 @@ export default function ExcretionObservation() {
 		if (selectedMember && selectedDate) {
 			fetchObservationRecords(selectedMember.ANCD, selectedMember.PNUM, selectedDate);
 		}
-		setFormData((prev) => ({
-			...createEmptyExcretionForm(selectedMember?.P_NM || prev.beneficiary, defaultObserver || prev.observer),
-			observationDate: selectedDate || '',
-		}));
+		applyEmptyFormForDate(selectedDate || '');
 		setSelectedTimeIndex(null);
+		setObservationTimePage(1);
 	};
 
 	// 관찰시간 선택 함수
@@ -283,13 +483,46 @@ export default function ExcretionObservation() {
 		}
 
 		if (!formData.observationDate) {
-			alert('관찰일자를 입력해주세요.');
+			alert('관찰일자를 입력해주세요. 관찰일자에서 신규로 생성한 뒤 저장해주세요.');
 			return;
+		}
+
+		const observationTime = normalizeTimeHm(formData.observationTime) || normalizeHm(
+			splitHm(formData.observationTime).hour,
+			splitHm(formData.observationTime).minute
+		);
+		if (!/^\d{2}:\d{2}$/.test(observationTime)) {
+			alert('관찰시간(시, 분)을 입력해주세요.');
+			return;
+		}
+
+		let diaperChangeTime = '';
+		if (formData.diaperChange) {
+			const diaperHm = splitHm(formData.diaperChangeTime);
+			if (!diaperHm.hour) {
+				alert('기저귀 교환 시간을 입력해주세요.');
+				return;
+			}
+			diaperChangeTime = normalizeHm(diaperHm.hour, diaperHm.minute);
+			if (!/^\d{2}:\d{2}$/.test(diaperChangeTime)) {
+				alert('기저귀 교환 시간 형식이 올바르지 않습니다.');
+				return;
+			}
 		}
 
 		setLoadingObservations(true);
 		try {
-			const payload = excretionFormToPayload(formData, selectedMember.PNUM);
+			const payload = {
+				...excretionFormToPayload(
+					{
+						...formData,
+						observationTime,
+						diaperChangeTime,
+						originalVtmGu: selectedTimeIndex !== null ? formData.originalVtmGu : '',
+					},
+					selectedMember.PNUM
+				),
+			};
 			const res = await fetch(`/api/f33021?ancd=${encodeURIComponent(selectedMember.ANCD)}`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -302,10 +535,26 @@ export default function ExcretionObservation() {
 
 			alert(selectedTimeIndex !== null ? '관찰 데이터가 수정되었습니다.' : '관찰 데이터가 저장되었습니다.');
 
-			await fetchObservationDates(selectedMember.ANCD, selectedMember.PNUM);
-			if (selectedMember && formData.observationDate) {
+			const dates = await fetchObservationDates(
+				selectedMember.ANCD,
+				selectedMember.PNUM,
+				formData.observationDate
+			);
+			if (formData.observationDate) {
+				const dateIdx = dates.indexOf(formData.observationDate);
+				setSelectedDateIndex(dateIdx >= 0 ? dateIdx : null);
+				if (dateIdx >= 0) {
+					setObservationDatePage(Math.floor(dateIdx / observationDateItemsPerPage) + 1);
+				}
 				await fetchObservationRecords(selectedMember.ANCD, selectedMember.PNUM, formData.observationDate);
 			}
+			setSelectedTimeIndex(null);
+			setFormData((prev) => ({
+				...prev,
+				observationTime,
+				diaperChangeTime,
+				originalVtmGu: '',
+			}));
 		} catch (err) {
 			console.error('관찰 데이터 저장 오류:', err);
 			alert(err instanceof Error ? err.message : '관찰 데이터 저장 중 오류가 발생했습니다.');
@@ -346,18 +595,106 @@ export default function ExcretionObservation() {
 
 			alert('관찰 데이터가 삭제되었습니다.');
 
-			await fetchObservationDates(selectedMember.ANCD, selectedMember.PNUM);
+			await fetchObservationDates(selectedMember.ANCD, selectedMember.PNUM, formData.observationDate);
 			if (selectedMember && formData.observationDate) {
 				await fetchObservationRecords(selectedMember.ANCD, selectedMember.PNUM, formData.observationDate);
 			}
 
-			setFormData(createEmptyExcretionForm(selectedMember.P_NM || '', defaultObserver));
+			setFormData({
+				...createEmptyExcretionForm(selectedMember.P_NM || '', defaultObserver),
+				observationDate: formData.observationDate,
+			});
 			setSelectedTimeIndex(null);
 		} catch (err) {
 			console.error('관찰 데이터 삭제 오류:', err);
 			alert(err instanceof Error ? err.message : '관찰 데이터 삭제 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingObservations(false);
+		}
+	};
+
+	const resolvePrintMonth = () => {
+		const ym = String(printMonth || '').trim();
+		if (!/^\d{4}-\d{2}$/.test(ym)) {
+			alert('출력 월을 선택해주세요.');
+			return null;
+		}
+		const range = monthRangeFromYmd(`${ym}-01`);
+		if (!range) {
+			alert('출력 월이 올바르지 않습니다.');
+			return null;
+		}
+		return range;
+	};
+
+	const checkedMembers = () => memberList.filter((m) => checkedMemberKeys.has(memberKey(m)));
+
+	const handleBlankPrint = () => {
+		const range = resolvePrintMonth();
+		if (!range) return;
+		const targets = checkedMembers();
+		const items =
+			targets.length > 0
+				? targets.map((member) => ({ member, rowsByDate: {} }))
+				: [{ member: { P_NM: '', P_GRD: '' }, rowsByDate: {} }];
+		const html = buildExcretionObservationPrintHtml({
+			blank: true,
+			year: range.year,
+			month: range.month,
+			days: range.days,
+			items,
+		});
+		openExcretionObservationPrint(html);
+	};
+
+	const handleDataPrint = async () => {
+		const range = resolvePrintMonth();
+		if (!range) return;
+		const targets = checkedMembers();
+		if (targets.length === 0) {
+			alert('출력할 수급자를 체크해주세요.');
+			return;
+		}
+
+		setPrinting(true);
+		try {
+			const items = [];
+			for (const member of targets) {
+				const url = `/api/f33021?ancd=${encodeURIComponent(String(member.ANCD))}&pnum=${encodeURIComponent(
+					String(member.PNUM)
+				)}&startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`;
+				const response = await fetch(url, { method: 'GET', cache: 'no-store' });
+				const result = await response.json().catch(() => ({}));
+				if (!response.ok || !result?.success) {
+					throw new Error(result?.error || '관찰 데이터 조회 실패');
+				}
+				const list = Array.isArray(result.data) ? result.data : [];
+				const rows = (list as F33021Row[]).map((r) => {
+					const ymd = formatDateYmd(r.VDT);
+					const time = rowObservationTime(r);
+					return {
+						...r,
+						OBSDT: ymd,
+						VDT: ymd || String(r.VDT ?? ''),
+						OBSTM: time,
+						VTM_ST: time,
+						VTM_GU: String(r.VTM_GU ?? '').trim(),
+					};
+				});
+				items.push({ member, rows });
+			}
+			const html = buildExcretionObservationPrintHtml({
+				blank: false,
+				year: range.year,
+				month: range.month,
+				items,
+			});
+			openExcretionObservationPrint(html);
+		} catch (err) {
+			console.error('배설관찰 출력 오류:', err);
+			alert(err instanceof Error ? err.message : '출력 준비 중 오류가 발생했습니다.');
+		} finally {
+			setPrinting(false);
 		}
 	};
 
@@ -378,6 +715,32 @@ export default function ExcretionObservation() {
 			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측 패널: 수급자 목록 */}
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
+					<div className="mb-3 p-2 space-y-2 border border-blue-200 rounded-lg bg-blue-50/60">
+						<div className="text-xs font-semibold text-blue-900">출력 기간 (월)</div>
+						<input
+							type="month"
+							value={printMonth}
+							onChange={(e) => setPrintMonth(e.target.value)}
+							className="w-full px-2 py-1 text-xs bg-white border border-blue-300 rounded"
+						/>
+						<button
+							type="button"
+							onClick={() => void handleDataPrint()}
+							disabled={printing || checkedMemberKeys.size === 0}
+							className="w-full px-2 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{printing ? '출력 준비 중...' : `조회 후 출력 (${checkedMemberKeys.size}명)`}
+						</button>
+						<button
+							type="button"
+							onClick={handleBlankPrint}
+							disabled={printing}
+							className="w-full px-2 py-1.5 text-xs font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							빈양식 출력
+						</button>
+					</div>
+
 					{/* 필터 헤더 */}
 					<div className="mb-3">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
@@ -441,6 +804,15 @@ export default function ExcretionObservation() {
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">
+											<input
+												type="checkbox"
+												checked={allFilteredChecked}
+												onChange={(e) => toggleAllFilteredChecked(e.target.checked)}
+												className="w-3.5 h-3.5 border-blue-300 rounded"
+												title="현재 필터 수급자 전체 선택"
+											/>
+										</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">현황</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
@@ -452,14 +824,17 @@ export default function ExcretionObservation() {
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
 										</tr>
 									) : filteredMembers.length === 0 ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
 										</tr>
 									) : (
-										currentMembers.map((member, index) => (
+										currentMembers.map((member, index) => {
+											const key = memberKey(member);
+											const isChecked = checkedMemberKeys.has(key);
+											return (
 											<tr
 												key={`${member.ANCD}-${member.PNUM}-${index}`}
 												onClick={() => handleSelectMember(member)}
@@ -467,6 +842,18 @@ export default function ExcretionObservation() {
 													selectedMember?.ANCD === member.ANCD && selectedMember?.PNUM === member.PNUM ? 'bg-blue-100' : ''
 												}`}
 											>
+												<td
+													className="px-1 py-1.5 text-center border-r border-blue-100"
+													onClick={(e) => e.stopPropagation()}
+												>
+													<input
+														type="checkbox"
+														checked={isChecked}
+														onChange={(e) => toggleMemberChecked(member, e.target.checked)}
+														className="w-3.5 h-3.5 border-blue-300 rounded"
+														aria-label={`${member.P_NM || '수급자'} 선택`}
+													/>
+												</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">{startIndex + index + 1}</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">
 													{member.P_ST === '1' ? '입소' : member.P_ST === '9' ? '퇴소' : '-'}
@@ -480,7 +867,8 @@ export default function ExcretionObservation() {
 												</td>
 												<td className="px-2 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>
 											</tr>
-										))
+											);
+										})
 									)}
 								</tbody>
 							</table>
@@ -545,6 +933,13 @@ export default function ExcretionObservation() {
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 px-4 py-3 border-r border-blue-200 bg-blue-50 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
 					<div className="mb-2">
 						<label className="text-sm font-medium text-blue-900">관찰일자</label>
+						<button
+							type="button"
+							onClick={handleCreateDate}
+							className="w-full mt-1 px-2 py-1 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+						>
+							신규
+						</button>
 					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto bg-white">
@@ -552,7 +947,7 @@ export default function ExcretionObservation() {
 								<div className="px-2 py-1 text-sm text-blue-900/60">로딩 중...</div>
 							) : observationDates.length === 0 ? (
 								<div className="px-2 py-1 text-sm text-blue-900/60">
-									{selectedMember ? '관찰일자가 없습니다' : '수급자를 선택해주세요'}
+									{selectedMember ? '상단에서 일자를 신규 생성해주세요' : '수급자를 선택해주세요'}
 								</div>
 							) : (
 								currentDateItems.map((date, localIndex) => {
@@ -639,7 +1034,7 @@ export default function ExcretionObservation() {
 								<div className="px-2 py-1 text-sm text-blue-900/60">로딩 중...</div>
 							) : observationRecords.length === 0 ? (
 								<div className="px-2 py-1 text-sm text-blue-900/60">
-									{selectedDateIndex !== null ? '관찰시간이 없습니다' : '관찰일자를 선택해주세요'}
+									{selectedDateIndex !== null ? '관찰시간을 시·분으로 입력한 뒤 저장해주세요' : '관찰일자를 선택해주세요'}
 								</div>
 							) : (
 								currentTimeItems.map((record, localIndex) => {
@@ -652,7 +1047,7 @@ export default function ExcretionObservation() {
 												selectedTimeIndex === globalIndex ? 'bg-blue-200 font-semibold' : ''
 											}`}
 										>
-											{record.OBSTM}
+											{record.OBSTM || '-'}
 										</div>
 									);
 								})
@@ -724,8 +1119,8 @@ export default function ExcretionObservation() {
 							<input
 								type="text"
 								value={formData.beneficiary}
-								onChange={(e) => setFormData(prev => ({ ...prev, beneficiary: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								readOnly
+								className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 text-blue-900"
 								placeholder="수급자명"
 							/>
 						</div>
@@ -736,8 +1131,8 @@ export default function ExcretionObservation() {
 							<input
 								type="date"
 								value={formData.observationDate}
-								onChange={(e) => setFormData(prev => ({ ...prev, observationDate: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								readOnly
+								className="flex-1 px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 text-blue-900"
 							/>
 						</div>
 
@@ -746,7 +1141,14 @@ export default function ExcretionObservation() {
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">수급자상태</label>
 							<select
 								value={formData.beneficiaryStatus}
-								onChange={(e) => setFormData(prev => ({ ...prev, beneficiaryStatus: e.target.value }))}
+								onChange={(e) => {
+									const next = e.target.value;
+									setFormData((prev) => ({
+										...prev,
+										beneficiaryStatus: next,
+										diaperUse: next === '2' ? '있음' : prev.diaperUse,
+									}));
+								}}
 								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
 							>
 								{ANNT_STAT_OPTIONS.map((opt) => (
@@ -770,43 +1172,73 @@ export default function ExcretionObservation() {
 						{/* 관찰시간 */}
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">관찰시간</label>
-							<select
+							<TimeHmInput
 								value={formData.observationTime}
-								onChange={(e) => setFormData(prev => ({ ...prev, observationTime: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-							>
-								{EXCRETION_TIME_SLOTS.map((slot) => (
-									<option key={slot.vtmGu} value={slot.label}>{slot.label}</option>
-								))}
-							</select>
+								onChange={(next) => setFormData((prev) => ({ ...prev, observationTime: next }))}
+							/>
 						</div>
 
-						{/* 소변량 섹션 */}
-						<div className="flex items-center gap-4">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">소변량</label>
-							<div className="flex items-center flex-1 gap-2">
-								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">기저귀착용</label>
-								<select
-									value={formData.diaperUse}
-									onChange={(e) => setFormData(prev => ({ ...prev, diaperUse: e.target.value }))}
-									className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-								>
-									<option value="없음">없음</option>
-									<option value="있음">있음</option>
-								</select>
-							</div>
+						{/* 소변 */}
+						<div className="flex items-start gap-2">
+							<label className="pt-1.5 text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">소변</label>
+							<AmountRadios
+								name="urine-amt"
+								value={formData.urineAmt}
+								onChange={(next) => setFormData((prev) => ({ ...prev, urineAmt: next as ExcretionFormData['urineAmt'] }))}
+							/>
 						</div>
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-blue-900 whitespace-nowrap">장루(요루)도뇨관삽입</label>
-								<input
-									type="number"
-									value={formData.stomaCatheter}
-									onChange={(e) => setFormData(prev => ({ ...prev, stomaCatheter: e.target.value }))}
-									className="w-24 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-									placeholder="0"
-								/>
-								<span className="text-sm text-blue-900">ml</span>
-							</div>
+
+						{/* 대변 */}
+						<div className="flex items-start gap-2">
+							<label className="pt-1.5 text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">대변</label>
+							<AmountRadios
+								name="stool-amt"
+								value={formData.stoolAmt}
+								onChange={(next) => setFormData((prev) => ({ ...prev, stoolAmt: next as ExcretionFormData['stoolAmt'] }))}
+							/>
+						</div>
+
+						{/* 기저귀교환 */}
+						<div className="flex items-center gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">기저귀교환</label>
+							<input
+								type="checkbox"
+								checked={formData.diaperChange}
+								onChange={(e) =>
+									setFormData((prev) => ({
+										...prev,
+										diaperChange: e.target.checked,
+										diaperChangeTime: e.target.checked ? prev.diaperChangeTime : '',
+										diaperUse: e.target.checked ? '있음' : prev.diaperUse,
+									}))
+								}
+								className={`${checkboxCls} cursor-pointer`}
+							/>
+							<span className="text-sm text-blue-900 whitespace-nowrap">교환시간</span>
+							<TimeHmInput
+								value={formData.diaperChangeTime}
+								onChange={(next) =>
+									setFormData((prev) => ({
+										...prev,
+										diaperChangeTime: next,
+										diaperChange: next ? true : prev.diaperChange,
+									}))
+								}
+							/>
+						</div>
+
+						{/* 장루(요루)도뇨관삽입 */}
+						<div className="flex items-center gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">장루/도뇨관</label>
+							<input
+								type="number"
+								value={formData.stomaCatheter}
+								onChange={(e) => setFormData(prev => ({ ...prev, stomaCatheter: e.target.value }))}
+								className="w-24 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								placeholder="0"
+							/>
+							<span className="text-sm text-blue-900">ml</span>
+						</div>
 
 						{/* 섭취량 */}
 						<div className="flex items-center gap-2">
@@ -818,40 +1250,6 @@ export default function ExcretionObservation() {
 								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
 								placeholder="섭취량을 입력하세요"
 							/>
-						</div>
-
-						{/* 배설여부 섹션 */}
-						<div className="flex items-center gap-4">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">배설여부</label>
-							<div className="flex items-center gap-4">
-								<div className="flex items-center gap-2">
-									<label className="text-sm font-medium text-blue-900 whitespace-nowrap">소변</label>
-									<input
-										type="checkbox"
-										checked={formData.urine}
-										onChange={(e) => setFormData(prev => ({ ...prev, urine: e.target.checked }))}
-										className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-									/>
-								</div>
-								<div className="flex items-center gap-2">
-									<label className="text-sm font-medium text-blue-900 whitespace-nowrap">대변</label>
-									<input
-										type="checkbox"
-										checked={formData.stool}
-										onChange={(e) => setFormData(prev => ({ ...prev, stool: e.target.checked }))}
-										className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-									/>
-								</div>
-								<div className="flex items-center gap-2">
-									<label className="text-sm font-medium text-blue-900 whitespace-nowrap">기저귀 또는 옷 교환</label>
-									<input
-										type="checkbox"
-										checked={formData.diaperOrClothesChange}
-										onChange={(e) => setFormData(prev => ({ ...prev, diaperOrClothesChange: e.target.checked }))}
-										className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-									/>
-								</div>
-							</div>
 						</div>
 
 						{/* 관찰자 */}

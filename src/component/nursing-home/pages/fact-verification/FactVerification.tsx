@@ -370,11 +370,11 @@ export default function FactVerification() {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>사실 확인</title>
+	<title></title>
 	<style>
 		@page {
 			size: A4;
-			margin: 20mm;
+			margin: 0 20mm 20mm 20mm;
 		}
 		* {
 			margin: 0;
@@ -388,11 +388,29 @@ export default function FactVerification() {
 			color: #000;
 			background: #fff;
 		}
+		.cover-top {
+			position: fixed;
+			left: -20mm;
+			right: -20mm;
+			top: 0;
+			height: 8mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 		.print-container {
 			width: 100%;
 			max-width: 210mm;
 			margin: 0 auto;
-			padding: 0;
+			padding: 20mm 0 0;
+		}
+		.print-title {
+			text-align: center;
+			font-size: 22pt;
+			font-weight: 700;
+			letter-spacing: 0.12em;
+			margin: 0 0 16px;
 		}
 		.info-table {
 			width: 100%;
@@ -443,7 +461,9 @@ export default function FactVerification() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="print-container">
+		<h1 class="print-title">사실 확인서</h1>
 		<table class="info-table">
 			<tr>
 				<td class="label">수급자</td>
@@ -469,6 +489,7 @@ export default function FactVerification() {
 
 		printWindow.document.write(printHTML);
 		printWindow.document.close();
+		printWindow.document.title = '';
 	};
 
 	// 삭제 함수

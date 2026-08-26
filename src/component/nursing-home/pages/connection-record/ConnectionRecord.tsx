@@ -584,11 +584,11 @@ export default function ConnectionRecord() {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>연계기록지</title>
+	<title></title>
 	<style>
 		@page {
 			size: A4;
-			margin: 20mm;
+			margin: 0 20mm 20mm 20mm;
 		}
 		* {
 			margin: 0;
@@ -602,11 +602,22 @@ export default function ConnectionRecord() {
 			color: #000;
 			background: #fff;
 		}
+		.cover-top {
+			position: fixed;
+			left: -20mm;
+			right: -20mm;
+			top: 0;
+			height: 8mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 		.print-container {
 			width: 100%;
 			max-width: 210mm;
 			margin: 0 auto;
-			padding: 0;
+			padding: 20mm 0 0;
 		}
 		.header {
 			display: flex;
@@ -755,6 +766,7 @@ export default function ConnectionRecord() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="print-container">
 		<div class="header">
 			<div class="title">연계기록지</div>
@@ -839,6 +851,7 @@ export default function ConnectionRecord() {
 
 		printWindow.document.write(printHTML);
 		printWindow.document.close();
+		printWindow.document.title = '';
 	};
 
 	// 삭제 함수

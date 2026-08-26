@@ -149,6 +149,26 @@ export function toCheckFlag(checked: boolean): '0' | '1' {
 	return checked ? '1' : '0';
 }
 
+/** F33020 소변/대변 양 구분 — 1소량 2보통 3대량 */
+export const EXCRETION_AMT_OPTIONS = [
+	{ code: '1', label: '소량', short: '소' },
+	{ code: '2', label: '보통', short: '보' },
+	{ code: '3', label: '대량', short: '대' },
+] as const;
+
+export type ExcretionAmtCode = '' | '1' | '2' | '3';
+
+export function normalizeAmtGu(v: unknown): ExcretionAmtCode {
+	const s = String(v ?? '').trim();
+	if (s === '1' || s === '2' || s === '3') return s;
+	return '';
+}
+
+export function amtGuToLabel(v: unknown, empty = ''): string {
+	const c = normalizeAmtGu(v);
+	return EXCRETION_AMT_OPTIONS.find((o) => o.code === c)?.label ?? empty;
+}
+
 export function diaperUseToFlag(value: string): '0' | '1' {
 	const v = String(value ?? '').trim();
 	if (v === '1' || v === '있음') return '1';
@@ -173,7 +193,10 @@ export interface F33021Row {
 	INTK_VAL?: string;
 	PSS_GU?: string;
 	DNG_GU?: string;
+	PSS_AMT_GU?: string;
+	DNG_AMT_GU?: string;
 	NPPY_CNG_GU?: string;
+	NPPY_CNG_TM?: string;
 	INEMPNO?: string | number | null;
 	INEMPNM?: string | null;
 	[key: string]: unknown;
@@ -185,45 +208,71 @@ export interface ExcretionFormData {
 	beneficiaryStatus: string;
 	statusOther: string;
 	observationTime: string;
+	originalVtmGu: string;
 	diaperUse: string;
 	stomaCatheter: string;
 	intakeAmount: string;
-	urine: boolean;
-	stool: boolean;
-	diaperOrClothesChange: boolean;
+	urineAmt: ExcretionAmtCode;
+	stoolAmt: ExcretionAmtCode;
+	diaperChange: boolean;
+	diaperChangeTime: string;
 	observer: string;
 }
 
+export function rowObservationTime(row: F33021Row): string {
+	return normalizeTimeHm(row.VTM_ST) || vtmGuToHm(String(row.VTM_GU ?? ''));
+}
+
+function vtmGuToHm(vtmGu: string): string {
+	const gu = String(vtmGu ?? '').trim();
+	if (/^\d{1,2}$/.test(gu)) return `${gu.padStart(2, '0')}:00`;
+	return '';
+}
+
 export function rowToExcretionForm(row: F33021Row, beneficiaryName = ''): ExcretionFormData {
+	const urineAmt = normalizeAmtGu(row.PSS_AMT_GU) || (isCheckedFlag(row.PSS_GU) ? '2' : '');
+	const stoolAmt = normalizeAmtGu(row.DNG_AMT_GU) || (isCheckedFlag(row.DNG_GU) ? '2' : '');
+	const diaperChange = isCheckedFlag(row.NPPY_CNG_GU);
 	return {
 		beneficiary: beneficiaryName,
 		observationDate: formatDateYmd(row.VDT),
 		beneficiaryStatus: String(row.ANNT_STAT_GU ?? '1').trim() || '1',
 		statusOther: String(row.ANNT_STAT_DESC ?? ''),
-		observationTime: vtmGuToLabel(String(row.VTM_GU ?? '')),
+		observationTime: rowObservationTime(row),
+		originalVtmGu: String(row.VTM_GU ?? '').trim(),
 		diaperUse: flagToDiaperUse(row.PSS_NPPY_VAL_GU),
 		stomaCatheter: String(row.PSS_CTHT_VAL ?? ''),
 		intakeAmount: String(row.INTK_VAL ?? ''),
-		urine: isCheckedFlag(row.PSS_GU),
-		stool: isCheckedFlag(row.DNG_GU),
-		diaperOrClothesChange: isCheckedFlag(row.NPPY_CNG_GU),
+		urineAmt,
+		stoolAmt,
+		diaperChange,
+		diaperChangeTime: diaperChange ? normalizeTimeHm(row.NPPY_CNG_TM) : '',
 		observer: String(row.INEMPNM ?? ''),
 	};
 }
 
 export function excretionFormToPayload(form: ExcretionFormData, pnum: string) {
+	const observationTime = normalizeTimeHm(form.observationTime);
+	const vtmGu = timeToVtmGu(observationTime) || labelToVtmGu(form.observationTime);
+	const diaperChangeTime = form.diaperChange ? normalizeTimeHm(form.diaperChangeTime) : '';
 	return {
 		PNUM: pnum,
 		VDT: form.observationDate,
-		VTM_GU: labelToVtmGu(form.observationTime),
+		VTM_GU: vtmGu,
+		MATCH_VTM_GU: form.originalVtmGu || vtmGu,
+		VTM_ST: observationTime,
+		VTM_EN: observationTime,
 		ANNT_STAT_GU: form.beneficiaryStatus || '1',
 		ANNT_STAT_DESC: form.statusOther || '',
 		PSS_NPPY_VAL_GU: diaperUseToFlag(form.diaperUse),
 		PSS_CTHT_VAL: form.stomaCatheter || '',
 		INTK_VAL: form.intakeAmount || '',
-		PSS_GU: toCheckFlag(form.urine),
-		DNG_GU: toCheckFlag(form.stool),
-		NPPY_CNG_GU: toCheckFlag(form.diaperOrClothesChange),
+		PSS_GU: toCheckFlag(!!form.urineAmt),
+		DNG_GU: toCheckFlag(!!form.stoolAmt),
+		PSS_AMT_GU: form.urineAmt || '0',
+		DNG_AMT_GU: form.stoolAmt || '0',
+		NPPY_CNG_GU: toCheckFlag(form.diaperChange),
+		NPPY_CNG_TM: diaperChangeTime,
 		INEMPNM: form.observer || null,
 		INEMPNO: null,
 	};
@@ -278,22 +327,20 @@ export function formatDateYyMmDd(dateStr: unknown): string {
 }
 
 export function createEmptyExcretionForm(beneficiaryName = '', observer = ''): ExcretionFormData {
-	const today = new Date();
-	const y = today.getFullYear();
-	const m = String(today.getMonth() + 1).padStart(2, '0');
-	const d = String(today.getDate()).padStart(2, '0');
 	return {
 		beneficiary: beneficiaryName,
-		observationDate: `${y}-${m}-${d}`,
+		observationDate: '',
 		beneficiaryStatus: '1',
 		statusOther: '',
-		observationTime: EXCRETION_TIME_SLOTS[0].label,
+		observationTime: '',
+		originalVtmGu: '',
 		diaperUse: '없음',
 		stomaCatheter: '',
 		intakeAmount: '',
-		urine: false,
-		stool: false,
-		diaperOrClothesChange: false,
+		urineAmt: '',
+		stoolAmt: '',
+		diaperChange: false,
+		diaperChangeTime: '',
 		observer,
 	};
 }

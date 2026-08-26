@@ -395,9 +395,7 @@ export default function OutingInfo() {
 	};
 
 	const handlePrint = () => {
-		const printRows = rows
-			.map((row) => {
-				return `<tr>
+		const rowHtml = (row: (typeof rows)[number]) => `<tr>
           <td>${row.serialNo}</td>
           <td>${row.beneficiaryName || ""}${row.birthDate ? `<br/><span style="font-size:10px">(${row.birthDate})</span>` : ""}</td>
           <td>${gynLabel(row.gyn)}</td>
@@ -411,8 +409,6 @@ export default function OutingInfo() {
           <td>${row.relationship || ""}</td>
           <td>${row.contact || ""}</td>
         </tr>`;
-			})
-			.join("");
 
 		const periodLabel =
 			viewMode === "day"
@@ -435,34 +431,96 @@ export default function OutingInfo() {
 		const printTitle =
 			viewMode === "day" ? "외출/외박 처리 대장" : "외출/외박 처리 대장 (월간)";
 
-		const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${printTitle}</title>
-      <style>
-        body{font-family:'Malgun Gothic',sans-serif;font-size:11pt;margin:12mm}
-        h1{text-align:center;font-size:16pt;margin:0 0 12px}
-        .meta{margin-bottom:10px}
-        table{width:100%;border-collapse:collapse}
-        th,td{border:1px solid #333;padding:4px;text-align:center;font-size:10pt}
-        th{background:#eef}
-        @page{size:A4 landscape;margin:10mm}
-      </style></head><body>
-      <h1>${printTitle}</h1>
-      <div class="meta">${periodLabel}</div>
-      <table>
-        <thead>
-          <tr>
+		const FIRST_PAGE_ROWS = 13;
+		const NEXT_PAGE_ROWS = 16;
+		const chunks: (typeof rows)[] = [];
+		if (rows.length === 0) {
+			chunks.push([]);
+		} else {
+			chunks.push(rows.slice(0, FIRST_PAGE_ROWS));
+			for (let i = FIRST_PAGE_ROWS; i < rows.length; i += NEXT_PAGE_ROWS) {
+				chunks.push(rows.slice(i, i + NEXT_PAGE_ROWS));
+			}
+		}
+		const totalPages = chunks.length;
+
+		const colgroup = `<colgroup>
+          <col class="no" /><col class="name" /><col class="gyn" />
+          <col class="date" /><col class="time" /><col class="date" /><col class="time" />
+          <col class="place" /><col class="purpose" /><col class="guardian" /><col class="rel" /><col class="phone" />
+        </colgroup>`;
+
+		const colHead = `<tr>
             <th>연번</th><th>수급자명</th><th>구분</th><th>시작일</th><th>시작시간</th>
             <th>종료일</th><th>종료시간</th><th>행선지</th><th>목적</th>
             <th>보호자</th><th>관계</th><th>연락처</th>
-          </tr>
-        </thead>
-        <tbody>${printRows || '<tr><td colspan="12">데이터 없음</td></tr>'}</tbody>
-      </table>
+          </tr>`;
+
+		const pagesHtml = chunks
+			.map((chunk, idx) => {
+				const body =
+					chunk.map(rowHtml).join("") ||
+					'<tr><td colspan="12">데이터 없음</td></tr>';
+				const heading =
+					idx === 0
+						? `<h1>${printTitle}</h1><div class="meta">${periodLabel}</div>`
+						: "";
+				return `<div class="page">
+        ${heading}
+        <table>
+          ${colgroup}
+          <thead>${colHead}</thead>
+          <tbody>${body}</tbody>
+        </table>
+        <div class="page-no">페이지: ${idx + 1} / ${totalPages}</div>
+      </div>`;
+			})
+			.join("");
+
+		const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title></title>
+      <style>
+        html,body{margin:0;padding:0;background:#fff;height:auto}
+        body{font-family:'Malgun Gothic',sans-serif;font-size:11pt;color:#000}
+        .cover-top{
+          position:fixed;left:0;right:0;top:0;height:8mm;background:#fff;z-index:99999;
+        }
+        h1{text-align:center;font-size:16pt;margin:0 0 4px;font-weight:700}
+        .meta{margin:0 0 6px;font-size:11pt}
+        .page{
+          box-sizing:border-box;width:100%;
+          height:200mm;overflow:hidden;
+          padding:8mm 0 12mm;position:relative;
+        }
+        .page + .page{page-break-before:always}
+        table{width:100%;border-collapse:collapse;table-layout:fixed}
+        tr{page-break-inside:avoid;break-inside:avoid}
+        th,td{border:1px solid #333;padding:3px 4px;text-align:center;font-size:10pt;word-break:break-all}
+        th{background:#eef}
+        col.no{width:8mm}
+        col.name{width:12%}
+        col.gyn{width:6%}
+        col.date{width:9%}
+        col.time{width:6.5%}
+        col.place{width:8%}
+        col.purpose{width:7%}
+        col.guardian{width:7%}
+        col.rel{width:5%}
+        col.phone{width:28%}
+        .page-no{
+          position:absolute;bottom:3mm;left:0;right:0;
+          margin:0;text-align:center;font-size:10pt;
+        }
+        @page{size:A4 landscape;margin:0 10mm 8mm 10mm}
+      </style></head><body>
+      <div class="cover-top"></div>
+      ${pagesHtml}
       </body></html>`;
 
 		const w = window.open("", "_blank");
 		if (!w) return;
 		w.document.write(html);
 		w.document.close();
+		w.document.title = "";
 		setTimeout(() => w.print(), 250);
 	};
 
@@ -607,7 +665,7 @@ export default function OutingInfo() {
 						<table className="w-max max-w-none min-w-[1100px] table-fixed text-[15px]">
 							<thead className="bg-blue-50 border-b border-blue-200 sticky top-0">
 								<tr>
-									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[3%]">연번</th>
+									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[1.5%]">연번</th>
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[8%]">수급자명</th>
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[5%]">구분</th>
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[9%]">시작일</th>
@@ -618,7 +676,7 @@ export default function OutingInfo() {
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[7%]">목적</th>
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[6%]">보호자</th>
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[5%]">관계</th>
-									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[8%]">연락처</th>
+									<th className="text-center px-1 py-2 text-blue-900 font-semibold border-r border-blue-200 w-[12%]">연락처</th>
 									<th className="text-center px-1 py-2 text-blue-900 font-semibold w-[6%]">작업</th>
 								</tr>
 							</thead>

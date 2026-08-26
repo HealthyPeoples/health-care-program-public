@@ -13,6 +13,12 @@ import { formatCareGradeLabel } from '../../utils/careGrade';
 import { attachLatestRoomNoByPnum } from '../../utils/roomNoFloor';
 import { RoomNoFloorSelect } from '../../components/RoomNoFloorSelect';
 import { matchesSelectedFloor } from '../../utils/roomNoFloorFilter';
+import {
+	buildBathServicePrintHtml,
+	monthRangeFromYmd,
+	openBathServicePrint,
+	type BathPrintRow,
+} from './bathServicePrint';
 
 interface MemberData {
 	ANCD?: string;
@@ -43,12 +49,6 @@ function memberKey(m: MemberData | null | undefined): string {
 	return `${memberAncd(m)}-${memberPnum(m)}`;
 }
 
-interface BathServiceData {
-	SVDT: string; // 제공일자
-	SVTM: string; // 제공시간
-	[key: string]: any;
-}
-
 type UserInfo = {
 	ancd?: string | number;
 	uid?: string;
@@ -57,37 +57,198 @@ type UserInfo = {
 	[key: string]: any;
 };
 
+const STAT_OPTIONS = [
+	{ value: '양호', label: '양호' },
+	{ value: '이상', label: '이상' },
+	{ value: '거부', label: '거부' },
+] as const;
+
+type StatValue = (typeof STAT_OPTIONS)[number]['value'];
+
+type BathFormData = {
+	serviceDate: string;
+	serviceTime: string;
+	beneficiary: string;
+	beneficiaryStatus: string;
+	bathingMethod: string;
+	beforeBath: StatValue;
+	moveMethod: StatValue;
+	afterBath: StatValue;
+	remarks: string;
+	provider: string;
+};
+
+const BATH_METHOD_OPTIONS = ['샤워식-목욕의자', '샤워식-입욕', '목욕의자', '입욕', '기타'] as const;
+
+const timeInputClass =
+	'w-14 px-2 py-1.5 text-sm text-center border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500';
+
+function todayYmd(): string {
+	const n = new Date();
+	const y = n.getFullYear();
+	const m = String(n.getMonth() + 1).padStart(2, '0');
+	const d = String(n.getDate()).padStart(2, '0');
+	return `${y}-${m}-${d}`;
+}
+
+function currentYearMonth(): string {
+	const ymd = todayYmd();
+	return ymd.slice(0, 7);
+}
+
+function splitHm(value: string): { hour: string; minute: string } {
+	const hm = String(value ?? '').trim();
+	const m = /^(\d{0,2}):(\d{0,2})$/.exec(hm);
+	if (m) return { hour: m[1], minute: m[2] };
+	return { hour: '', minute: '' };
+}
+
+function padTimePart(raw: string, max: number): string {
+	const digits = String(raw ?? '').replace(/\D/g, '').slice(0, 2);
+	if (!digits) return '';
+	const n = Math.min(max, Math.max(0, Number(digits)));
+	if (!Number.isFinite(n)) return '';
+	return String(n).padStart(2, '0');
+}
+
+function joinRawHm(hour: string, minute: string): string {
+	if (!hour && !minute) return '';
+	return `${hour}:${minute}`;
+}
+
+function normalizeHm(hour: string, minute: string): string {
+	if (!hour && !minute) return '';
+	return `${padTimePart(hour, 23) || '00'}:${padTimePart(minute, 59) || '00'}`;
+}
+
+function normalizeTimeHm(v: unknown): string {
+	const s = String(v ?? '').trim();
+	if (/^\d{2}:\d{2}/.test(s)) return s.slice(0, 5);
+	if (/^\d{4}$/.test(s)) return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+	return '';
+}
+
+function TimeHmInput({
+	value,
+	onChange,
+	disabled = false,
+}: {
+	value: string;
+	onChange: (next: string) => void;
+	disabled?: boolean;
+}) {
+	const { hour, minute } = splitHm(value);
+	const cls = `${timeInputClass}${disabled ? ' bg-gray-50 cursor-not-allowed' : ''}`;
+
+	return (
+		<div className="flex items-center gap-1 min-w-0">
+			<input
+				type="text"
+				inputMode="numeric"
+				maxLength={2}
+				value={hour}
+				readOnly={disabled}
+				onChange={(e) => {
+					if (disabled) return;
+					onChange(joinRawHm(e.target.value.replace(/\D/g, '').slice(0, 2), minute));
+				}}
+				onBlur={() => {
+					if (disabled || (!hour && !minute)) return;
+					onChange(normalizeHm(hour, minute));
+				}}
+				className={cls}
+				placeholder="시"
+				aria-label="시"
+			/>
+			<span className="text-sm text-blue-900">:</span>
+			<input
+				type="text"
+				inputMode="numeric"
+				maxLength={2}
+				value={minute}
+				readOnly={disabled}
+				onChange={(e) => {
+					if (disabled) return;
+					onChange(joinRawHm(hour, e.target.value.replace(/\D/g, '').slice(0, 2)));
+				}}
+				onBlur={() => {
+					if (disabled || (!hour && !minute)) return;
+					onChange(normalizeHm(hour, minute));
+				}}
+				className={cls}
+				placeholder="분"
+				aria-label="분"
+			/>
+		</div>
+	);
+}
+
+function xoToAbnormal(v: unknown): boolean {
+	return String(v ?? '').trim().toUpperCase() === 'O';
+}
+
+function statToXO(v: string): 'O' | 'X' {
+	return v && v !== '양호' ? 'O' : 'X';
+}
+
+function bathMethodToCode(label: string): string | null {
+	const s = String(label || '').trim();
+	if (!s) return null;
+	if (s === '입욕') return '1';
+	if (s.startsWith('샤워식') || s === '목욕의자') return '2';
+	if (s === '기타') return '3';
+	return null;
+}
+
+function codeToBathMethod(code: unknown, name?: unknown): string {
+	const nm = String(name ?? '').trim();
+	if (nm) return nm;
+	const c = String(code ?? '').trim();
+	if (c === '1') return '입욕';
+	if (c === '2') return '샤워식-목욕의자';
+	if (c === '3') return '기타';
+	return '샤워식-목욕의자';
+}
+
+function normalizeStat(v: unknown, fallback: StatValue = '양호'): StatValue {
+	const s = String(v ?? '').trim();
+	if (s === '양호' || s === '이상' || s === '거부') return s;
+	return fallback;
+}
+
+function createEmptyForm(beneficiary = '', provider = ''): BathFormData {
+	return {
+		serviceDate: '',
+		serviceTime: '',
+		beneficiary,
+		beneficiaryStatus: '',
+		bathingMethod: '샤워식-목욕의자',
+		beforeBath: '양호',
+		moveMethod: '양호',
+		afterBath: '양호',
+		remarks: '',
+		provider,
+	};
+}
+
 export default function BathService() {
 	const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
+	const [defaultProvider, setDefaultProvider] = useState('');
 	const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
 	const [selectedDateIndex, setSelectedDateIndex] = useState<number | null>(null);
 	const [serviceDates, setServiceDates] = useState<string[]>([]);
 	const [loadingServices, setLoadingServices] = useState(false);
 	const [serviceDatePage, setServiceDatePage] = useState(1);
 	const serviceDateItemsPerPage = 10;
+	const [printMonth, setPrintMonth] = useState(currentYearMonth);
+	const [checkedMemberKeys, setCheckedMemberKeys] = useState<Set<string>>(new Set());
+	const [printing, setPrinting] = useState(false);
 
-	// 폼 데이터
-	const [formData, setFormData] = useState({
-		serviceDate: '', // 제공일자(VDT)
-		serviceTime: '', // 제공시간
-		beneficiary: '', // 수급자
-		// 수급자상태 - 목욕전
-		beforeBathFace: false, // 얼굴
-		beforeBathLips: false, // 입술
-		beforeBathNailColor: false, // 손톱색깔
-		beforeBathCognitiveState: false, // 인지상태
-		// 수급자상태 - 목욕후
-		afterBathFace: false, // 얼굴
-		afterBathLips: false, // 입술
-		afterBathNailColor: false, // 손톱색깔
-		afterBathCognitiveState: false, // 인지상태
-		bathingMethod: '샤워식-목욕의자', // 목욕방법
-		provider: '', // 제공자
-		clearPersonInCharge: false, // 담당자지움
-		serviceUnavailableReason: '' // 서비스불가사유
-	});
+	const [formData, setFormData] = useState<BathFormData>(createEmptyForm());
+	const [formMode, setFormMode] = useState<'view' | 'edit' | 'create'>('view');
+	const [formSnapshot, setFormSnapshot] = useState<BathFormData | null>(null);
+	const [unsavedNewDate, setUnsavedNewDate] = useState<string | null>(null);
 
-	/** 네트워크 JSON의 VDT가 ISO·로케일 문자열(Date 직렬화)·빈값 혼재해도 yyyy-mm-dd로 통일 */
 	const formatDateYmd = (v: unknown) => {
 		if (v == null || v === '') return '';
 		if (v instanceof Date && !Number.isNaN(v.getTime())) {
@@ -112,40 +273,24 @@ export default function BathService() {
 		return '';
 	};
 
-	const boolToXO = (checked: boolean) => (checked ? 'O' : 'X');
-	const xoToBool = (v: unknown) => String(v ?? '').trim().toUpperCase() === 'O';
-
-	const bathMethodToCode = (label: string) => {
-		const s = String(label || '').trim();
-		if (!s) return null;
-		// 1: 전신입욕, 2: 샤워식, 3: 침상목욕(추정)
-		if (s === '입욕') return '1';
-		if (s.startsWith('샤워식')) return '2';
-		if (s === '목욕의자') return '2';
-		return null;
-	};
-
-	const codeToBathMethod = (code: unknown) => {
-		const c = String(code ?? '').trim();
-		if (c === '1') return '입욕';
-		if (c === '2') return '샤워식-목욕의자';
-		if (c === '3') return '기타';
-		return '샤워식-목욕의자';
-	};
-
 	const fetchUserInfo = async () => {
 		try {
 			const res = await fetch('/api/auth/user-info', { method: 'GET' });
 			const json = await res.json().catch(() => ({}));
 			if (res.ok && json?.success) {
-				setUserInfo(json.data || null);
+				const data = json.data || null;
+				setUserInfo(data);
+				const name = String(data?.empnm ?? data?.EMPNM ?? '').trim();
+				if (name) {
+					setDefaultProvider(name);
+					setFormData((prev) => (prev.provider ? prev : { ...prev, provider: name }));
+				}
 			}
 		} catch {
 			// ignore
 		}
 	};
 
-	// 수급자 목록 데이터
 	const [memberList, setMemberList] = useState<MemberData[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [selectedStatus, setSelectedStatus] = useState<string>('입소');
@@ -155,17 +300,16 @@ export default function BathService() {
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 10;
 
-	// 수급자 목록 조회
 	const fetchMembers = async (nameSearch?: string) => {
 		setLoading(true);
 		try {
-			const url = nameSearch && nameSearch.trim() !== '' 
+			const url = nameSearch && nameSearch.trim() !== ''
 				? `/api/f10010?name=${encodeURIComponent(nameSearch.trim())}`
 				: '/api/f10010';
-			
+
 			const response = await fetch(url);
 			const result = await response.json();
-			
+
 			if (result.success) {
 				const list = Array.isArray(result.data) ? (result.data as MemberData[]) : [];
 				const merged = await attachLatestRoomNoByPnum(list as any);
@@ -178,7 +322,6 @@ export default function BathService() {
 		}
 	};
 
-	// 나이 계산 함수
 	const calculateAge = (birthDate: string) => {
 		if (!birthDate) return '-';
 		try {
@@ -190,7 +333,6 @@ export default function BathService() {
 		}
 	};
 
-	// 필터링된 수급자 목록
 	const filteredMembers = memberList.filter((member) => {
 		if (selectedStatus) {
 			const memberStatus = String(member.P_ST || '').trim();
@@ -201,7 +343,7 @@ export default function BathService() {
 				return false;
 			}
 		}
-		
+
 		if (selectedGrade) {
 			const memberGrade = String(member.P_GRD || '').trim();
 			const selectedGradeTrimmed = String(selectedGrade).trim();
@@ -209,18 +351,18 @@ export default function BathService() {
 				return false;
 			}
 		}
-		
+
 		if (selectedFloor) {
 			if (!matchesSelectedFloor(member, selectedFloor)) return false;
 		}
-		
+
 		if (searchTerm && searchTerm.trim() !== '') {
 			const searchLower = searchTerm.toLowerCase().trim();
 			if (!member.P_NM?.toLowerCase().includes(searchLower)) {
 				return false;
 			}
 		}
-		
+
 		return true;
 	}).sort((a, b) => {
 		const nameA = (a.P_NM || '').trim();
@@ -228,11 +370,35 @@ export default function BathService() {
 		return nameA.localeCompare(nameB, 'ko');
 	});
 
-	// 페이지네이션 계산
 	const totalPages = Math.ceil(filteredMembers.length / itemsPerPage);
 	const startIndex = (currentPage - 1) * itemsPerPage;
 	const endIndex = startIndex + itemsPerPage;
 	const currentMembers = filteredMembers.slice(startIndex, endIndex);
+
+	const allFilteredChecked =
+		filteredMembers.length > 0 && filteredMembers.every((m) => checkedMemberKeys.has(memberKey(m)));
+
+	const toggleMemberChecked = (member: MemberData, checked: boolean) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			const key = memberKey(member);
+			if (checked) next.add(key);
+			else next.delete(key);
+			return next;
+		});
+	};
+
+	const toggleAllFilteredChecked = (checked: boolean) => {
+		setCheckedMemberKeys((prev) => {
+			const next = new Set(prev);
+			for (const m of filteredMembers) {
+				const key = memberKey(m);
+				if (checked) next.add(key);
+				else next.delete(key);
+			}
+			return next;
+		});
+	};
 
 	const handlePageChange = (page: number) => {
 		setCurrentPage(page);
@@ -243,7 +409,6 @@ export default function BathService() {
 		fetchUserInfo();
 	}, []);
 
-	// 검색어 변경 시 실시간 검색 (디바운싱)
 	useEffect(() => {
 		const timer = setTimeout(() => {
 			setCurrentPage(1);
@@ -253,21 +418,19 @@ export default function BathService() {
 		return () => clearTimeout(timer);
 	}, [searchTerm]);
 
-	// 필터 변경 시 페이지 초기화
 	useEffect(() => {
 		setCurrentPage(1);
 	}, [selectedStatus, selectedGrade, selectedFloor, searchTerm]);
 
-	// 제공일자 목록 조회
-	const fetchServiceDates = async (ancd: string, pnum: string) => {
+	const fetchServiceDates = async (ancd: string, pnum: string, keepDraftDate?: string | null): Promise<string[]> => {
 		if (!ancd || !pnum) {
 			setServiceDates([]);
-			return;
+			return [];
 		}
 
 		setLoadingServices(true);
 		try {
-			const url = `/api/f33030?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}`;
+			const url = `/api/f33030?ancd=${encodeURIComponent(ancd)}&pnum=${encodeURIComponent(pnum)}&mode=dates`;
 			const res = await fetch(url, { method: 'GET', cache: 'no-store', credentials: 'same-origin' });
 			const json = await res.json().catch(() => ({}));
 			if (!res.ok || !json?.success) throw new Error(json?.error || '제공일자 조회 실패');
@@ -281,13 +444,24 @@ export default function BathService() {
 				)
 			) as string[];
 			dates.sort((a: string, b: string) => (a > b ? -1 : a < b ? 1 : 0));
-			setServiceDates(dates);
+			const draft = keepDraftDate && /^\d{4}-\d{2}-\d{2}$/.test(keepDraftDate) ? keepDraftDate : '';
+			const merged = draft && !dates.includes(draft) ? [draft, ...dates] : dates;
+			setServiceDates(merged);
+			return merged;
 		} catch (err) {
 			console.error('제공일자 조회 오류:', err);
 			setServiceDates([]);
+			return [];
 		} finally {
 			setLoadingServices(false);
 		}
+	};
+
+	const applyEmptyFormForDate = (date: string) => {
+		setFormData((prev) => ({
+			...createEmptyForm(selectedMember?.P_NM || prev.beneficiary, defaultProvider || prev.provider),
+			serviceDate: date,
+		}));
 	};
 
 	const fetchDetail = async (ancd: string, pnum: string, vdt: string) => {
@@ -301,29 +475,41 @@ export default function BathService() {
 			if (!res.ok || !json?.success) throw new Error(json?.error || '상세 조회 실패');
 
 			const row = Array.isArray(json.data) ? json.data?.[0] : null;
-			if (!row) return;
+			if (!row) {
+				applyEmptyFormForDate(vdt);
+				return;
+			}
 
-			setFormData(prev => ({
+			const beforeFromLegacy =
+				xoToAbnormal(row?.AF_FACE) ||
+				xoToAbnormal(row?.AF_LIP) ||
+				xoToAbnormal(row?.AF_NAIL_COLOR ?? row?.AF_NAIL_COLO) ||
+				xoToAbnormal(row?.AF_COG_STAT)
+					? '이상'
+					: '양호';
+			const afterFromLegacy =
+				xoToAbnormal(row?.BF_FACE) ||
+				xoToAbnormal(row?.BF_LIP) ||
+				xoToAbnormal(row?.BF_NAIL_COLOR ?? row?.BF_NAIL_COLO) ||
+				xoToAbnormal(row?.BF_COG_STAT)
+					? '이상'
+					: '양호';
+
+			setFormData((prev) => ({
 				...prev,
 				serviceDate: formatDateYmd(row?.VDT ?? row?.vdt) || vdt,
-				serviceTime: row?.SRV_TM ?? row?.srv_tm ?? '',
+				serviceTime: normalizeTimeHm(row?.SRV_TM ?? row?.srv_tm) || String(row?.SRV_TM ?? ''),
 				beneficiary: selectedMember?.P_NM || prev.beneficiary,
-				// DB 정의: 목욕전=AF_*, 목욕후=BF_* (표준 정의서 기준)
-				beforeBathFace: xoToBool(row?.AF_FACE ?? row?.af_face),
-				beforeBathLips: xoToBool(row?.AF_LIP ?? row?.af_lip),
-				beforeBathNailColor: xoToBool(
-					row?.AF_NAIL_COLOR ?? row?.AF_NAIL_COLO ?? row?.af_nail_color ?? row?.af_nail_colo
-				),
-				beforeBathCognitiveState: xoToBool(row?.AF_COG_STAT ?? row?.af_cog_stat),
-				afterBathFace: xoToBool(row?.BF_FACE ?? row?.bf_face),
-				afterBathLips: xoToBool(row?.BF_LIP ?? row?.bf_lip),
-				afterBathNailColor: xoToBool(
-					row?.BF_NAIL_COLOR ?? row?.BF_NAIL_COLO ?? row?.bf_nail_color ?? row?.bf_nail_colo
-				),
-				afterBathCognitiveState: xoToBool(row?.BF_COG_STAT ?? row?.bf_cog_stat),
-				bathingMethod: codeToBathMethod(row?.BATH_METH ?? row?.bath_meth),
-				// 제공자/담당자지움은 테이블에 명확한 매핑이 없어 화면값 유지
-				serviceUnavailableReason: row?.SRV_WRNG_DESC ?? row?.srv_wrng_desc ?? ''
+				beneficiaryStatus: String(row?.BEN_STAT ?? row?.ben_stat ?? '').trim(),
+				bathingMethod: codeToBathMethod(row?.BATH_METH ?? row?.bath_meth, row?.BATH_METH_NM ?? row?.bath_meth_nm),
+				beforeBath: normalizeStat(row?.BEF_STAT ?? row?.bef_stat, beforeFromLegacy),
+				moveMethod: normalizeStat(row?.MOVE_STAT ?? row?.move_stat, '양호'),
+				afterBath: normalizeStat(row?.AFT_STAT ?? row?.aft_stat, afterFromLegacy),
+				remarks: String(row?.SRV_WRNG_DESC ?? row?.srv_wrng_desc ?? '').trim(),
+				provider:
+					String(row?.INEMPNM ?? row?.inempnm ?? '').trim() ||
+					prev.provider ||
+					defaultProvider,
 			}));
 		} catch (e) {
 			console.error('상세 조회 오류:', e);
@@ -332,43 +518,132 @@ export default function BathService() {
 		}
 	};
 
-	// 수급자 선택 함수
-	const handleSelectMember = (member: MemberData) => {
-		setSelectedMember(member);
-		setSelectedDateIndex(null);
-		setServiceDatePage(1);
-		setFormData(prev => ({
-			...prev,
-			beneficiary: member.P_NM || '',
-			serviceDate: '',
-			serviceTime: '',
-			beforeBathFace: false,
-			beforeBathLips: false,
-			beforeBathNailColor: false,
-			beforeBathCognitiveState: false,
-			afterBathFace: false,
-			afterBathLips: false,
-			afterBathNailColor: false,
-			afterBathCognitiveState: false,
-			bathingMethod: '샤워식-목욕의자',
-			provider: '',
-			clearPersonInCharge: false,
-			serviceUnavailableReason: ''
-		}));
-		fetchServiceDates(memberAncd(member), memberPnum(member));
+	const isFormOpen = formMode === 'edit' || formMode === 'create';
+
+	const discardDraftDate = (dates = serviceDates) => {
+		if (!unsavedNewDate) return dates;
+		return dates.filter((d) => d !== unsavedNewDate);
 	};
 
-	// 제공일자 선택 함수
-	const handleSelectDate = (index: number) => {
+	const confirmLeaveForm = (message?: string) => {
+		if (!isFormOpen) return true;
+		const msg =
+			message ||
+			(formMode === 'create'
+				? '신규 작성을 취소하고 이동할까요? 입력한 내용은 저장되지 않습니다.'
+				: '수정을 취소하고 이동할까요? 변경한 내용은 저장되지 않습니다.');
+		return window.confirm(msg);
+	};
+
+	const applyViewDate = (index: number, dates: string[]) => {
+		const selectedDate = dates[index];
+		setFormMode('view');
+		setFormSnapshot(null);
 		setSelectedDateIndex(index);
-		const selectedDate = serviceDates[index];
-		setFormData(prev => ({ ...prev, serviceDate: selectedDate || '' }));
+		setFormData((prev) => ({ ...prev, serviceDate: selectedDate || '' }));
 		if (selectedMember && selectedDate) {
-			fetchDetail(memberAncd(selectedMember), memberPnum(selectedMember), selectedDate);
+			void fetchDetail(memberAncd(selectedMember), memberPnum(selectedMember), selectedDate);
 		}
 	};
 
-	// 날짜 형식 변환 함수
+	const handleSelectMember = (member: MemberData) => {
+		if (!confirmLeaveForm()) return;
+		setUnsavedNewDate(null);
+		setFormMode('view');
+		setFormSnapshot(null);
+		setSelectedMember(member);
+		setSelectedDateIndex(null);
+		setServiceDatePage(1);
+		setFormData(createEmptyForm(member.P_NM || '', defaultProvider));
+		void fetchServiceDates(memberAncd(member), memberPnum(member));
+	};
+
+	const handleSelectDate = (index: number, dates = serviceDates) => {
+		const selectedDate = dates[index];
+		if (selectedDateIndex === index && formMode === 'view') return;
+		if (unsavedNewDate && selectedDate === unsavedNewDate && formMode === 'create') {
+			setSelectedDateIndex(index);
+			return;
+		}
+		if (!confirmLeaveForm()) return;
+		const nextDates = formMode === 'create' ? discardDraftDate(dates) : dates;
+		if (formMode === 'create') {
+			setServiceDates(nextDates);
+			setUnsavedNewDate(null);
+		}
+		const nextIndex = nextDates.indexOf(selectedDate);
+		if (nextIndex < 0) return;
+		applyViewDate(nextIndex, nextDates);
+	};
+
+	const handleCreateDate = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		if (formMode === 'create') return;
+		if (!confirmLeaveForm()) return;
+
+		const date = todayYmd();
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+			alert('제공일자를 생성할 수 없습니다.');
+			return;
+		}
+
+		const savedDates = discardDraftDate();
+		const existingIdx = savedDates.indexOf(date);
+		if (existingIdx >= 0) {
+			setServiceDates(savedDates);
+			setUnsavedNewDate(null);
+			applyViewDate(existingIdx, savedDates);
+			alert('오늘 제공일자가 이미 있습니다. 수정 버튼으로 변경하세요.');
+			return;
+		}
+
+		const nextDates = [date, ...savedDates];
+		setServiceDates(nextDates);
+		setServiceDatePage(1);
+		setSelectedDateIndex(0);
+		setUnsavedNewDate(date);
+		setFormSnapshot(null);
+		setFormMode('create');
+		applyEmptyFormForDate(date);
+	};
+
+	const handleEnterEdit = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+		if (selectedDateIndex === null || !formData.serviceDate) {
+			alert('수정할 제공일자를 선택해주세요.');
+			return;
+		}
+		if (unsavedNewDate && serviceDates[selectedDateIndex] === unsavedNewDate) {
+			setFormMode('create');
+			return;
+		}
+		setFormSnapshot(formData);
+		setFormMode('edit');
+	};
+
+	const handleCancelForm = () => {
+		if (formMode === 'view') return;
+		if (formMode === 'create') {
+			const dates = discardDraftDate();
+			setServiceDates(dates);
+			setUnsavedNewDate(null);
+			setSelectedDateIndex(null);
+			setFormData(createEmptyForm(selectedMember?.P_NM || '', defaultProvider));
+			setFormMode('view');
+			setFormSnapshot(null);
+			return;
+		}
+		if (formSnapshot) setFormData(formSnapshot);
+		setFormSnapshot(null);
+		setFormMode('view');
+	};
+
 	const formatDateDisplay = (dateStr: string) => {
 		if (!dateStr) return '';
 		if (dateStr.includes('T')) {
@@ -383,43 +658,51 @@ export default function BathService() {
 		return dateStr;
 	};
 
-	// 저장 함수
 	const handleSave = async () => {
+		if (!isFormOpen) return;
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
 
 		if (!formData.serviceDate) {
-			alert('제공일자를 입력해주세요.');
+			alert('제공일자를 입력해주세요. 제공일자에서 신규로 생성한 뒤 저장해주세요.');
 			return;
 		}
 
+		const serviceTime =
+			normalizeTimeHm(formData.serviceTime) ||
+			normalizeHm(splitHm(formData.serviceTime).hour, splitHm(formData.serviceTime).minute);
+
 		setLoadingServices(true);
 		try {
-			const payload: any = {
+			const xoBefore = statToXO(formData.beforeBath);
+			const xoAfter = statToXO(formData.afterBath);
+			const payload: Record<string, unknown> = {
 				PNUM: memberPnum(selectedMember),
 				VDT: formData.serviceDate,
-				SRV_TM: formData.serviceTime || '',
-				// 체크=문제있음(O), 미체크=문제없음(X) — 목욕전=AF_*, 목욕후=BF_*
-				AF_FACE: boolToXO(formData.beforeBathFace),
-				AF_LIP: boolToXO(formData.beforeBathLips),
-				AF_NAIL_COLOR: boolToXO(formData.beforeBathNailColor),
-				AF_COG_STAT: boolToXO(formData.beforeBathCognitiveState),
-				BF_FACE: boolToXO(formData.afterBathFace),
-				BF_LIP: boolToXO(formData.afterBathLips),
-				BF_NAIL_COLOR: boolToXO(formData.afterBathNailColor),
-				BF_COG_STAT: boolToXO(formData.afterBathCognitiveState),
-				SRV_WRNG_DESC: formData.serviceUnavailableReason || '',
+				SRV_TM: serviceTime || '',
+				BEN_STAT: formData.beneficiaryStatus || '',
+				BEF_STAT: formData.beforeBath,
+				MOVE_STAT: formData.moveMethod,
+				AFT_STAT: formData.afterBath,
+				SRV_WRNG_DESC: formData.remarks || '',
 				BATH_METH: bathMethodToCode(formData.bathingMethod),
+				BATH_METH_NM: formData.bathingMethod || '',
+				AF_FACE: xoBefore,
+				AF_LIP: xoBefore,
+				AF_NAIL_COLOR: xoBefore,
+				AF_COG_STAT: xoBefore,
+				BF_FACE: xoAfter,
+				BF_LIP: xoAfter,
+				BF_NAIL_COLOR: xoAfter,
+				BF_COG_STAT: xoAfter,
 				INEMPNO: userInfo?.empno != null ? String(userInfo.empno) : null,
-				// 제공자 입력이 숫자면 사원번호2로 저장 (그 외는 null)
-				INEMPNO1: formData.clearPersonInCharge
-					? null
-					: (() => {
-							const n = parseInt(String(formData.provider || '').trim(), 10);
-							return Number.isFinite(n) ? String(n) : null;
-						})(),
+				INEMPNM: formData.provider || '',
+				INEMPNO1: (() => {
+					const n = parseInt(String(formData.provider || '').trim(), 10);
+					return Number.isFinite(n) ? String(n) : null;
+				})(),
 			};
 
 			const res = await fetch(`/api/f33030?ancd=${encodeURIComponent(memberAncd(selectedMember))}`, {
@@ -432,42 +715,64 @@ export default function BathService() {
 				throw new Error(result?.error || '목욕서비스 저장 실패');
 			}
 
-			alert(selectedDateIndex !== null ? '목욕서비스가 수정되었습니다.' : '목욕서비스가 저장되었습니다.');
-			
-			// 데이터 다시 조회
+			alert('목욕서비스가 저장되었습니다.');
+
+			setUnsavedNewDate(null);
+			setFormMode('view');
+			setFormSnapshot(null);
+
 			if (selectedMember) {
-				await fetchServiceDates(memberAncd(selectedMember), memberPnum(selectedMember));
+				const dates = await fetchServiceDates(memberAncd(selectedMember), memberPnum(selectedMember));
 				if (formData.serviceDate) {
+					const dateIdx = dates.indexOf(formData.serviceDate);
+					setSelectedDateIndex(dateIdx >= 0 ? dateIdx : null);
+					if (dateIdx >= 0) {
+						setServiceDatePage(Math.floor(dateIdx / serviceDateItemsPerPage) + 1);
+					}
 					await fetchDetail(memberAncd(selectedMember), memberPnum(selectedMember), formData.serviceDate);
 				}
 			}
 		} catch (err) {
 			console.error('목욕서비스 저장 오류:', err);
-			alert('목욕서비스 저장 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '목욕서비스 저장 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingServices(false);
 		}
 	};
 
-	// 삭제 함수
-	const handleDelete = async () => {
+	const handleDeleteDate = async (index: number) => {
 		if (!selectedMember) {
 			alert('수급자를 선택해주세요.');
 			return;
 		}
 
-		if (selectedDateIndex === null) {
-			alert('삭제할 목욕서비스를 선택해주세요.');
+		const dateToDelete = serviceDates[index];
+		if (!dateToDelete) return;
+
+		if (unsavedNewDate && dateToDelete === unsavedNewDate) {
+			if (!window.confirm('작성 중인 신규 일자를 취소할까요? 입력한 내용은 저장되지 않습니다.')) {
+				return;
+			}
+			const dates = discardDraftDate();
+			setServiceDates(dates);
+			setUnsavedNewDate(null);
+			setSelectedDateIndex(null);
+			setFormData(createEmptyForm(selectedMember.P_NM || '', defaultProvider));
+			setFormMode('view');
+			setFormSnapshot(null);
 			return;
 		}
 
-		if (!confirm('정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+		if (isFormOpen && selectedDateIndex === index) {
+			if (!window.confirm('수정 중인 기록을 삭제할까요? 저장하지 않은 내용은 반영되지 않습니다.')) {
+				return;
+			}
+		} else if (!window.confirm(`${formatDateDisplay(dateToDelete)} 목욕서비스를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) {
 			return;
 		}
 
 		setLoadingServices(true);
 		try {
-			const dateToDelete = serviceDates[selectedDateIndex];
 			const url = `/api/f33030?ancd=${encodeURIComponent(memberAncd(selectedMember))}&pnum=${encodeURIComponent(
 				memberPnum(selectedMember)
 			)}&vdt=${encodeURIComponent(dateToDelete)}`;
@@ -478,65 +783,178 @@ export default function BathService() {
 			}
 
 			alert('목욕서비스가 삭제되었습니다.');
-			
-			// 데이터 다시 조회
-			if (selectedMember) {
-				await fetchServiceDates(memberAncd(selectedMember), memberPnum(selectedMember));
+
+			const keepDraft = unsavedNewDate && unsavedNewDate !== dateToDelete ? unsavedNewDate : null;
+			const dates = await fetchServiceDates(memberAncd(selectedMember), memberPnum(selectedMember), keepDraft);
+			if (selectedDateIndex === index || formData.serviceDate === dateToDelete) {
+				setFormData(createEmptyForm(selectedMember.P_NM || '', defaultProvider));
+				setSelectedDateIndex(null);
+				setFormMode('view');
+				setFormSnapshot(null);
+			} else if (formData.serviceDate) {
+				const nextIdx = dates.indexOf(formData.serviceDate);
+				setSelectedDateIndex(nextIdx >= 0 ? nextIdx : null);
 			}
-			
-			// 폼 초기화
-			setFormData(prev => ({
-				...prev,
-				serviceTime: '',
-				beforeBathFace: false,
-				beforeBathLips: false,
-				beforeBathNailColor: false,
-				beforeBathCognitiveState: false,
-				afterBathFace: false,
-				afterBathLips: false,
-				afterBathNailColor: false,
-				afterBathCognitiveState: false,
-				bathingMethod: '샤워식-목욕의자',
-				provider: '',
-				clearPersonInCharge: false,
-				serviceUnavailableReason: ''
-			}));
-			setSelectedDateIndex(null);
-			setServiceDatePage(1);
 		} catch (err) {
 			console.error('목욕서비스 삭제 오류:', err);
-			alert('목욕서비스 삭제 중 오류가 발생했습니다.');
+			alert(err instanceof Error ? err.message : '목욕서비스 삭제 중 오류가 발생했습니다.');
 		} finally {
 			setLoadingServices(false);
 		}
 	};
 
-	// 제공일자 목록 페이지네이션
+	const resolvePrintMonth = () => {
+		const ym = String(printMonth || '').trim();
+		if (!/^\d{4}-\d{2}$/.test(ym)) {
+			alert('출력 월을 선택해주세요.');
+			return null;
+		}
+		const range = monthRangeFromYmd(`${ym}-01`);
+		if (!range) {
+			alert('출력 월이 올바르지 않습니다.');
+			return null;
+		}
+		return range;
+	};
+
+	const checkedMembers = () => memberList.filter((m) => checkedMemberKeys.has(memberKey(m)));
+
+	const handleBlankPrint = () => {
+		const range = resolvePrintMonth();
+		if (!range) return;
+		const targets = checkedMembers();
+		const items =
+			targets.length > 0
+				? targets.map((member) => ({ member, rows: [] as BathPrintRow[] }))
+				: [{ member: { P_NM: '', P_GRD: '' }, rows: [] as BathPrintRow[] }];
+		const html = buildBathServicePrintHtml({
+			blank: true,
+			year: range.year,
+			month: range.month,
+			items,
+		});
+		openBathServicePrint(html);
+	};
+
+	const handleDataPrint = async () => {
+		const range = resolvePrintMonth();
+		if (!range) return;
+		const targets = checkedMembers();
+		if (targets.length === 0) {
+			alert('출력할 수급자를 체크해주세요.');
+			return;
+		}
+
+		setPrinting(true);
+		try {
+			const items: Array<{ member: MemberData; rows: BathPrintRow[] }> = [];
+			for (const member of targets) {
+				const url = `/api/f33030?ancd=${encodeURIComponent(memberAncd(member))}&pnum=${encodeURIComponent(
+					memberPnum(member)
+				)}&startDate=${encodeURIComponent(range.start)}&endDate=${encodeURIComponent(range.end)}`;
+				const response = await fetch(url, { method: 'GET', cache: 'no-store' });
+				const result = await response.json().catch(() => ({}));
+				if (!response.ok || !result?.success) {
+					throw new Error(result?.error || '목욕서비스 조회 실패');
+				}
+				const list = Array.isArray(result.data) ? result.data : [];
+				const rows: BathPrintRow[] = list.map((r: any) => {
+					const beforeFromLegacy =
+						xoToAbnormal(r?.AF_FACE) ||
+						xoToAbnormal(r?.AF_LIP) ||
+						xoToAbnormal(r?.AF_NAIL_COLOR) ||
+						xoToAbnormal(r?.AF_COG_STAT)
+							? '이상'
+							: '';
+					const afterFromLegacy =
+						xoToAbnormal(r?.BF_FACE) ||
+						xoToAbnormal(r?.BF_LIP) ||
+						xoToAbnormal(r?.BF_NAIL_COLOR) ||
+						xoToAbnormal(r?.BF_COG_STAT)
+							? '이상'
+							: '';
+					return {
+						VDT: formatDateYmd(r?.VDT ?? r?.vdt),
+						SRV_TM: normalizeTimeHm(r?.SRV_TM ?? r?.srv_tm) || String(r?.SRV_TM ?? ''),
+						BEN_STAT: String(r?.BEN_STAT ?? '').trim(),
+						BATH_METH: String(r?.BATH_METH ?? '').trim(),
+						BATH_METH_NM: String(r?.BATH_METH_NM ?? '').trim(),
+						BEF_STAT: String(r?.BEF_STAT ?? '').trim() || beforeFromLegacy,
+						MOVE_STAT: String(r?.MOVE_STAT ?? '').trim(),
+						AFT_STAT: String(r?.AFT_STAT ?? '').trim() || afterFromLegacy,
+						SRV_WRNG_DESC: String(r?.SRV_WRNG_DESC ?? '').trim(),
+						INEMPNM: String(r?.INEMPNM ?? '').trim(),
+					};
+				});
+				items.push({ member, rows });
+			}
+			const html = buildBathServicePrintHtml({
+				blank: false,
+				year: range.year,
+				month: range.month,
+				items,
+			});
+			openBathServicePrint(html);
+		} catch (err) {
+			console.error('목욕서비스 출력 오류:', err);
+			alert(err instanceof Error ? err.message : '출력 준비 중 오류가 발생했습니다.');
+		} finally {
+			setPrinting(false);
+		}
+	};
+
 	const serviceDateTotalPages = Math.ceil(serviceDates.length / serviceDateItemsPerPage);
 	const serviceDateStartIndex = (serviceDatePage - 1) * serviceDateItemsPerPage;
 	const serviceDateEndIndex = serviceDateStartIndex + serviceDateItemsPerPage;
 	const currentDateItems = serviceDates.slice(serviceDateStartIndex, serviceDateEndIndex);
+	const canEdit = isFormOpen;
+	const fieldCls = canEdit
+		? 'px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500'
+		: 'px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50';
 
 	return (
 		<div className="flex flex-col min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
 			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
 				{/* 좌측 패널: 수급자 목록 */}
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
-					{/* 필터 헤더 */}
+					<div className="mb-3 p-2 space-y-2 border border-blue-200 rounded-lg bg-blue-50/60">
+						<div className="text-xs font-semibold text-blue-900">출력 기간 (월)</div>
+						<input
+							type="month"
+							value={printMonth}
+							onChange={(e) => setPrintMonth(e.target.value)}
+							className="w-full px-2 py-1 text-xs bg-white border border-blue-300 rounded"
+						/>
+						<button
+							type="button"
+							onClick={() => void handleDataPrint()}
+							disabled={printing || checkedMemberKeys.size === 0}
+							className="w-full px-2 py-1.5 text-xs font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							{printing ? '출력 준비 중...' : `조회 후 출력 (${checkedMemberKeys.size}명)`}
+						</button>
+						<button
+							type="button"
+							onClick={handleBlankPrint}
+							disabled={printing}
+							className="w-full px-2 py-1.5 text-xs font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+						>
+							빈양식 출력
+						</button>
+					</div>
+
 					<div className="mb-3">
 						<h3 className="mb-2 text-sm font-semibold text-blue-900">수급자 목록</h3>
 						<div className="space-y-2">
-							{/* 이름 검색 */}
 							<div className="space-y-1">
 								<div className="text-xs text-blue-900/80">이름 검색</div>
-								<input 
-									className="w-full px-2 py-1 text-xs bg-white border border-blue-300 rounded" 
+								<input
+									className="w-full px-2 py-1 text-xs bg-white border border-blue-300 rounded"
 									placeholder="예) 홍길동"
 									value={searchTerm}
 									onChange={(e) => setSearchTerm(e.target.value)}
 								/>
 							</div>
-							{/* 현황 필터 */}
 							<div className="space-y-1">
 								<div className="text-xs text-blue-900/80">현황</div>
 								<select
@@ -549,7 +967,6 @@ export default function BathService() {
 									<option value="퇴소">퇴소</option>
 								</select>
 							</div>
-							{/* 등급 필터 */}
 							<div className="space-y-1">
 								<div className="text-xs text-blue-900/80">등급</div>
 								<select
@@ -566,7 +983,6 @@ export default function BathService() {
 									<option value="9">인지지원</option>
 								</select>
 							</div>
-							{/* 층수 필터 */}
 							<div className="space-y-1">
 								<div className="text-xs text-blue-900/80">층수</div>
 								<RoomNoFloorSelect
@@ -579,12 +995,20 @@ export default function BathService() {
 						</div>
 					</div>
 
-					{/* 수급자 목록 테이블 */}
 					<div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
 						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
+										<th className="px-1 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">
+											<input
+												type="checkbox"
+												checked={allFilteredChecked}
+												onChange={(e) => toggleAllFilteredChecked(e.target.checked)}
+												className="w-3.5 h-3.5 border-blue-300 rounded"
+												title="현재 필터 수급자 전체 선택"
+											/>
+										</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">연번</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">현황</th>
 										<th className="px-2 py-1.5 font-semibold text-center text-blue-900 border-r border-blue-200">수급자명</th>
@@ -596,14 +1020,17 @@ export default function BathService() {
 								<tbody>
 									{loading ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">로딩 중...</td>
 										</tr>
 									) : filteredMembers.length === 0 ? (
 										<tr>
-											<td colSpan={6} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
+											<td colSpan={7} className="px-2 py-4 text-center text-blue-900/60">수급자 데이터가 없습니다</td>
 										</tr>
 									) : (
-										currentMembers.map((member, index) => (
+										currentMembers.map((member, index) => {
+											const key = memberKey(member);
+											const isChecked = checkedMemberKeys.has(key);
+											return (
 											<tr
 												key={`${memberAncd(member)}-${memberPnum(member)}-${index}`}
 												onClick={() => handleSelectMember(member)}
@@ -611,6 +1038,18 @@ export default function BathService() {
 													memberKey(selectedMember) === memberKey(member) ? 'bg-blue-100' : ''
 												}`}
 											>
+												<td
+													className="px-1 py-1.5 text-center border-r border-blue-100"
+													onClick={(e) => e.stopPropagation()}
+												>
+													<input
+														type="checkbox"
+														checked={isChecked}
+														onChange={(e) => toggleMemberChecked(member, e.target.checked)}
+														className="w-3.5 h-3.5 border-blue-300 rounded"
+														aria-label={`${member.P_NM || '수급자'} 선택`}
+													/>
+												</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">{startIndex + index + 1}</td>
 												<td className="px-2 py-1.5 text-center border-r border-blue-100">
 													{member.P_ST === '1' ? '입소' : member.P_ST === '9' ? '퇴소' : '-'}
@@ -624,12 +1063,12 @@ export default function BathService() {
 												</td>
 												<td className="px-2 py-1.5 text-center">{calculateAge(member.P_BRDT)}</td>
 											</tr>
-										))
+											);
+										})
 									)}
 								</tbody>
 							</table>
 						</div>
-						{/* 페이지네이션 */}
 						{totalPages > 1 && (
 							<div className="p-2 bg-white border-t border-blue-200">
 								<div className="flex items-center justify-center gap-1">
@@ -647,7 +1086,7 @@ export default function BathService() {
 									>
 										&lt;
 									</button>
-									
+
 									{Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
 										const pageNum = Math.max(1, Math.min(totalPages - 4, currentPage - 2)) + i;
 										return (
@@ -664,7 +1103,7 @@ export default function BathService() {
 											</button>
 										);
 									})}
-									
+
 									<button
 										onClick={() => handlePageChange(currentPage + 1)}
 										disabled={currentPage === totalPages}
@@ -685,10 +1124,17 @@ export default function BathService() {
 					</div>
 				</div>
 
-				{/* 중간-왼쪽 패널: 제공일자 목록 */}
+				{/* 중간 패널: 제공일자 목록 */}
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 px-4 py-3 border-r border-blue-200 bg-blue-50 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
-					<div className="mb-2">
+					<div className="mb-2 flex items-center justify-between gap-2">
 						<label className="text-sm font-medium text-blue-900">제공일자</label>
+						<button
+							type="button"
+							onClick={handleCreateDate}
+							className="px-2 py-1 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+						>
+							신규
+						</button>
 					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto bg-white">
@@ -696,26 +1142,42 @@ export default function BathService() {
 								<div className="px-2 py-1 text-sm text-blue-900/60">로딩 중...</div>
 							) : serviceDates.length === 0 ? (
 								<div className="px-2 py-1 text-sm text-blue-900/60">
-									{selectedMember ? '제공일자가 없습니다' : '수급자를 선택해주세요'}
+									{selectedMember ? '오른쪽 신규 버튼으로 일자를 생성해주세요' : '수급자를 선택해주세요'}
 								</div>
 							) : (
 								currentDateItems.map((date, localIndex) => {
 									const globalIndex = serviceDateStartIndex + localIndex;
+									const isDraft = unsavedNewDate === date;
 									return (
 										<div
-											key={globalIndex}
-											onClick={() => handleSelectDate(globalIndex)}
-											className={`px-2 py-1.5 text-base cursor-pointer hover:bg-blue-100 rounded ${
-												selectedDateIndex === globalIndex ? 'bg-blue-200 font-semibold' : ''
+											key={`${date}-${globalIndex}`}
+											className={`flex items-center gap-1 px-2 py-1.5 rounded ${
+												selectedDateIndex === globalIndex ? 'bg-blue-200 font-semibold' : 'hover:bg-blue-100'
 											}`}
 										>
-											{formatDateDisplay(date)}
+											<button
+												type="button"
+												onClick={() => handleSelectDate(globalIndex)}
+												className="flex-1 min-w-0 text-left text-base cursor-pointer"
+											>
+												{formatDateDisplay(date)}
+												{isDraft ? <span className="ml-1 text-[11px] font-normal text-blue-700">작성중</span> : null}
+											</button>
+											<button
+												type="button"
+												onClick={(e) => {
+													e.stopPropagation();
+													void handleDeleteDate(globalIndex);
+												}}
+												className="shrink-0 px-1.5 py-0.5 text-[11px] font-medium rounded border border-rose-200 bg-rose-100 text-rose-700 hover:bg-rose-200"
+											>
+												삭제
+											</button>
 										</div>
 									);
 								})
 							)}
 						</div>
-						{/* 제공일자 페이지네이션 */}
 						{serviceDateTotalPages > 1 && (
 							<div className="p-2 mt-2">
 								<div className="flex items-center justify-center gap-1">
@@ -727,13 +1189,13 @@ export default function BathService() {
 										&lt;&lt;
 									</button>
 									<button
-										onClick={() => setServiceDatePage(prev => Math.max(1, prev - 1))}
+										onClick={() => setServiceDatePage((prev) => Math.max(1, prev - 1))}
 										disabled={serviceDatePage === 1}
 										className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
 									>
 										&lt;
 									</button>
-									
+
 									<input
 										type="number"
 										value={serviceDatePage}
@@ -747,9 +1209,9 @@ export default function BathService() {
 										min={1}
 										max={serviceDateTotalPages}
 									/>
-									
+
 									<button
-										onClick={() => setServiceDatePage(prev => Math.min(serviceDateTotalPages, prev + 1))}
+										onClick={() => setServiceDatePage((prev) => Math.min(serviceDateTotalPages, prev + 1))}
 										disabled={serviceDatePage >= serviceDateTotalPages}
 										className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
 									>
@@ -770,28 +1232,17 @@ export default function BathService() {
 
 				{/* 우측 패널: 입력 폼 */}
 				<div className="flex-1 p-4 overflow-y-auto bg-white">
+					<div className="flex items-center justify-between gap-2 mb-3">
+						<p className="text-xs text-blue-800/70">
+							{formMode === 'view'
+								? '읽기모드 · 「수정」을 눌러 편집할 수 있습니다.'
+								: formMode === 'create'
+									? '신규작성 · 입력 후 「저장」으로 반영합니다.'
+									: '수정모드 · 변경 후 「저장」으로 반영합니다.'}
+						</p>
+					</div>
 					<div className="space-y-4">
-						{/* 상단 행: 제공일자, 제공시간, 수급자 */}
 						<div className="flex flex-wrap items-center gap-4">
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">제공일자</label>
-								<input
-									type="text"
-									value={formData.serviceDate}
-									readOnly
-									className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]"
-								/>
-							</div>
-							<div className="flex items-center gap-2">
-								<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">제공시간</label>
-								<input
-									type="text"
-									value={formData.serviceTime}
-									onChange={(e) => setFormData(prev => ({ ...prev, serviceTime: e.target.value }))}
-									className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500 min-w-[150px]"
-									placeholder="제공시간을 입력하세요"
-								/>
-							</div>
 							<div className="flex items-center gap-2">
 								<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">수급자</label>
 								<input
@@ -801,176 +1252,145 @@ export default function BathService() {
 									className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[150px]"
 								/>
 							</div>
-						</div>
-
-						{/* 수급자상태 섹션 */}
-						<div className="p-4 border border-blue-300 rounded">
-							<div className="mb-3">
-								<label className="text-sm font-medium text-blue-900">수급자상태</label>
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">일자</label>
+								<input
+									type="text"
+									value={formData.serviceDate}
+									readOnly
+									className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[130px]"
+									placeholder="신규로 생성"
+								/>
 							</div>
-							<div className="overflow-x-auto">
-								<table className="w-full text-xs border-collapse">
-									<thead>
-										<tr className="bg-blue-50">
-											<th className="px-3 py-2 font-semibold text-center text-blue-900 border border-blue-200"></th>
-											<th className="px-3 py-2 font-semibold text-center text-blue-900 border border-blue-200">얼굴</th>
-											<th className="px-3 py-2 font-semibold text-center text-blue-900 border border-blue-200">입술</th>
-											<th className="px-3 py-2 font-semibold text-center text-blue-900 border border-blue-200">손톱색깔</th>
-											<th className="px-3 py-2 font-semibold text-center text-blue-900 border border-blue-200">인지상태</th>
-										</tr>
-									</thead>
-									<tbody>
-										<tr>
-											<td className="px-3 py-2 font-medium text-center text-blue-900 border border-blue-200 bg-blue-50">목욕전</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.beforeBathFace}
-													onChange={(e) => setFormData(prev => ({ ...prev, beforeBathFace: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.beforeBathLips}
-													onChange={(e) => setFormData(prev => ({ ...prev, beforeBathLips: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.beforeBathNailColor}
-													onChange={(e) => setFormData(prev => ({ ...prev, beforeBathNailColor: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.beforeBathCognitiveState}
-													onChange={(e) => setFormData(prev => ({ ...prev, beforeBathCognitiveState: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-										</tr>
-										<tr>
-											<td className="px-3 py-2 font-medium text-center text-blue-900 border border-blue-200 bg-blue-50">목욕후</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.afterBathFace}
-													onChange={(e) => setFormData(prev => ({ ...prev, afterBathFace: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.afterBathLips}
-													onChange={(e) => setFormData(prev => ({ ...prev, afterBathLips: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.afterBathNailColor}
-													onChange={(e) => setFormData(prev => ({ ...prev, afterBathNailColor: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-											<td className="px-3 py-2 text-center border border-blue-200">
-												<input
-													type="checkbox"
-													checked={formData.afterBathCognitiveState}
-													onChange={(e) => setFormData(prev => ({ ...prev, afterBathCognitiveState: e.target.checked }))}
-													className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-												/>
-											</td>
-										</tr>
-									</tbody>
-								</table>
-							</div>
-							{/* 범례 */}
-							<div className="flex items-center gap-4 mt-3">
-								<div className="flex items-center gap-2">
-									<span className="px-2 py-1 text-xs text-blue-900 border border-red-500 rounded">√: 문제있음</span>
-								</div>
-								<div className="flex items-center gap-2">
-									<input type="checkbox" disabled className="w-4 h-4 border border-blue-300 rounded" />
-									<span className="px-2 py-1 text-xs text-blue-900 border border-red-500 rounded">: 문제없음</span>
-								</div>
+							<div className="flex items-center gap-2">
+								<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">시간</label>
+								<TimeHmInput
+									value={formData.serviceTime}
+									onChange={(next) => setFormData((prev) => ({ ...prev, serviceTime: next }))}
+									disabled={!canEdit}
+								/>
 							</div>
 						</div>
 
-						{/* 목욕방법 */}
+						<div className="flex items-center gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">수급자상태</label>
+							<input
+								type="text"
+								value={formData.beneficiaryStatus}
+								readOnly={!canEdit}
+								onChange={(e) => setFormData((prev) => ({ ...prev, beneficiaryStatus: e.target.value }))}
+								className={`flex-1 ${fieldCls}`}
+								placeholder="수급자 상태를 입력하세요"
+							/>
+						</div>
+
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">목욕방법</label>
 							<select
 								value={formData.bathingMethod}
-								onChange={(e) => setFormData(prev => ({ ...prev, bathingMethod: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
+								disabled={!canEdit}
+								onChange={(e) => setFormData((prev) => ({ ...prev, bathingMethod: e.target.value }))}
+								className={`flex-1 ${fieldCls}${!canEdit ? ' cursor-not-allowed' : ''}`}
 							>
-								<option value="샤워식-목욕의자">샤워식-목욕의자</option>
-								<option value="샤워식-입욕">샤워식-입욕</option>
-								<option value="목욕의자">목욕의자</option>
-								<option value="입욕">입욕</option>
-								<option value="기타">기타</option>
+								{(BATH_METHOD_OPTIONS as readonly string[]).includes(formData.bathingMethod)
+									? BATH_METHOD_OPTIONS.map((opt) => (
+										<option key={opt} value={opt}>{opt}</option>
+									))
+									: [formData.bathingMethod, ...BATH_METHOD_OPTIONS].map((opt) => (
+										<option key={opt} value={opt}>{opt}</option>
+									))}
 							</select>
 						</div>
 
-						{/* 제공자 */}
+						<div className="overflow-x-auto border border-blue-300 rounded">
+							<table className="w-full text-sm border-collapse">
+								<tbody>
+									{(
+										[
+											{ key: 'beforeBath', label: '목욕전' },
+											{ key: 'moveMethod', label: '이동방법' },
+											{ key: 'afterBath', label: '목욕후' },
+										] as const
+									).map((row) => (
+										<tr key={row.key}>
+											<th className="w-28 px-3 py-2 font-medium text-center text-blue-900 border border-blue-200 bg-blue-50">
+												{row.label}
+											</th>
+											<td className="px-3 py-2 border border-blue-200">
+												<select
+													value={formData[row.key]}
+													disabled={!canEdit}
+													onChange={(e) =>
+														setFormData((prev) => ({ ...prev, [row.key]: e.target.value as StatValue }))
+													}
+													className={`w-full max-w-xs ${fieldCls}${!canEdit ? ' cursor-not-allowed' : ''}`}
+												>
+													{STAT_OPTIONS.map((opt) => (
+														<option key={opt.value} value={opt.value}>{opt.label}</option>
+													))}
+												</select>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+
+						<div className="flex items-start gap-2">
+							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">특이사항</label>
+							<textarea
+								value={formData.remarks}
+								readOnly={!canEdit}
+								onChange={(e) => setFormData((prev) => ({ ...prev, remarks: e.target.value }))}
+								className={`flex-1 ${fieldCls}`}
+								rows={4}
+								placeholder="특이사항을 입력하세요"
+							/>
+						</div>
+
 						<div className="flex items-center gap-2">
 							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">제공자</label>
 							<input
 								type="text"
 								value={formData.provider}
-								onChange={(e) => setFormData(prev => ({ ...prev, provider: e.target.value }))}
-								className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500"
-								placeholder="제공자를 입력하세요"
-							/>
-						</div>
-
-						{/* 담당자지움 */}
-						<div className="flex items-center gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">담당자지움</label>
-							<input
-								type="checkbox"
-								checked={formData.clearPersonInCharge}
-								onChange={(e) => setFormData(prev => ({ ...prev, clearPersonInCharge: e.target.checked }))}
-								className="w-4 h-4 text-blue-500 border border-blue-300 rounded focus:ring-blue-500"
-							/>
-						</div>
-
-						{/* 서비스불가사유 */}
-						<div className="flex items-start gap-2">
-							<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">서비스불가사유</label>
-							<textarea
-								value={formData.serviceUnavailableReason}
-								onChange={(e) => setFormData(prev => ({ ...prev, serviceUnavailableReason: e.target.value }))}
-								className="flex-1 px-3 py-2 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500"
-								rows={5}
-								placeholder="서비스불가사유를 입력하세요"
+								readOnly={!canEdit}
+								onChange={(e) => setFormData((prev) => ({ ...prev, provider: e.target.value }))}
+								className={`flex-1 ${fieldCls}`}
+								placeholder="제공자(직원)를 입력하세요"
 							/>
 						</div>
 					</div>
 
-					{/* 하단 버튼 영역 */}
 					<div className="flex justify-end gap-2 mt-6">
-						<button
-							onClick={handleSave}
-							className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
-						>
-							저장
-						</button>
-						<button
-							onClick={handleDelete}
-							className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300"
-						>
-							삭제
-						</button>
+						{formMode === 'view' ? (
+							<button
+								type="button"
+								onClick={handleEnterEdit}
+								disabled={selectedDateIndex === null || loadingServices}
+								className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+							>
+								수정
+							</button>
+						) : (
+							<>
+								<button
+									type="button"
+									onClick={handleCancelForm}
+									disabled={loadingServices}
+									className="px-6 py-2 text-sm font-medium text-rose-800 bg-rose-100 border border-rose-300 rounded hover:bg-rose-200 disabled:opacity-50"
+								>
+									취소
+								</button>
+								<button
+									type="button"
+									onClick={handleSave}
+									disabled={loadingServices}
+									className="px-6 py-2 text-sm font-medium text-blue-900 bg-blue-200 border border-blue-400 rounded hover:bg-blue-300 disabled:opacity-50"
+								>
+									저장
+								</button>
+							</>
+						)}
 					</div>
 				</div>
 			</div>
