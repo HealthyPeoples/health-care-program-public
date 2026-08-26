@@ -1,1457 +1,778 @@
 "use client";
 
 /**
- * @file 투약시간 — 화면 컴포넌트 (MedicationTime.tsx)
+ * @file 복용약물 — 화면 컴포넌트 (MedicationTime.tsx)
  *
  * @description
- * 요양원 투약시간 기능의 화면 컴포넌트입니다. 폴더: component/nursing-home/pages/medication-time
+ * F30110 복용약물 등록 화면입니다. 왼쪽 수급자 목록, 가운데 복용약물 목록,
+ * 오른쪽 상세 내용으로 구성됩니다. 폴더: component/nursing-home/pages/medication-time
  *
  * @module component/nursing-home/pages/medication-time/MedicationTime
  */
-import { useState, useEffect, useRef } from 'react';
-import { MemberListPanel } from '../../components/MemberListPanel';
-import { useTabRefresh } from '../../hooks/useTabRefresh';
+import React, { useEffect, useState } from "react";
+import { MemberListPanel } from "../../components/MemberListPanel";
+import { useTabRefresh } from "../../hooks/useTabRefresh";
 
 interface MemberData {
-	[key: string]: any;
+	ANCD: string;
+	PNUM: string;
+	P_NM: string;
+	P_SEX: string;
+	P_GRD: string;
+	P_BRDT: string;
+	P_ST: string;
+	[key: string]: unknown;
 }
 
-interface MedicationTimeData {
-	status: '약없음' | '복용' | '미복용' | '';
-	time: string;
-	helper: string;
-	rawStatus?: string;
+interface MedicationRow {
+	ANCD?: number | string;
+	PNUM?: number | string;
+	SEQ: number;
+	RSDT: string;
+	MENM: string;
+	SDT: string;
+	EDT: string;
+	INQNT: string;
+	INCNT: string;
+	METM: string;
+	CAPDES: string;
+	ETC?: string;
+	INEMPNM?: string;
 }
 
-type MedicationTypeKey =
-	| '아침식전'
-	| '아침식후'
-	| '점심식전'
-	| '점심식후'
-	| '저녁식전'
-	| '저녁식후'
-	| '취침복용';
+interface MedicationForm {
+	SEQ: number | null;
+	RSDT: string;
+	MENM: string;
+	SDT: string;
+	EDT: string;
+	INQNT: string;
+	INCNT: string;
+	METM: string;
+	CAPDES: string;
+}
 
-const DEFAULT_MEDICATION_DATA: Record<MedicationTypeKey, MedicationTimeData> = {
-	아침식전: { status: '약없음', time: '', helper: '' },
-	아침식후: { status: '약없음', time: '', helper: '' },
-	점심식전: { status: '약없음', time: '', helper: '' },
-	점심식후: { status: '약없음', time: '', helper: '' },
-	저녁식전: { status: '약없음', time: '', helper: '' },
-	저녁식후: { status: '약없음', time: '', helper: '' },
-	취침복용: { status: '약없음', time: '', helper: '' }
-};
+const LIST_ITEMS_PER_PAGE = 10;
 
 const todayYmd = () => {
 	const d = new Date();
-	const yyyy = String(d.getFullYear()).padStart(4, '0');
-	const mm = String(d.getMonth() + 1).padStart(2, '0');
-	const dd = String(d.getDate()).padStart(2, '0');
+	const yyyy = String(d.getFullYear()).padStart(4, "0");
+	const mm = String(d.getMonth() + 1).padStart(2, "0");
+	const dd = String(d.getDate()).padStart(2, "0");
 	return `${yyyy}-${mm}-${dd}`;
 };
 
-const ymdToYm = (ymd: string) => {
-	const s = String(ymd || '').trim();
-	if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s.slice(0, 7);
-	return '';
-};
-
-const calcAge = (birthYmd?: string) => {
-	if (!birthYmd) return '';
-	const s = String(birthYmd).slice(0, 10);
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
-	const [y, m, d] = s.split('-').map((x) => parseInt(x, 10));
-	const today = new Date();
-	let age = today.getFullYear() - y;
-	const md = (today.getMonth() + 1) * 100 + today.getDate();
-	const bmd = m * 100 + d;
-	if (md < bmd) age -= 1;
-	return String(age);
-};
-
-const MED_PRINT_STYLES = `
-@page { size: A4; margin: 10mm; }
-html, body { background:#fff; color:#000; }
-* { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.sheet { width: 190mm; margin: 0 auto; }
-.page { page-break-after: always; }
-.page:last-child { page-break-after: auto; }
-.title { text-align:center; font-weight:700; font-size:18px; margin: 4mm 0 2mm; }
-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-th, td { border: 1px solid #333; padding: 3px 4px; font-size: 12px; vertical-align: middle; }
-.small { font-size: 11px; }
-.center { text-align:center; }
-.header-row td, .header-row th { font-weight:600; }
-.section-gap { height: 2mm; }
-.no-border { border:none !important; }
-.block-area { height: 170mm; }
-`;
-
-const openPrintWindowWithHtml = (title: string, bodyHtml: string) => {
-	const printWindow = window.open('', '_blank');
-	if (!printWindow) {
-		alert('팝업 차단을 해제해주세요.');
-		return;
+const formatDateDisplay = (dateStr: string) => {
+	if (!dateStr) return "";
+	let s = String(dateStr);
+	if (s.includes("T")) s = s.split("T")[0];
+	if (s.includes("-") && s.length >= 10) return s.substring(0, 10);
+	if (s.length === 8 && !s.includes("-")) {
+		return `${s.substring(0, 4)}-${s.substring(4, 6)}-${s.substring(6, 8)}`;
 	}
-	const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>${title}</title>
-  <style>${MED_PRINT_STYLES}</style>
-</head>
-<body>
-  ${bodyHtml}
-</body>
-</html>`;
-	printWindow.document.write(html);
-	printWindow.document.close();
-	setTimeout(() => printWindow.print(), 250);
+	return s;
 };
 
-const openPrintWindowNow = (title: string) => {
-	const w = window.open('', '_blank');
-	if (!w) return null;
-	const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>${title}</title>
-  <style>${MED_PRINT_STYLES}</style>
-</head>
-<body>
-  <div class="sheet">
-    <div class="title">${title}</div>
-    <div style="font-size:12px; padding:12px;">불러오는 중...</div>
-  </div>
-</body>
-</html>`;
-	w.document.write(html);
-	w.document.close();
-	return w;
+const emptyForm = (): MedicationForm => {
+	const t = todayYmd();
+	return {
+		SEQ: null,
+		RSDT: t,
+		MENM: "",
+		SDT: t,
+		EDT: "",
+		INQNT: "",
+		INCNT: "",
+		METM: "",
+		CAPDES: "",
+	};
 };
 
-const writeAndPrint = (w: Window, title: string, bodyHtml: string) => {
-	const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8" />
-  <title>${title}</title>
-  <style>${MED_PRINT_STYLES}</style>
-</head>
-<body>
-  ${bodyHtml}
-</body>
-</html>`;
-	w.document.open();
-	w.document.write(html);
-	w.document.close();
-	setTimeout(() => w.print(), 250);
-};
+const rowToForm = (row: MedicationRow): MedicationForm => ({
+	SEQ: Number(row.SEQ),
+	RSDT: formatDateDisplay(row.RSDT) || todayYmd(),
+	MENM: row.MENM || "",
+	SDT: formatDateDisplay(row.SDT),
+	EDT: formatDateDisplay(row.EDT),
+	INQNT: row.INQNT || "",
+	INCNT: row.INCNT || "",
+	METM: row.METM || "",
+	CAPDES: row.CAPDES || "",
+});
+
+const formPayload = (form: MedicationForm, pnum: string | number, inempnm?: string) => ({
+	PNUM: pnum,
+	SEQ: form.SEQ,
+	RSDT: form.RSDT,
+	MENM: form.MENM.trim(),
+	SDT: form.SDT || null,
+	EDT: form.EDT || null,
+	INQNT: form.INQNT,
+	INCNT: form.INCNT,
+	METM: form.METM,
+	CAPDES: form.CAPDES,
+	INEMPNM: inempnm || null,
+});
+
+const inputCls =
+	"w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:cursor-not-allowed";
+const btnPrimaryCls =
+	"px-3 py-1.5 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-40 disabled:cursor-not-allowed";
+const btnSaveCls =
+	"px-4 py-1.5 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium disabled:opacity-40";
+const btnEditCls =
+	"px-4 py-1.5 text-xs border border-green-400 rounded bg-green-200 hover:bg-green-300 text-green-900 font-medium disabled:opacity-40";
+const btnDeleteCls =
+	"px-4 py-1.5 text-xs border border-orange-400 rounded bg-orange-200 hover:bg-orange-300 text-orange-900 font-medium disabled:opacity-40";
+const btnCancelCls =
+	"px-4 py-1.5 text-xs border border-gray-400 rounded bg-gray-200 hover:bg-gray-300 text-gray-900 font-medium disabled:opacity-40";
+
+function FieldRow({
+	label,
+	children,
+	tall,
+}: {
+	label: string;
+	children: React.ReactNode;
+	tall?: boolean;
+}) {
+	return (
+		<tr>
+			<th
+				className={`w-32 px-3 py-2.5 text-sm font-medium text-left text-blue-900 bg-blue-50 border border-blue-200 whitespace-nowrap align-middle ${
+					tall ? "align-top" : ""
+				}`}
+			>
+				{label}
+			</th>
+			<td className={`px-3 py-2 text-sm border border-blue-200 ${tall ? "align-top" : ""}`}>
+				{children}
+			</td>
+		</tr>
+	);
+}
+
+function MedicationFields({
+	form,
+	onChange,
+	disabled,
+	idPrefix,
+	beneficiaryName,
+}: {
+	form: MedicationForm;
+	onChange: (key: keyof MedicationForm, value: string) => void;
+	disabled: boolean;
+	idPrefix: string;
+	beneficiaryName: string;
+}) {
+	const displayOrDash = (v: string) => v || "-";
+
+	return (
+		<table className="w-full border-collapse">
+			<tbody>
+				<FieldRow label="수급자">
+					<span className="text-blue-900">{beneficiaryName || "-"}</span>
+				</FieldRow>
+				<FieldRow label="조사일자">
+					{disabled ? (
+						<span>{displayOrDash(form.RSDT)}</span>
+					) : (
+						<input
+							id={`${idPrefix}-rsdt`}
+							type="date"
+							value={form.RSDT}
+							onChange={(e) => onChange("RSDT", e.target.value)}
+							className={inputCls}
+						/>
+					)}
+				</FieldRow>
+				<FieldRow label="복용약물명">
+					{disabled ? (
+						<span>{displayOrDash(form.MENM)}</span>
+					) : (
+						<input
+							id={`${idPrefix}-menm`}
+							type="text"
+							value={form.MENM}
+							onChange={(e) => onChange("MENM", e.target.value)}
+							maxLength={100}
+							placeholder="복용약물명 입력"
+							className={inputCls}
+						/>
+					)}
+				</FieldRow>
+				<FieldRow label="투여시작일">
+					{disabled ? (
+						<span>{displayOrDash(form.SDT)}</span>
+					) : (
+						<input
+							id={`${idPrefix}-sdt`}
+							type="date"
+							value={form.SDT}
+							onChange={(e) => onChange("SDT", e.target.value)}
+							className={inputCls}
+						/>
+					)}
+				</FieldRow>
+				<FieldRow label="투여종료일">
+					{disabled ? (
+						<span>{displayOrDash(form.EDT)}</span>
+					) : (
+						<input
+							id={`${idPrefix}-edt`}
+							type="date"
+							value={form.EDT}
+							onChange={(e) => onChange("EDT", e.target.value)}
+							className={inputCls}
+						/>
+					)}
+				</FieldRow>
+				<FieldRow label="1회투약량">
+					{disabled ? (
+						<span>{displayOrDash(form.INQNT)}</span>
+					) : (
+						<input
+							id={`${idPrefix}-inqnt`}
+							type="text"
+							value={form.INQNT}
+							onChange={(e) => onChange("INQNT", e.target.value)}
+							maxLength={20}
+							placeholder="예: 1g"
+							className={inputCls}
+						/>
+					)}
+				</FieldRow>
+				<FieldRow label="1일투약횟수">
+					{disabled ? (
+						<span>{displayOrDash(form.INCNT)}</span>
+					) : (
+						<input
+							id={`${idPrefix}-incnt`}
+							type="text"
+							value={form.INCNT}
+							onChange={(e) => onChange("INCNT", e.target.value)}
+							maxLength={40}
+							placeholder="예: 3회"
+							className={inputCls}
+						/>
+					)}
+				</FieldRow>
+				<FieldRow label="복용시점">
+					{disabled ? (
+						<span>{displayOrDash(form.METM)}</span>
+					) : (
+						<input
+							id={`${idPrefix}-metm`}
+							type="text"
+							value={form.METM}
+							onChange={(e) => onChange("METM", e.target.value)}
+							maxLength={40}
+							placeholder="예: 식후"
+							className={inputCls}
+						/>
+					)}
+				</FieldRow>
+				<FieldRow label="주의사항" tall>
+					{disabled ? (
+						<div className="min-h-[96px] whitespace-pre-wrap">{displayOrDash(form.CAPDES)}</div>
+					) : (
+						<textarea
+							id={`${idPrefix}-capdes`}
+							value={form.CAPDES}
+							onChange={(e) => onChange("CAPDES", e.target.value)}
+							maxLength={100}
+							rows={5}
+							placeholder="주의사항을 입력하세요"
+							className={`${inputCls} resize-y min-h-[96px]`}
+						/>
+					)}
+				</FieldRow>
+			</tbody>
+		</table>
+	);
+}
 
 export default function MedicationTime() {
-	// 약물 복용 시간 관련 state
 	const [selectedMember, setSelectedMember] = useState<MemberData | null>(null);
-	const [selectedEadt, setSelectedEadt] = useState<string>(todayYmd());
-	const [eadtList, setEadtList] = useState<string[]>([]);
-	const [eadtLoading, setEadtLoading] = useState(false);
-	const [detailLoading, setDetailLoading] = useState(false);
-	const [detailExists, setDetailExists] = useState(false);
-
-	const [medicationData, setMedicationData] = useState<Record<MedicationTypeKey, MedicationTimeData>>(
-		JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA))
-	);
-	const [confirmer, setConfirmer] = useState('');
-	const [confirmDate, setConfirmDate] = useState<string>(todayYmd());
-	const [notes, setNotes] = useState(''); // F30111.EADES (복용상태/비고 성격)
-	const [etc, setEtc] = useState(''); // F30111.ETC
+	const [rows, setRows] = useState<MedicationRow[]>([]);
+	const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
+	const [formData, setFormData] = useState<MedicationForm>(() => emptyForm());
+	const [loading, setLoading] = useState(false);
+	const [saving, setSaving] = useState(false);
 	const [isEditMode, setIsEditMode] = useState(false);
-	const [originalMedicationData, setOriginalMedicationData] = useState<Record<MedicationTypeKey, MedicationTimeData>>(
-		JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA))
-	);
-	const [originalConfirmer, setOriginalConfirmer] = useState('');
-	const [originalConfirmDate, setOriginalConfirmDate] = useState(todayYmd());
-	const [originalNotes, setOriginalNotes] = useState('');
-	const [originalEtc, setOriginalEtc] = useState('');
-	const detailReqIdRef = useRef(0);
-	const selectReqIdRef = useRef(0);
+	const [editingBackup, setEditingBackup] = useState<MedicationForm | null>(null);
+	const [listPage, setListPage] = useState(1);
+	const [userEmpnm, setUserEmpnm] = useState("");
 
-	// 복용도우미 검색 관련 state (각 타입별로 관리)
-	const [helperSearchTerms, setHelperSearchTerms] = useState<Record<string, string>>({});
-	const [helperSuggestions, setHelperSuggestions] = useState<Record<string, Array<{EMPNO: string; EMPNM: string}>>>({});
-	const [showHelperDropdowns, setShowHelperDropdowns] = useState<Record<string, boolean>>({});
-	const [activeHelperType, setActiveHelperType] = useState<MedicationTypeKey | null>(null);
+	const [showAddModal, setShowAddModal] = useState(false);
+	const [modalForm, setModalForm] = useState<MedicationForm>(() => emptyForm());
+	const [modalSaving, setModalSaving] = useState(false);
 
-	// 복용 확인자 검색 관련 state
-	const [confirmerSearchTerm, setConfirmerSearchTerm] = useState('');
-	const [confirmerSuggestions, setConfirmerSuggestions] = useState<Array<{EMPNO: string; EMPNM: string}>>([]);
-	const [showConfirmerDropdown, setShowConfirmerDropdown] = useState(false);
-
-	const medicationTypes: MedicationTypeKey[] = ['아침식전', '아침식후', '점심식전', '점심식후', '저녁식전', '저녁식후', '취침복용'];
-
-	const handleMedicationStatusChange = (type: MedicationTypeKey, status: '약없음' | '복용' | '미복용') => {
-		setMedicationData(prev => ({
-			...prev,
-			[type]: {
-				...prev[type],
-				status,
-				rawStatus: undefined
-			}
-		}));
-	};
-
-	const handleMedicationTimeChange = (type: MedicationTypeKey, time: string) => {
-		setMedicationData(prev => ({
-			...prev,
-			[type]: {
-				...prev[type],
-				time
-			}
-		}));
-	};
-
-	const buildIndividualPrintHtml = (data: any) => {
-		const facility = data?.facility || {};
-		const member = data?.member || {};
-		const month = String(data?.month || '');
-		const diseases: string[] = Array.isArray(data?.diseases) ? data.diseases : [];
-		const meds: any[] = Array.isArray(data?.meds) ? data.meds : [];
-		const calendar: any[] = Array.isArray(data?.calendar) ? data.calendar : [];
-
-		const sex = String(member.P_SEX || '') === '1' ? '남' : String(member.P_SEX || '') === '2' ? '여' : '';
-		const birth = String(member.P_BRDT || '').slice(0, 10);
-
-		const medsRows = (meds.length ? meds : [{ MENM: '', INQNT: '', INCNT: '', METM: '', CAPDES: '' }])
-			.map(
-				(m) => `
-        <tr>
-          <td style="width:30%">${m.MENM ?? ''}</td>
-          <td class="center" style="width:10%">${m.INQNT ?? ''}</td>
-          <td class="center" style="width:10%">${m.INCNT ?? ''}</td>
-          <td style="width:20%">${m.CAPDES || m.METM || ''}</td>
-        </tr>
-      `
-			)
-			.join('');
-
-		const calendarRows = calendar.length
-			? calendar
-					.map(
-						(r) => `
-        <tr>
-          <td class="center">${r.EADT ?? ''}</td>
-          <td class="center">${r['아침식전'] ?? ''}</td>
-          <td class="center">${r['아침식후'] ?? ''}</td>
-          <td class="center">${r['점심식전'] ?? ''}</td>
-          <td class="center">${r['점심식후'] ?? ''}</td>
-          <td class="center">${r['저녁식전'] ?? ''}</td>
-          <td class="center">${r['저녁식후'] ?? ''}</td>
-          <td class="center">${r['취침복용'] ?? ''}</td>
-          <td class="center">${r['확인자'] ?? ''}</td>
-        </tr>
-      `
-					)
-					.join('')
-			: `
-        <tr>
-          <td class="center" colspan="9">해당 월 복용 기록 없음</td>
-        </tr>
-      `;
-
-		return `
-      <div class="sheet">
-        <div class="title">약물관리기록지</div>
-
-        <table>
-          <tbody>
-            <tr>
-              <td class="no-border" style="width:60%"></td>
-              <td class="center" style="width:40%; padding:0">
-                <table>
-                  <tbody>
-                    <tr>
-                      <td class="center" style="font-weight:700">합명</td>
-                      <td class="center" style="font-weight:700">검토</td>
-                      <td class="center" style="font-weight:700">결재</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-gap"></div>
-
-        <table>
-          <tbody>
-            <tr class="header-row">
-              <td class="center" style="width:16%">장기요양기관기호</td>
-              <td style="width:18%">${facility.ANGH ?? ''}</td>
-              <td class="center" style="width:20%">장기요양기관명</td>
-              <td style="width:26%">${facility.ANNM ?? ''}</td>
-              <td class="center" style="width:12%">장기요양등급</td>
-              <td style="width:8%">${member.P_GRD ?? ''}</td>
-            </tr>
-            <tr class="header-row">
-              <td class="center">수급자성명</td>
-              <td>${member.P_NM ?? ''}</td>
-              <td class="center">생년</td>
-              <td>${birth}</td>
-              <td class="center">장기요양인정번호</td>
-              <td>${member.P_YYNO ?? ''}</td>
-            </tr>
-            <tr class="header-row">
-              <td class="center">성별</td>
-              <td>${sex}</td>
-              <td class="center">연령</td>
-              <td class="center">만 ${calcAge(birth)}세</td>
-              <td class="center">복용년월</td>
-              <td>${month}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-gap"></div>
-
-        <table>
-          <tbody>
-            <tr class="header-row">
-              <td class="center" style="width:30%">질병내역</td>
-              <td class="center" style="width:30%">복용약</td>
-              <td class="center" style="width:10%">1회투약량</td>
-              <td class="center" style="width:10%">1일투약횟수</td>
-              <td class="center" style="width:20%">복용상계</td>
-            </tr>
-            <tr>
-              <td style="vertical-align:top">
-                <div class="small">
-                  ${diseases.map((x) => `<div>${x}</div>`).join('')}
-                </div>
-              </td>
-              <td colspan="4" style="padding:0">
-                <table>
-                  <tbody>
-                    ${medsRows}
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-gap"></div>
-
-        <table>
-          <thead>
-            <tr class="header-row">
-              <th class="center" style="width:14%">복용일자</th>
-              <th class="center">아침식전</th>
-              <th class="center">아침식후</th>
-              <th class="center">점심식전</th>
-              <th class="center">점심식후</th>
-              <th class="center">저녁식전</th>
-              <th class="center">저녁식후</th>
-              <th class="center">취침복용</th>
-              <th class="center" style="width:12%">확인자</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${calendarRows}
-          </tbody>
-        </table>
-      </div>
-    `;
-	};
-
-	const buildMonthlyPrintHtml = (data: any) => {
-		const facility = data?.facility || {};
-		const month = String(data?.month || '');
-		const members: any[] = Array.isArray(data?.members) ? data.members : [];
-
-		return `
-      <div class="sheet">
-        ${members
-					.map((sec) => {
-						const member = sec?.member || {};
-						const diseases: string[] = Array.isArray(sec?.diseases) ? sec.diseases : [];
-						const meds: any[] = Array.isArray(sec?.meds) ? sec.meds : [];
-						const calendar: any[] = Array.isArray(sec?.calendar) ? sec.calendar : [];
-						const sex = String(member.P_SEX || '') === '1' ? '남' : String(member.P_SEX || '') === '2' ? '여' : '';
-						const birth = String(member.P_BRDT || '').slice(0, 10);
-
-						const medsRows = (meds.length ? meds : [{ MENM: '', INQNT: '', INCNT: '', METM: '', CAPDES: '' }])
-							.map(
-								(m) => `
-              <tr>
-                <td style="width:30%">${m.MENM ?? ''}</td>
-                <td class="center" style="width:10%">${m.INQNT ?? ''}</td>
-                <td class="center" style="width:10%">${m.INCNT ?? ''}</td>
-                <td style="width:20%">${m.CAPDES || m.METM || ''}</td>
-              </tr>
-            `
-							)
-							.join('');
-
-						const calendarRows = calendar
-							.map(
-								(r) => `
-              <tr>
-                <td class="center">${r.EADT ?? ''}</td>
-                <td class="center">${r['아침식전'] ?? ''}</td>
-                <td class="center">${r['아침식후'] ?? ''}</td>
-                <td class="center">${r['점심식전'] ?? ''}</td>
-                <td class="center">${r['점심식후'] ?? ''}</td>
-                <td class="center">${r['저녁식전'] ?? ''}</td>
-                <td class="center">${r['저녁식후'] ?? ''}</td>
-                <td class="center">${r['취침복용'] ?? ''}</td>
-                <td class="center">${r['확인자'] ?? ''}</td>
-              </tr>
-            `
-							)
-							.join('');
-
-						return `
-            <div class="page">
-              <div class="title">약물관리기록지</div>
-
-              <table>
-                <tbody>
-                  <tr>
-                    <td class="no-border" style="width:60%"></td>
-                    <td class="center" style="width:40%; padding:0">
-                      <table><tbody>
-                        <tr>
-                          <td class="center" style="font-weight:700">합명</td>
-                          <td class="center" style="font-weight:700">검토</td>
-                          <td class="center" style="font-weight:700">결재</td>
-                        </tr>
-                      </tbody></table>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div class="section-gap"></div>
-
-              <table>
-                <tbody>
-                  <tr class="header-row">
-                    <td class="center" style="width:16%">장기요양기관기호</td>
-                    <td style="width:18%">${facility.ANGH ?? ''}</td>
-                    <td class="center" style="width:20%">장기요양기관명</td>
-                    <td style="width:26%">${facility.ANNM ?? ''}</td>
-                    <td class="center" style="width:12%">장기요양등급</td>
-                    <td style="width:8%">${member.P_GRD ?? ''}</td>
-                  </tr>
-                  <tr class="header-row">
-                    <td class="center">수급자성명</td>
-                    <td>${member.P_NM ?? ''}</td>
-                    <td class="center">생년</td>
-                    <td>${birth}</td>
-                    <td class="center">장기요양인정번호</td>
-                    <td>${member.P_YYNO ?? ''}</td>
-                  </tr>
-                  <tr class="header-row">
-                    <td class="center">성별</td>
-                    <td>${sex}</td>
-                    <td class="center">연령</td>
-                    <td class="center">만 ${calcAge(birth)}세</td>
-                    <td class="center">복용년월</td>
-                    <td>${month}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div class="section-gap"></div>
-
-              <table>
-                <tbody>
-                  <tr class="header-row">
-                    <td class="center" style="width:30%">질병내역</td>
-                    <td class="center" style="width:30%">복용약</td>
-                    <td class="center" style="width:10%">1회투약량</td>
-                    <td class="center" style="width:10%">1일투약횟수</td>
-                    <td class="center" style="width:20%">복용상계</td>
-                  </tr>
-                  <tr>
-                    <td style="vertical-align:top">
-                      <div class="small">${diseases.map((x) => `<div>${x}</div>`).join('')}</div>
-                    </td>
-                    <td colspan="4" style="padding:0">
-                      <table><tbody>${medsRows}</tbody></table>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div class="section-gap"></div>
-
-              <table>
-                <thead>
-                  <tr class="header-row">
-                    <th class="center" style="width:14%">복용일자</th>
-                    <th class="center">아침식전</th>
-                    <th class="center">아침식후</th>
-                    <th class="center">점심식전</th>
-                    <th class="center">점심식후</th>
-                    <th class="center">저녁식전</th>
-                    <th class="center">저녁식후</th>
-                    <th class="center">취침복용</th>
-                    <th class="center" style="width:12%">확인자</th>
-                  </tr>
-                </thead>
-                <tbody>${calendarRows}</tbody>
-              </table>
-            </div>
-          `;
-					})
-					.join('')}
-      </div>
-    `;
-	};
-
-	const buildDrugsPrintHtml = (data: any) => {
-		const facility = data?.facility || {};
-		const member = data?.member || {};
-		const diseases: string[] = Array.isArray(data?.diseases) ? data.diseases : [];
-		const meds: any[] = Array.isArray(data?.meds) ? data.meds : [];
-		const intakePlan = String(data?.intakePlan || '');
-
-		const sex = String(member.P_SEX || '') === '1' ? '남' : String(member.P_SEX || '') === '2' ? '여' : '';
-		const birth = String(member.P_BRDT || '').slice(0, 10);
-
-		const medsRows = (meds.length ? meds : [{ MENM: '', INQNT: '', INCNT: '', CAPDES: '', METM: '', EDT: '' }])
-			.map(
-				(m) => `
-        <tr>
-          <td style="width:28%">${m.MENM ?? ''}</td>
-          <td class="center" style="width:10%">${m.INQNT ?? ''}</td>
-          <td class="center" style="width:10%">${m.INCNT ?? ''}</td>
-          <td style="width:14%">${intakePlan}</td>
-          <td class="center" style="width:10%">${m.EDT ? String(m.EDT).slice(0, 10) : ''}</td>
-        </tr>
-      `
-			)
-			.join('');
-
-		return `
-      <div class="sheet">
-        <div class="title">질병 및 복용약물</div>
-
-        <table>
-          <tbody>
-            <tr>
-              <td class="no-border" style="width:60%"></td>
-              <td class="center" style="width:40%; padding:0">
-                <table>
-                  <tbody>
-                    <tr>
-                      <td class="center" style="font-weight:700">합명</td>
-                      <td class="center" style="font-weight:700">검토</td>
-                      <td class="center" style="font-weight:700">결재</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-gap"></div>
-
-        <table>
-          <tbody>
-            <tr class="header-row">
-              <td class="center" style="width:16%">장기요양기관기호</td>
-              <td style="width:18%">${facility.ANGH ?? ''}</td>
-              <td class="center" style="width:20%">장기요양기관명</td>
-              <td style="width:26%">${facility.ANNM ?? ''}</td>
-              <td class="center" style="width:12%">장기요양등급</td>
-              <td style="width:8%">${member.P_GRD ?? ''}</td>
-            </tr>
-            <tr class="header-row">
-              <td class="center">수급자성명</td>
-              <td>${member.P_NM ?? ''}</td>
-              <td class="center">생년</td>
-              <td>${birth}</td>
-              <td class="center">장기요양인정번호</td>
-              <td>${member.P_YYNO ?? ''}</td>
-            </tr>
-            <tr class="header-row">
-              <td class="center">성별</td>
-              <td>${sex}</td>
-              <td class="center">연령</td>
-              <td class="center">만 ${calcAge(birth)}세</td>
-              <td class="center">입소일</td>
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-gap"></div>
-
-        <table>
-          <thead>
-            <tr class="header-row">
-              <th class="center" style="width:28%">질병내역</th>
-              <th class="center" style="width:28%">복용약물</th>
-              <th class="center" style="width:10%">1회투약량</th>
-              <th class="center" style="width:10%">1일투약횟수</th>
-              <th class="center" style="width:14%">복용상계</th>
-              <th class="center" style="width:10%">투여종료일</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style="vertical-align:top">
-                <div class="small">${diseases.map((x) => `<div>${x}</div>`).join('')}</div>
-              </td>
-              <td colspan="5" style="padding:0">
-                <table>
-                  <tbody>
-                    ${medsRows}
-                    <tr><td colspan="5" class="block-area"></td></tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    `;
-	};
-
-	// 복용도우미 검색 함수
-	const searchHelpers = async (type: string, searchTerm: string) => {
-		if (!searchTerm || searchTerm.trim() === '') {
-			setHelperSuggestions(prev => ({ ...prev, [type]: [] }));
-			setShowHelperDropdowns(prev => ({ ...prev, [type]: false }));
-			return;
-		}
-
-		try {
-			const url = `/api/f01010?name=${encodeURIComponent(searchTerm.trim())}`;
-			const response = await fetch(url);
-			const result = await response.json();
-			
-			if (result.success && Array.isArray(result.data)) {
-				setHelperSuggestions(prev => ({ ...prev, [type]: result.data }));
-				setShowHelperDropdowns(prev => ({ ...prev, [type]: result.data.length > 0 }));
-			} else {
-				setHelperSuggestions(prev => ({ ...prev, [type]: [] }));
-				setShowHelperDropdowns(prev => ({ ...prev, [type]: false }));
-			}
-		} catch (err) {
-			console.error('복용도우미 검색 오류:', err);
-			setHelperSuggestions(prev => ({ ...prev, [type]: [] }));
-			setShowHelperDropdowns(prev => ({ ...prev, [type]: false }));
-		}
-	};
-
-	// 복용 확인자 검색 함수
-	const searchConfirmer = async (searchTerm: string) => {
-		if (!searchTerm || searchTerm.trim() === '') {
-			setConfirmerSuggestions([]);
-			setShowConfirmerDropdown(false);
-			return;
-		}
-
-		try {
-			const url = `/api/f01010?name=${encodeURIComponent(searchTerm.trim())}`;
-			const response = await fetch(url);
-			const result = await response.json();
-			
-			if (result.success && Array.isArray(result.data)) {
-				setConfirmerSuggestions(result.data);
-				setShowConfirmerDropdown(result.data.length > 0);
-			} else {
-				setConfirmerSuggestions([]);
-				setShowConfirmerDropdown(false);
-			}
-		} catch (err) {
-			console.error('복용 확인자 검색 오류:', err);
-			setConfirmerSuggestions([]);
-			setShowConfirmerDropdown(false);
-		}
-	};
-
-	// 복용 확인자 선택 함수
-	const handleSelectConfirmer = (confirmer: {EMPNO: string; EMPNM: string}) => {
-		setConfirmer(confirmer.EMPNM);
-		setConfirmerSearchTerm(confirmer.EMPNM);
-		setShowConfirmerDropdown(false);
-	};
-
-	// 복용도우미 선택 함수
-	const handleSelectHelper = (type: MedicationTypeKey, helper: {EMPNO: string; EMPNM: string}) => {
-		setMedicationData(prev => ({
-			...prev,
-			[type]: {
-				...prev[type],
-				helper: helper.EMPNM
-			}
-		}));
-		setHelperSearchTerms(prev => ({ ...prev, [type]: helper.EMPNM }));
-		setShowHelperDropdowns(prev => ({ ...prev, [type]: false }));
-		setActiveHelperType(null);
-	};
-
-	const handleMedicationHelperChange = (type: MedicationTypeKey, helper: string) => {
-		setMedicationData(prev => ({
-			...prev,
-			[type]: {
-				...prev[type],
-				helper
-			}
-		}));
-		setHelperSearchTerms(prev => ({ ...prev, [type]: helper }));
-		setActiveHelperType(type);
-		
-		// 검색어가 변경되면 검색 실행 (debounce는 useEffect에서 처리)
-		if (!helper || helper.trim() === '') {
-			setHelperSuggestions(prev => ({ ...prev, [type]: [] }));
-			setShowHelperDropdowns(prev => ({ ...prev, [type]: false }));
-		}
-	};
-
-	// 복용도우미 검색 debounce
 	useEffect(() => {
-		const timer = setTimeout(() => {
-			if (activeHelperType && helperSearchTerms[activeHelperType]) {
-				const searchTerm = helperSearchTerms[activeHelperType];
-				if (searchTerm && searchTerm.trim() !== '') {
-					searchHelpers(activeHelperType, searchTerm);
-				}
+		const loadUser = async () => {
+			try {
+				const res = await fetch("/api/auth/user-info", { credentials: "include" });
+				const json = await res.json().catch(() => ({}));
+				const empnm = json?.data?.empnm;
+				if (empnm) setUserEmpnm(String(empnm));
+			} catch {
+				// 등록자명은 선택 항목
 			}
-		}, 300);
+		};
+		void loadUser();
+	}, []);
 
-		return () => clearTimeout(timer);
-	}, [helperSearchTerms, activeHelperType]);
-
-	const handleEdit = () => {
-		// 원본 데이터 백업
-		setOriginalMedicationData(JSON.parse(JSON.stringify(medicationData)));
-		setOriginalConfirmer(confirmer);
-		setOriginalConfirmDate(confirmDate);
-		setOriginalNotes(notes);
-		setOriginalEtc(etc);
-		setIsEditMode(true);
-	};
-
-	const handleCancel = () => {
-		// 원본 데이터로 복원
-		setMedicationData(JSON.parse(JSON.stringify(originalMedicationData)));
-		setConfirmer(originalConfirmer);
-		setConfirmDate(originalConfirmDate);
-		setNotes(originalNotes);
-		setEtc(originalEtc);
+	const exitEditMode = () => {
 		setIsEditMode(false);
+		setEditingBackup(null);
 	};
 
-	const refreshEadtList = async (
-		member: MemberData,
-		keepSelected = true,
-		currentEadt?: string,
-		selectReqId?: number
-	) => {
-		setEadtLoading(true);
-		const isStale = () =>
-			selectReqId != null && selectReqId !== selectReqIdRef.current;
+	const applyListSelection = (list: MedicationRow[], preferSeq?: number | null) => {
+		if (list.length === 0) {
+			setSelectedSeq(null);
+			setFormData(emptyForm());
+			setListPage(1);
+			return;
+		}
+
+		const targetSeq =
+			preferSeq != null && list.some((r) => Number(r.SEQ) === Number(preferSeq))
+				? Number(preferSeq)
+				: Number(list[0].SEQ);
+		const target = list.find((r) => Number(r.SEQ) === targetSeq) || list[0];
+		setSelectedSeq(Number(target.SEQ));
+		setFormData(rowToForm(target));
+
+		const idx = list.findIndex((r) => Number(r.SEQ) === Number(target.SEQ));
+		setListPage(idx >= 0 ? Math.floor(idx / LIST_ITEMS_PER_PAGE) + 1 : 1);
+	};
+
+	const fetchList = async (pnum: string, preferSeq?: number | null) => {
+		setLoading(true);
 		try {
-			const pnum = String(member?.PNUM ?? '').trim();
-			if (!pnum) {
-				const fallback = todayYmd();
-				if (!isStale()) {
-					setEadtList([]);
-					if (!keepSelected) setSelectedEadt(fallback);
-				}
-				return { list: [] as string[], nextEadt: keepSelected ? (currentEadt || fallback) : fallback };
-			}
-			const res = await fetch(`/api/f30111?mode=dates&pnum=${encodeURIComponent(pnum)}`);
+			const res = await fetch(`/api/f30110?pnum=${encodeURIComponent(pnum)}`, { cache: "no-store" });
 			const json = await res.json();
-			if (isStale()) {
-				return { list: [] as string[], nextEadt: currentEadt || todayYmd() };
-			}
-			const list = Array.isArray(json?.data) ? json.data.map((r: any) => String(r.EADT || '').trim()).filter(Boolean) : [];
-			setEadtList(list);
-			const nextEadt = keepSelected
-				? (currentEadt || list[0] || todayYmd())
-				: (list[0] || todayYmd());
-			if (!keepSelected || !currentEadt) {
-				setSelectedEadt(nextEadt);
-			}
-			return { list, nextEadt };
+			const list: MedicationRow[] = Array.isArray(json?.data) ? json.data : [];
+			setRows(list);
+			applyListSelection(list, preferSeq);
 		} catch (e) {
-			console.error('복용일자 목록 조회 오류:', e);
-			const fallback = todayYmd();
-			if (!isStale()) {
-				setEadtList([]);
-				if (!keepSelected) setSelectedEadt(fallback);
-			}
-			return { list: [] as string[], nextEadt: keepSelected ? (currentEadt || fallback) : fallback };
+			console.error("복용약물 조회 오류:", e);
+			setRows([]);
+			applyListSelection([]);
 		} finally {
-			if (!isStale()) setEadtLoading(false);
+			setLoading(false);
 		}
 	};
 
-	const loadDetail = async (member: MemberData, eadt: string) => {
-		const reqId = ++detailReqIdRef.current;
-		setDetailLoading(true);
+	const handleSelectMember = (member: MemberData) => {
+		if (isEditMode && !confirm("수정 중인 내용이 저장되지 않습니다. 이동할까요?")) return;
+		exitEditMode();
+		setShowAddModal(false);
+		setSelectedMember(member);
+		void fetchList(String(member.PNUM));
+	};
+
+	useTabRefresh(() => {
+		if (!selectedMember?.PNUM) return;
+		void fetchList(String(selectedMember.PNUM), selectedSeq);
+	});
+
+	const handleSelectRow = (row: MedicationRow) => {
+		if (isEditMode && !confirm("수정 중인 내용이 저장되지 않습니다. 이동할까요?")) return;
+		exitEditMode();
+		setSelectedSeq(Number(row.SEQ));
+		setFormData(rowToForm(row));
+	};
+
+	const handleFieldChange = (key: keyof MedicationForm, value: string) => {
+		if (!isEditMode) return;
+		setFormData((prev) => ({ ...prev, [key]: value }));
+	};
+
+	const openAddModal = () => {
+		if (!selectedMember) {
+			alert("수급자를 선택해주세요.");
+			return;
+		}
+		if (isEditMode && !confirm("수정 중인 내용이 저장되지 않습니다. 신규 등록을 진행할까요?")) {
+			return;
+		}
+		exitEditMode();
+		setModalForm(emptyForm());
+		setShowAddModal(true);
+	};
+
+	const closeAddModal = () => {
+		if (modalSaving) return;
+		setShowAddModal(false);
+		setModalForm(emptyForm());
+	};
+
+	const validateForm = (form: MedicationForm) => {
+		if (!form.MENM.trim()) {
+			alert("복용약물명을 입력해주세요.");
+			return false;
+		}
+		if (!form.RSDT) {
+			alert("조사일자를 입력해주세요.");
+			return false;
+		}
+		return true;
+	};
+
+	const handleModalSave = async () => {
+		if (!selectedMember) {
+			alert("수급자를 선택해주세요.");
+			return;
+		}
+		if (!validateForm(modalForm)) return;
+
+		setModalSaving(true);
 		try {
-			const pnum = String(member?.PNUM ?? '').trim();
-			if (!pnum || !eadt) {
-				if (reqId === detailReqIdRef.current) setDetailExists(false);
-				return;
-			}
-			const res = await fetch(`/api/f30111?mode=detail&pnum=${encodeURIComponent(pnum)}&eadt=${encodeURIComponent(eadt)}`);
-			const json = await res.json();
-			if (reqId !== detailReqIdRef.current) return;
-
-			const data = json?.data;
-			if (!data) {
-				setDetailExists(false);
-				setMedicationData(JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA)));
-				setConfirmer('');
-				setConfirmerSearchTerm('');
-				setConfirmDate(todayYmd());
-				setNotes('');
-				setEtc('');
-				setIsEditMode(false);
-				return;
-			}
-
-			setDetailExists(true);
-
-			setMedicationData({
-				아침식전: data.times?.아침식전 ?? DEFAULT_MEDICATION_DATA.아침식전,
-				아침식후: data.times?.아침식후 ?? DEFAULT_MEDICATION_DATA.아침식후,
-				점심식전: data.times?.점심식전 ?? DEFAULT_MEDICATION_DATA.점심식전,
-				점심식후: data.times?.점심식후 ?? DEFAULT_MEDICATION_DATA.점심식후,
-				저녁식전: data.times?.저녁식전 ?? DEFAULT_MEDICATION_DATA.저녁식전,
-				저녁식후: data.times?.저녁식후 ?? DEFAULT_MEDICATION_DATA.저녁식후,
-				취침복용: data.times?.취침복용 ?? DEFAULT_MEDICATION_DATA.취침복용
+			const res = await fetch("/api/f30110", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(formPayload(modalForm, selectedMember.PNUM, userEmpnm)),
 			});
-			setConfirmer(String(data.CONF_NAME ?? ''));
-			setConfirmerSearchTerm(String(data.CONF_NAME ?? ''));
-			setConfirmDate(String(data.CONF_DATE ?? todayYmd()));
-			setNotes(String(data.EADES ?? ''));
-			setEtc(String(data.ETC ?? ''));
-			setIsEditMode(false);
-			setOriginalMedicationData(JSON.parse(JSON.stringify({
-				아침식전: data.times?.아침식전 ?? DEFAULT_MEDICATION_DATA.아침식전,
-				아침식후: data.times?.아침식후 ?? DEFAULT_MEDICATION_DATA.아침식후,
-				점심식전: data.times?.점심식전 ?? DEFAULT_MEDICATION_DATA.점심식전,
-				점심식후: data.times?.점심식후 ?? DEFAULT_MEDICATION_DATA.점심식후,
-				저녁식전: data.times?.저녁식전 ?? DEFAULT_MEDICATION_DATA.저녁식전,
-				저녁식후: data.times?.저녁식후 ?? DEFAULT_MEDICATION_DATA.저녁식후,
-				취침복용: data.times?.취침복용 ?? DEFAULT_MEDICATION_DATA.취침복용
-			})));
-			setOriginalConfirmer(String(data.CONF_NAME ?? ''));
-			setOriginalConfirmDate(String(data.CONF_DATE ?? todayYmd()));
-			setOriginalNotes(String(data.EADES ?? ''));
-			setOriginalEtc(String(data.ETC ?? ''));
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`저장 실패: ${json?.error || "알 수 없는 오류"}`);
+				return;
+			}
+			alert("저장되었습니다");
+			setShowAddModal(false);
+			setModalForm(emptyForm());
+			await fetchList(String(selectedMember.PNUM), Number(json?.data?.SEQ));
 		} catch (e) {
-			console.error('복용 상세 조회 오류:', e);
+			console.error(e);
+			alert("저장 중 오류가 발생했습니다.");
 		} finally {
-			if (reqId === detailReqIdRef.current) setDetailLoading(false);
+			setModalSaving(false);
 		}
 	};
 
-	const handleSelectMember = async (m: MemberData) => {
-		const selectReqId = ++selectReqIdRef.current;
-		setSelectedMember(m);
-		setIsEditMode(false);
-		setDetailExists(false);
-		setEadtList([]);
-		setMedicationData(JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA)));
-		setConfirmer('');
-		setConfirmerSearchTerm('');
-		setConfirmDate(todayYmd());
-		setNotes('');
-		setEtc('');
-
-		const { nextEadt } = await refreshEadtList(m, false, undefined, selectReqId);
-		// 같은 수급자 재클릭 시 PNUM/EADT가 같아 effect가 안 돌 수 있으므로 직접 로드
-		if (selectReqId === selectReqIdRef.current) {
-			await loadDetail(m, nextEadt);
+	const handleModify = () => {
+		if (selectedSeq == null) {
+			alert("수정할 항목을 목록에서 선택해주세요.");
+			return;
 		}
+		setEditingBackup(JSON.parse(JSON.stringify(formData)) as MedicationForm);
+		setIsEditMode(true);
 	};
 
 	const handleSave = async () => {
 		if (!selectedMember) {
-			alert('수급자를 선택해주세요.');
+			alert("수급자를 선택해주세요.");
 			return;
 		}
+		if (!validateForm(formData) || formData.SEQ == null) {
+			if (formData.SEQ == null) alert("수정할 항목이 없습니다.");
+			return;
+		}
+
+		setSaving(true);
 		try {
-			const payload = {
-				ANCD: selectedMember.ANCD,
-				PNUM: selectedMember.PNUM,
-				EADT: selectedEadt,
-				EADES: notes,
-				ETC: etc,
-				CONF_DATE: confirmDate,
-				CONF_NAME: confirmer,
-				times: medicationData
-			};
-			const res = await fetch('/api/f30111', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(payload)
+			const res = await fetch("/api/f30110", {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(formPayload(formData, selectedMember.PNUM, userEmpnm)),
 			});
-			const json = await res.json();
-			if (!json?.success) {
-				alert(json?.error || '저장 실패');
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`저장 실패: ${json?.error || "알 수 없는 오류"}`);
 				return;
 			}
-			alert('약물 복용 시간이 저장되었습니다.');
-			setIsEditMode(false);
-			setOriginalMedicationData(JSON.parse(JSON.stringify(medicationData)));
-			setOriginalConfirmer(confirmer);
-			setOriginalConfirmDate(confirmDate);
-			setOriginalNotes(notes);
-			setOriginalEtc(etc);
-			await refreshEadtList(selectedMember, true, selectedEadt);
-			await loadDetail(selectedMember, selectedEadt);
+			alert("저장되었습니다");
+			const keepSeq = formData.SEQ;
+			exitEditMode();
+			await fetchList(String(selectedMember.PNUM), keepSeq);
 		} catch (e) {
-			console.error('저장 오류:', e);
-			alert('저장 중 오류가 발생했습니다.');
+			console.error(e);
+			alert("저장 중 오류가 발생했습니다.");
+		} finally {
+			setSaving(false);
 		}
+	};
+
+	const handleCancelEdit = () => {
+		if (editingBackup) {
+			setFormData(JSON.parse(JSON.stringify(editingBackup)) as MedicationForm);
+			if (editingBackup.SEQ != null) setSelectedSeq(editingBackup.SEQ);
+		} else if (selectedSeq != null) {
+			const row = rows.find((r) => Number(r.SEQ) === Number(selectedSeq));
+			if (row) setFormData(rowToForm(row));
+		}
+		exitEditMode();
 	};
 
 	const handleDelete = async () => {
 		if (!selectedMember) {
-			alert('수급자를 선택해주세요.');
+			alert("수급자를 선택해주세요.");
 			return;
 		}
-		if (confirm('정말 삭제하시겠습니까?')) {
-			try {
-				const pnum = String(selectedMember.PNUM ?? '').trim();
-				const res = await fetch(`/api/f30111?pnum=${encodeURIComponent(pnum)}&eadt=${encodeURIComponent(selectedEadt)}`, {
-					method: 'DELETE'
-				});
-				const json = await res.json();
-				if (!json?.success) {
-					alert(json?.error || '삭제 실패');
-					return;
-				}
-				alert('약물 복용 시간이 삭제되었습니다.');
-				setMedicationData(JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA)));
-				setConfirmer('');
-				setConfirmerSearchTerm('');
-				setConfirmDate(todayYmd());
-				setNotes('');
-				setEtc('');
-				setIsEditMode(false);
-				await refreshEadtList(selectedMember, false);
-			} catch (e) {
-				console.error('삭제 오류:', e);
-				alert('삭제 중 오류가 발생했습니다.');
+		if (selectedSeq == null) {
+			alert("삭제할 항목을 목록에서 선택해주세요.");
+			return;
+		}
+		if (!confirm("정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) return;
+
+		setSaving(true);
+		try {
+			const res = await fetch(
+				`/api/f30110?pnum=${encodeURIComponent(String(selectedMember.PNUM))}&seq=${encodeURIComponent(String(selectedSeq))}`,
+				{ method: "DELETE" }
+			);
+			const json = await res.json().catch(() => ({}));
+			if (!res.ok || !json?.success) {
+				alert(`삭제 실패: ${json?.error || "알 수 없는 오류"}`);
+				return;
 			}
+			alert("삭제되었습니다.");
+			exitEditMode();
+			await fetchList(String(selectedMember.PNUM));
+		} catch (err) {
+			console.error(err);
+			alert("삭제 중 오류가 발생했습니다.");
+		} finally {
+			setSaving(false);
 		}
 	};
 
-	// 외부 클릭 시 드롭다운 닫기
-	useEffect(() => {
-		const handleClickOutside = (event: MouseEvent) => {
-			const target = event.target as HTMLElement;
-			if (!target.closest('.helper-dropdown-container') && !target.closest('.confirmer-dropdown-container')) {
-				setShowHelperDropdowns({});
-				setActiveHelperType(null);
-				setShowConfirmerDropdown(false);
-			}
-		};
-
-		if (Object.values(showHelperDropdowns).some(show => show) || showConfirmerDropdown) {
-			document.addEventListener('mousedown', handleClickOutside);
-			return () => document.removeEventListener('mousedown', handleClickOutside);
-		}
-	}, [showHelperDropdowns, showConfirmerDropdown]);
-
-	// 복용 확인자 검색 debounce
-	useEffect(() => {
-		const timer = setTimeout(() => {
-			if (confirmerSearchTerm && confirmerSearchTerm.trim() !== '') {
-				searchConfirmer(confirmerSearchTerm);
-			}
-		}, 300);
-
-		return () => clearTimeout(timer);
-	}, [confirmerSearchTerm]);
-
-	// 복용일자(date input) 변경 시에만 상세 재조회. 수급자 선택은 handleSelectMember에서 처리.
-	useEffect(() => {
-		if (!selectedMember || !selectedEadt) return;
-		loadDetail(selectedMember, selectedEadt);
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [selectedEadt]);
-
-	useTabRefresh(() => {
-		if (!selectedMember) return;
-		void (async () => {
-			const { nextEadt } = await refreshEadtList(selectedMember, true, selectedEadt);
-			void loadDetail(selectedMember, nextEadt);
-		})();
-	});
-
-	const showEmptyMedicationData =
-		!eadtLoading && !detailLoading && !isEditMode && (eadtList.length === 0 || !detailExists);
+	const totalListPages = Math.max(1, Math.ceil(rows.length / LIST_ITEMS_PER_PAGE));
+	const safeListPage = Math.min(listPage, totalListPages);
+	const pageStart = (safeListPage - 1) * LIST_ITEMS_PER_PAGE;
+	const currentRows = rows.slice(pageStart, pageStart + LIST_ITEMS_PER_PAGE);
 
 	return (
-		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden text-black bg-white">
-			<div className="mx-auto w-full max-w-[1400px] min-w-0 p-3 sm:p-4">
-				<div className="flex flex-col lg:flex-row gap-4">
-					{/* 좌측: 수급자 목록 */}
-					<aside className="w-full max-w-full lg:w-[380px] min-w-0 shrink-0">
-						<MemberListPanel onSelectMember={(m) => { void handleSelectMember(m); }} />
-					</aside>
+		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
+			<div className="flex flex-col xl:flex-row xl:h-[calc(100vh-56px)] min-h-0">
+				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 p-4 bg-white border-r border-blue-200 border-b xl:border-b-0 xl:h-full xl:min-h-0 xl:overflow-hidden">
+					<MemberListPanel
+						title="수급자 목록"
+						className="w-full"
+						onSelectMember={(m) => handleSelectMember(m as MemberData)}
+					/>
+				</div>
 
-					{/* 우측: 약물 복용 시간 입력 */}
-					<section className="flex-1">
-						{!selectedMember ? (
-							<div className="p-6 text-sm text-blue-900/70 bg-white border border-blue-300 rounded-lg">
-								좌측에서 수급자를 선택하면, 우측에 복용일자 목록과 복용시간 상세가 표시됩니다.
+				<div className="flex flex-col xl:flex-row flex-1 min-w-0 min-h-0 bg-white">
+					<div className="flex flex-col w-full xl:w-[420px] xl:max-w-[45%] shrink-0 min-w-0 border-r border-blue-200 px-4 py-3 bg-blue-50 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
+						<div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+							<label className="text-sm font-medium text-blue-900">복용약물 목록</label>
+							<button type="button" onClick={openAddModal} className={btnPrimaryCls}>
+								생성
+							</button>
+						</div>
+						<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden bg-white border border-blue-200 rounded">
+							<div className="flex-1 overflow-auto">
+								<table className="w-full text-sm">
+									<thead className="sticky top-0 bg-blue-100 border-b border-blue-200">
+										<tr>
+											<th className="px-3 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
+												복용약물명
+											</th>
+											<th className="w-28 px-2 py-2 font-semibold text-left text-blue-900 border-r border-blue-200">
+												조사일자
+											</th>
+											<th className="w-28 px-2 py-2 font-semibold text-left text-blue-900">
+												종료일자
+											</th>
+										</tr>
+									</thead>
+									<tbody>
+										{loading ? (
+											<tr>
+												<td colSpan={3} className="px-3 py-6 text-center text-blue-900/60">
+													로딩 중...
+												</td>
+											</tr>
+										) : rows.length === 0 ? (
+											<tr>
+												<td colSpan={3} className="px-3 py-6 text-center text-blue-900/60">
+													{selectedMember ? "등록된 복용약물이 없습니다" : "수급자를 선택해주세요"}
+												</td>
+											</tr>
+										) : (
+											currentRows.map((row, localIndex) => (
+												<tr
+													key={row.SEQ}
+													onClick={() => handleSelectRow(row)}
+													className={`border-b border-blue-100 cursor-pointer hover:bg-blue-50 ${
+														selectedSeq === Number(row.SEQ) ? "bg-blue-200 font-semibold" : ""
+													}`}
+												>
+													<td className="px-3 py-2 border-r border-blue-100 break-words">
+														{pageStart + localIndex + 1}. {row.MENM || "-"}
+													</td>
+													<td className="px-2 py-2 whitespace-nowrap border-r border-blue-100">
+														{formatDateDisplay(row.RSDT) || "-"}
+													</td>
+													<td className="px-2 py-2 whitespace-nowrap">
+														{formatDateDisplay(row.EDT) || ""}
+													</td>
+												</tr>
+											))
+										)}
+									</tbody>
+								</table>
 							</div>
-						) : (
-							<div className="bg-white border border-blue-300 rounded-lg shadow-sm">
-								{/* 상단: 수급자/복용일자/버튼 */}
-								<div className="px-4 py-3 bg-blue-100 border-b border-blue-200">
-									<div className="flex flex-wrap items-center justify-between gap-3">
-										<div className="flex flex-wrap items-center gap-3">
-											<div className="flex items-center gap-2">
-												<div className="px-2 py-1 text-sm font-semibold text-blue-900 bg-blue-200 border border-blue-300 rounded">
-													수급자
-												</div>
-												<div className="px-3 py-1 text-sm bg-white border border-blue-300 rounded min-w-[140px]">
-													{selectedMember.P_NM || selectedMember.PNUM}
-												</div>
-											</div>
-											<div className="flex items-center gap-2">
-												<div className="px-2 py-1 text-sm font-semibold text-blue-900 bg-blue-200 border border-blue-300 rounded">
-													복용일자
-												</div>
-												<input
-													type="date"
-													value={selectedEadt}
-													onChange={(e) => setSelectedEadt(e.target.value)}
-													className="px-2 py-1 text-sm bg-white border border-blue-300 rounded"
-													disabled={!isEditMode && detailLoading}
-												/>
-											</div>
-										</div>
-
-										<div className="flex flex-wrap gap-2">
-											<button
-												type="button"
-												onClick={() => {
-													setSelectedEadt(todayYmd());
-													setMedicationData(JSON.parse(JSON.stringify(DEFAULT_MEDICATION_DATA)));
-													setConfirmer('');
-													setConfirmerSearchTerm('');
-													setConfirmDate(todayYmd());
-													setNotes('');
-													setEtc('');
-													setIsEditMode(true);
-												}}
-												className="px-3 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50"
-											>
-												추가
-											</button>
-											{isEditMode ? (
-												<>
+							{rows.length > LIST_ITEMS_PER_PAGE && (
+								<div className="p-2 border-t border-blue-100">
+									<div className="flex items-center justify-center gap-1">
+										<button
+											type="button"
+											onClick={() => setListPage(1)}
+											disabled={safeListPage === 1}
+											className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+										>
+											&lt;&lt;
+										</button>
+										<button
+											type="button"
+											onClick={() => setListPage((prev) => Math.max(1, prev - 1))}
+											disabled={safeListPage === 1}
+											className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+										>
+											&lt;
+										</button>
+										{(() => {
+											const pagesToShow = Math.min(5, totalListPages);
+											const startPage = Math.max(1, Math.min(totalListPages - 4, safeListPage - 2));
+											return Array.from({ length: pagesToShow }, (_, i) => {
+												const pageNum = startPage + i;
+												if (pageNum > totalListPages) return null;
+												return (
 													<button
+														key={pageNum}
 														type="button"
-														onClick={handleCancel}
-														className="px-3 py-2 text-sm font-medium text-gray-900 bg-gray-200 border border-gray-400 rounded hover:bg-gray-300"
+														onClick={() => setListPage(pageNum)}
+														className={`px-2 py-1 text-xs border rounded ${
+															safeListPage === pageNum
+																? "bg-blue-500 text-white border-blue-500"
+																: "border-blue-300 hover:bg-blue-50"
+														}`}
 													>
-														취소
+														{pageNum}
 													</button>
-													<button
-														type="button"
-														onClick={handleDelete}
-														className="px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-700 rounded hover:bg-red-700"
-													>
-														삭제
-													</button>
-													<button
-														type="button"
-														onClick={handleSave}
-														className="px-3 py-2 text-sm font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700"
-													>
-														저장
-													</button>
-												</>
-											) : (
-												<>
-													<button
-														type="button"
-														onClick={handleEdit}
-														className="px-3 py-2 text-sm font-medium text-white bg-blue-600 border border-blue-700 rounded hover:bg-blue-700"
-													>
-														수정
-													</button>
-													<button
-														type="button"
-														onClick={handleDelete}
-														className="px-3 py-2 text-sm font-medium text-white bg-red-600 border border-red-700 rounded hover:bg-red-700"
-													>
-														삭제
-													</button>
-													<button
-														type="button"
-														onClick={() => {
-															if (!selectedMember) return;
-															const ym = ymdToYm(selectedEadt) || ymdToYm(todayYmd());
-															const pnum = String(selectedMember?.PNUM ?? '').trim();
-															const w = openPrintWindowNow('약물관리기록지(개별)');
-															if (!w) {
-																alert('팝업 차단을 해제해주세요.');
-																return;
-															}
-															(async () => {
-																const res = await fetch(
-																	`/api/medication-print/individual?pnum=${encodeURIComponent(pnum)}&month=${encodeURIComponent(ym)}`
-																);
-																const json = await res.json();
-																if (!json?.success) {
-																	w.close();
-																	alert(json?.error || '출력 데이터 조회 실패');
-																	return;
-																}
-																writeAndPrint(w, '약물관리기록지(개별)', buildIndividualPrintHtml(json.data));
-															})().catch((e) => {
-																console.error(e);
-																try { w.close(); } catch {}
-																alert('출력 중 오류가 발생했습니다.');
-															});
-														}}
-														className="px-3 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50"
-													>
-														개별복용출력
-													</button>
-													<button
-														type="button"
-														onClick={() => {
-															const ym = ymdToYm(selectedEadt) || ymdToYm(todayYmd());
-															const w = openPrintWindowNow('약물관리기록지(전체)');
-															if (!w) {
-																alert('팝업 차단을 해제해주세요.');
-																return;
-															}
-															(async () => {
-																const res = await fetch(`/api/medication-print/monthly?month=${encodeURIComponent(ym)}`);
-																const json = await res.json();
-																if (!json?.success) {
-																	w.close();
-																	alert(json?.error || '출력 데이터 조회 실패');
-																	return;
-																}
-																writeAndPrint(w, '약물관리기록지(전체)', buildMonthlyPrintHtml(json.data));
-															})().catch((e) => {
-																console.error(e);
-																try { w.close(); } catch {}
-																alert('출력 중 오류가 발생했습니다.');
-															});
-														}}
-														className="px-3 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50"
-													>
-														전체복용출력
-													</button>
-													<button
-														type="button"
-														onClick={() => {
-															if (!selectedMember) return;
-															const ym = ymdToYm(selectedEadt) || ymdToYm(todayYmd());
-															const pnum = String(selectedMember?.PNUM ?? '').trim();
-															const w = openPrintWindowNow('질병 및 복용약물');
-															if (!w) {
-																alert('팝업 차단을 해제해주세요.');
-																return;
-															}
-															(async () => {
-																const res = await fetch(
-																	`/api/medication-print/drugs?pnum=${encodeURIComponent(pnum)}&month=${encodeURIComponent(ym)}`
-																);
-																const json = await res.json();
-																if (!json?.success) {
-																	w.close();
-																	alert(json?.error || '출력 데이터 조회 실패');
-																	return;
-																}
-																writeAndPrint(w, '질병 및 복용약물', buildDrugsPrintHtml(json.data));
-															})().catch((e) => {
-																console.error(e);
-																try { w.close(); } catch {}
-																alert('출력 중 오류가 발생했습니다.');
-															});
-														}}
-														className="px-3 py-2 text-sm font-medium text-blue-900 bg-white border border-blue-400 rounded hover:bg-blue-50"
-													>
-														복용약물출력
-													</button>
-												</>
-											)}
-										</div>
+												);
+											});
+										})()}
+										<button
+											type="button"
+											onClick={() => setListPage((prev) => Math.min(totalListPages, prev + 1))}
+											disabled={safeListPage >= totalListPages}
+											className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+										>
+											&gt;
+										</button>
+										<button
+											type="button"
+											onClick={() => setListPage(totalListPages)}
+											disabled={safeListPage >= totalListPages}
+											className="px-2 py-1 text-xs border border-blue-300 rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-50"
+										>
+											&gt;&gt;
+										</button>
 									</div>
 								</div>
+							)}
+						</div>
+					</div>
 
-								<div className="flex flex-col md:flex-row gap-4 p-4">
-									{showEmptyMedicationData ? (
-										<div className="flex-1 px-3 py-6 text-sm text-blue-900/60">데이터가 없습니다</div>
-									) : (
-										<>
-									{/* 좌: 복용일자 목록 */}
-									<aside className="w-full max-w-full md:w-[220px] min-w-0 shrink-0">
-										<div className="overflow-hidden bg-white border border-blue-300 rounded">
-											<div className="px-3 py-2 text-sm font-semibold text-blue-900 bg-blue-50 border-b border-blue-200">
-												복용일자
-											</div>
-											<div className="max-h-[520px] overflow-auto">
-												{eadtLoading ? (
-													<div className="px-3 py-3 text-sm text-blue-900/60">조회 중...</div>
-												) : eadtList.length === 0 ? (
-													<div className="px-3 py-3 text-sm text-blue-900/60">데이터가 없습니다</div>
-												) : (
-													<ul className="divide-y divide-blue-50">
-														{eadtList.map((d) => (
-															<li key={d}>
-																<button
-																	type="button"
-																	onClick={() => setSelectedEadt(d)}
-																	className={`w-full px-3 py-2 text-left text-sm hover:bg-blue-50 ${
-																		selectedEadt === d ? 'bg-blue-100 text-blue-900 font-semibold' : 'text-blue-900'
-																	}`}
-																>
-																	{d}
-																</button>
-															</li>
-														))}
-													</ul>
-												)}
-											</div>
-										</div>
-									</aside>
+					{selectedMember && (
+						<div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-4">
+							<MedicationFields
+								form={formData}
+								onChange={handleFieldChange}
+								disabled={!isEditMode}
+								idPrefix="detail"
+								beneficiaryName={selectedMember.P_NM || ""}
+							/>
 
-									{/* 우: 상세 */}
-									<section className="flex-1">
-										<div className="bg-white border border-blue-300 rounded-lg">
-											<div className="px-4 py-3 bg-blue-50 border-b border-blue-200">
-												<div className="grid grid-cols-12 gap-2">
-													<div className="col-span-2 px-2 py-1 text-sm font-semibold text-center text-blue-900 bg-blue-200 border border-blue-300 rounded whitespace-nowrap">
-														구분
-													</div>
-													<div className="col-span-5 px-2 py-1 text-sm font-semibold text-center text-blue-900 bg-blue-200 border border-blue-300 rounded whitespace-nowrap">
-														복용상태
-													</div>
-													<div className="col-span-2 px-2 py-1 text-sm font-semibold text-center text-blue-900 bg-blue-200 border border-blue-300 rounded whitespace-nowrap">
-														복용시간
-													</div>
-													<div className="col-span-3 px-2 py-1 text-sm font-semibold text-center text-blue-900 bg-blue-200 border border-blue-300 rounded whitespace-nowrap">
-														복용도우미
-													</div>
-												</div>
-											</div>
-
-											<div className="p-4 space-y-3">
-												{detailLoading && (
-													<div className="text-sm text-blue-900/60">상세 조회 중...</div>
-												)}
-
-												{/* 약물 복용 시간 행들 */}
-												{medicationTypes.map((type) => (
-													<div key={type} className="grid grid-cols-12 gap-2 items-center">
-														<div className="col-span-2">
-															<label className="inline-block px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
-																{type}
-															</label>
-														</div>
-														<div className="col-span-5">
-															<div className="flex items-center flex-nowrap gap-2">
-																{(['약없음', '복용', '미복용'] as const).map((status) => {
-																	const isChecked = medicationData[type].status === status;
-																	return (
-																		<label
-																			key={status}
-																			className={`flex items-center gap-1 shrink-0 ${isEditMode ? 'cursor-pointer' : 'cursor-default pointer-events-none'}`}
-																		>
-																			<input
-																				type="radio"
-																				name={type}
-																				value={status}
-																				checked={isChecked}
-																				onChange={() => (isEditMode ? handleMedicationStatusChange(type, status) : undefined)}
-																				className="w-4 h-4 border border-blue-300 shrink-0 accent-blue-700"
-																				tabIndex={isEditMode ? 0 : -1}
-																			/>
-																			<span
-																				className={`text-sm whitespace-nowrap ${
-																					!isEditMode && isChecked ? 'font-semibold text-blue-800' : 'text-blue-900'
-																				}`}
-																			>
-																				{status}
-																			</span>
-																		</label>
-																	);
-																})}
-																{medicationData[type].rawStatus && medicationData[type].status === '' && (
-																	<span className="text-xs text-orange-700 whitespace-nowrap shrink-0">
-																		(값{medicationData[type].rawStatus}으로 선택없음)
-																	</span>
-																)}
-															</div>
-														</div>
-
-														<div className="col-span-2">
-															<input
-																type="time"
-																value={medicationData[type].time}
-																onChange={(e) => (isEditMode ? handleMedicationTimeChange(type, e.target.value) : undefined)}
-																className="w-full max-w-[7rem] px-2 py-1 text-sm bg-white border border-blue-300 rounded disabled:bg-blue-50"
-																disabled={!isEditMode}
-															/>
-														</div>
-
-														<div className="col-span-3 relative min-w-0 helper-dropdown-container">
-															<input
-																type="text"
-																value={helperSearchTerms[type] || medicationData[type].helper}
-																onChange={(e) => (isEditMode ? handleMedicationHelperChange(type, e.target.value) : undefined)}
-																onFocus={() => {
-																	if (!isEditMode) return;
-																	setActiveHelperType(type);
-																	if (medicationData[type].helper) {
-																		searchHelpers(type, medicationData[type].helper);
-																	}
-																}}
-																className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded disabled:bg-blue-50"
-																placeholder="복용도우미 검색"
-																disabled={!isEditMode}
-															/>
-															{isEditMode && showHelperDropdowns[type] && helperSuggestions[type] && helperSuggestions[type].length > 0 && (
-																<div className="absolute z-10 w-full mt-1 bg-white border border-blue-300 rounded shadow-lg max-h-40 overflow-y-auto">
-																	{helperSuggestions[type].map((helper, index) => (
-																		<div
-																			key={`${helper.EMPNO}-${index}`}
-																			onClick={() => handleSelectHelper(type, helper)}
-																			className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-blue-100 last:border-b-0"
-																		>
-																			{helper.EMPNM}
-																		</div>
-																	))}
-																</div>
-															)}
-														</div>
-													</div>
-												))}
-
-												{/* 복용상태(메모) */}
-												<div className="grid grid-cols-12 gap-2 items-start pt-2">
-													<div className="col-span-2">
-														<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
-															복용상태
-														</label>
-													</div>
-													<div className="col-span-10">
-														<textarea
-															value={notes}
-															onChange={(e) => setNotes(e.target.value)}
-															className="w-full min-h-[64px] px-2 py-1 text-sm bg-white border border-blue-300 rounded disabled:bg-blue-50"
-															disabled={!isEditMode}
-														/>
-													</div>
-												</div>
-
-												{/* 확인자/확인일자 */}
-												<div className="grid grid-cols-12 gap-2 items-center pt-2">
-													<div className="col-span-2">
-														<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
-															복용확인자
-														</label>
-													</div>
-													<div className="col-span-4 relative confirmer-dropdown-container">
-														<input
-															type="text"
-															value={confirmerSearchTerm || confirmer}
-															onChange={(e) => {
-																if (!isEditMode) return;
-																const value = e.target.value;
-																setConfirmer(value);
-																setConfirmerSearchTerm(value);
-																if (value) {
-																	searchConfirmer(value);
-																} else {
-																	setConfirmerSuggestions([]);
-																	setShowConfirmerDropdown(false);
-																}
-															}}
-															onFocus={() => {
-																if (!isEditMode) return;
-																if (confirmer) {
-																	searchConfirmer(confirmer);
-																}
-															}}
-															className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded disabled:bg-blue-50"
-															placeholder="복용 확인자 검색"
-															disabled={!isEditMode}
-														/>
-														{isEditMode && showConfirmerDropdown && confirmerSuggestions.length > 0 && (
-															<div className="absolute z-10 w-full mt-1 bg-white border border-blue-300 rounded shadow-lg max-h-40 overflow-y-auto">
-																{confirmerSuggestions.map((confirmerItem, index) => (
-																	<div
-																		key={`${confirmerItem.EMPNO}-${index}`}
-																		onClick={() => handleSelectConfirmer(confirmerItem)}
-																		className="px-3 py-2 text-sm cursor-pointer hover:bg-blue-50 border-b border-blue-100 last:border-b-0"
-																	>
-																		{confirmerItem.EMPNM}
-																	</div>
-																))}
-															</div>
-														)}
-													</div>
-													<div className="col-span-2 flex justify-end">
-														<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
-															복용확인일자
-														</label>
-													</div>
-													<div className="col-span-4">
-														<input
-															type="date"
-															value={confirmDate}
-															onChange={(e) => (isEditMode ? setConfirmDate(e.target.value) : undefined)}
-															className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded disabled:bg-blue-50"
-															disabled={!isEditMode}
-														/>
-													</div>
-												</div>
-
-												<div className="grid grid-cols-12 gap-2 items-center pt-2">
-													<div className="col-span-2">
-														<label className="px-2 py-1 text-sm text-blue-900 bg-blue-100 border border-blue-300 rounded whitespace-nowrap">
-															비고
-														</label>
-													</div>
-													<div className="col-span-10">
-														<input
-															type="text"
-															value={etc}
-															onChange={(e) => setEtc(e.target.value)}
-															className="w-full px-2 py-1 text-sm bg-white border border-blue-300 rounded disabled:bg-blue-50"
-															disabled={!isEditMode}
-														/>
-													</div>
-												</div>
-											</div>
-										</div>
-									</section>
-										</>
-									)}
-								</div>
+							<div className="flex justify-end gap-2 mt-4">
+								{!isEditMode ? (
+									<>
+										<button
+											type="button"
+											onClick={handleModify}
+											disabled={selectedSeq == null || saving}
+											className={btnEditCls}
+										>
+											수정
+										</button>
+										<button
+											type="button"
+											onClick={handleDelete}
+											disabled={selectedSeq == null || saving}
+											className={btnDeleteCls}
+										>
+											삭제
+										</button>
+									</>
+								) : (
+									<>
+										<button
+											type="button"
+											onClick={handleCancelEdit}
+											disabled={saving}
+											className={btnCancelCls}
+										>
+											취소
+										</button>
+										<button
+											type="button"
+											onClick={handleSave}
+											disabled={saving}
+											className={btnSaveCls}
+										>
+											{saving ? "저장중" : "저장"}
+										</button>
+									</>
+								)}
 							</div>
-						)}
-					</section>
+						</div>
+					)}
 				</div>
 			</div>
+
+			{showAddModal && selectedMember && (
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+					<div
+						className="w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 bg-white border border-blue-300 rounded-lg shadow-xl"
+						role="dialog"
+						aria-modal="true"
+						aria-labelledby="medication-create-title"
+					>
+						<div className="flex items-center justify-between mb-4">
+							<h3 id="medication-create-title" className="text-lg font-semibold text-blue-900">
+								복용약물 신규 등록
+							</h3>
+							<button
+								type="button"
+								onClick={closeAddModal}
+								disabled={modalSaving}
+								className="px-2 py-1 text-sm text-blue-900 hover:bg-blue-50 rounded disabled:opacity-50"
+							>
+								닫기
+							</button>
+						</div>
+						<MedicationFields
+							form={modalForm}
+							onChange={(key, value) => setModalForm((prev) => ({ ...prev, [key]: value }))}
+							disabled={false}
+							idPrefix="modal"
+							beneficiaryName={selectedMember.P_NM || ""}
+						/>
+						<div className="flex justify-end gap-2 mt-4">
+							<button type="button" onClick={closeAddModal} disabled={modalSaving} className={btnCancelCls}>
+								취소
+							</button>
+							<button type="button" onClick={handleModalSave} disabled={modalSaving} className={btnSaveCls}>
+								{modalSaving ? "저장중" : "저장"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }
-
