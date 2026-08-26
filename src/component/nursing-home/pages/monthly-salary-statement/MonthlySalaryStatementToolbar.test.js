@@ -99,6 +99,9 @@ function baseProps(overrides = {}) {
 		onRecipientFilterChange: () => {},
 		onOpenIssueDateModal: () => {},
 		onDocumentKindClick: () => {},
+		onExcelDownload: () => {},
+		mealTotal: 0,
+		otherTotal: 0,
 		...overrides,
 	};
 }
@@ -120,6 +123,9 @@ describe('MonthlySalaryStatementToolbar — presentational', () => {
 		assert.match(html, /발행일자전체변경/);
 		assert.match(html, /type="month"/);
 		assert.match(html, /value="2024-06"/);
+		assert.match(html, /식대합계/);
+		assert.match(html, /기타합계/);
+		assert.match(html, /엑셀 다운로드/);
 	});
 
 	it('occurrence 탭이면 tabTitle만 표시', () => {
@@ -149,6 +155,21 @@ describe('MonthlySalaryStatementToolbar — presentational', () => {
 		assert.match(html, /조회 실패 테스트/);
 	});
 
+	it('식대합계·기타합계 표시', () => {
+		const html = renderToStaticMarkup(
+			React.createElement(
+				Toolbar,
+				baseProps({ mealTotal: 1200, otherTotal: 100 })
+			)
+		);
+		assert.match(html, /식대합계/);
+		assert.match(html, /기타합계/);
+		assert.match(html, /1,200원/);
+		assert.match(html, /100원/);
+		assert.match(html, /비급여식대\+비급여간식/);
+		assert.match(html, /비급여 의료비\+촉탁의료비\+처방비\+기타비용/);
+	});
+
 	it('탭 라벨 렌더', () => {
 		const html = renderToStaticMarkup(React.createElement(Toolbar, baseProps()));
 		for (const t of TABS) assert.match(html, new RegExp(t.label));
@@ -174,6 +195,10 @@ describe('MonthlySalaryStatementToolbar — presentational', () => {
 		assert.match(parent, /handleDocumentKindClickSafe/);
 		assert.match(parent, /tabs=\{TABS\}/);
 		assert.match(parent, /checkedCount=\{checkedPnums\.size\}/);
+		assert.match(parent, /mealTotal=\{mealTotal\}/);
+		assert.match(parent, /otherTotal=\{otherTotal\}/);
+		assert.match(parent, /onExcelDownload=\{handleExcelDownload\}/);
+		assert.match(parent, /facilityName,/);
 		assert.match(hook, /const handlePayYearMonthChange =/);
 		assert.match(hook, /const handleDocumentKindClickSafe =/);
 	});

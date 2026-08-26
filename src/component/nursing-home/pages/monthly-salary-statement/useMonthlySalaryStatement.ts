@@ -647,5 +647,6 @@ export function useMonthlySalaryStatement() {
 		handleEnterEdit,
 		handleDelete,
 		handleSaveFacilityIssueDate,
+		facilityName,
 	};
 }

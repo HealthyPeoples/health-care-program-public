@@ -25,10 +25,14 @@ export type MonthlySalaryStatementToolbarProps = {
 	facilityIssueDate: string;
 	searchError: string | null;
 	tabs: readonly MonthlySalaryStatementToolbarTab[];
+	mealTotal: number;
+	otherTotal: number;
+	excelDisabled?: boolean;
 	onPayYearMonthChange: (value: string) => void;
 	onRecipientFilterChange: (value: string) => void;
 	onOpenIssueDateModal: () => void;
 	onDocumentKindClick: (id: string) => void;
+	onExcelDownload: () => void;
 };
 
 export default function MonthlySalaryStatementToolbar({
@@ -40,10 +44,14 @@ export default function MonthlySalaryStatementToolbar({
 	facilityIssueDate,
 	searchError,
 	tabs,
+	mealTotal,
+	otherTotal,
+	excelDisabled = false,
 	onPayYearMonthChange,
 	onRecipientFilterChange,
 	onOpenIssueDateModal,
 	onDocumentKindClick,
+	onExcelDownload,
 }: MonthlySalaryStatementToolbarProps) {
 	return (
 		<div className="border-b border-blue-200 bg-blue-50/50 p-4">
@@ -70,6 +78,46 @@ export default function MonthlySalaryStatementToolbar({
 					onRecipientFilterChange={onRecipientFilterChange}
 					onOpenIssueDateModal={onOpenIssueDateModal}
 				/>
+				<div className="ml-auto flex flex-wrap items-center gap-2">
+					<div
+						className="group relative cursor-help rounded border border-blue-300 bg-white px-3 py-1.5"
+						aria-label="식대합계: 비급여식대+비급여간식"
+					>
+						<div className="text-[11px] font-medium text-blue-900/80">식대합계</div>
+						<div className="text-sm font-semibold tabular-nums text-blue-900">
+							{Math.round(mealTotal).toLocaleString("ko-KR")}원
+						</div>
+						<div
+							role="tooltip"
+							className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 hidden w-max -translate-x-1/2 rounded border border-blue-300 bg-blue-900 px-2 py-1 text-[11px] font-medium text-white shadow group-hover:block"
+						>
+							비급여식대+비급여간식
+						</div>
+					</div>
+					<div
+						className="group relative cursor-help rounded border border-blue-300 bg-white px-3 py-1.5"
+						aria-label="기타합계: 비급여 의료비+촉탁의료비+처방비+기타비용"
+					>
+						<div className="text-[11px] font-medium text-blue-900/80">기타합계</div>
+						<div className="text-sm font-semibold tabular-nums text-blue-900">
+							{Math.round(otherTotal).toLocaleString("ko-KR")}원
+						</div>
+						<div
+							role="tooltip"
+							className="pointer-events-none absolute left-1/2 top-full z-20 mt-1 hidden w-max -translate-x-1/2 rounded border border-blue-300 bg-blue-900 px-2 py-1 text-[11px] font-medium text-white shadow group-hover:block"
+						>
+							비급여 의료비+촉탁의료비+처방비+기타비용
+						</div>
+					</div>
+					<button
+						type="button"
+						onClick={onExcelDownload}
+						disabled={excelDisabled}
+						className="rounded border border-emerald-500 bg-emerald-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+					>
+						엑셀 다운로드
+					</button>
+				</div>
 			</div>
 			{searchError && (
 				<div className="mb-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">

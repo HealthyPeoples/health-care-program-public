@@ -17,6 +17,8 @@ import {
 	useMonthlySalaryStatement,
 	type StatementRow,
 } from "./useMonthlySalaryStatement";
+import { downloadMonthlySalaryExcel } from "./monthlySalaryStatementExcel";
+import { sumMealTotal, sumOtherTotal } from "./MonthlySalaryStatementUtils";
 
 export default function MonthlySalaryStatement() {
 	const {
@@ -55,7 +57,29 @@ export default function MonthlySalaryStatement() {
 		handleEnterEdit,
 		handleDelete,
 		handleSaveFacilityIssueDate,
+		facilityName,
 	} = useMonthlySalaryStatement();
+
+	const mealTotal = sumMealTotal(filteredRows);
+	const otherTotal = sumOtherTotal(filteredRows);
+
+	const handleExcelDownload = () => {
+		const exportRows =
+			checkedPnums.size > 0
+				? filteredRows.filter((r) => checkedPnums.has(r.pnum))
+				: filteredRows;
+		if (exportRows.length === 0) {
+			alert("내려받을 데이터가 없습니다.");
+			return;
+		}
+		void downloadMonthlySalaryExcel({
+			rows: exportRows,
+			isOccurrenceView,
+			payYearMonth,
+			fileTitle: tabTitle,
+			facilityName,
+		});
+	};
 
 	return (
 		<div className="flex min-h-screen w-full max-w-full min-w-0 overflow-x-hidden flex-col bg-white text-black">
@@ -70,12 +94,16 @@ export default function MonthlySalaryStatement() {
 					facilityIssueDate={facilityIssueDate}
 					searchError={searchError}
 					tabs={TABS}
+					mealTotal={mealTotal}
+					otherTotal={otherTotal}
+					excelDisabled={loading || filteredRows.length === 0}
 					onPayYearMonthChange={handlePayYearMonthChange}
 					onRecipientFilterChange={handleRecipientFilterChange}
 					onOpenIssueDateModal={openIssueDateModal}
 					onDocumentKindClick={(id) =>
 						handleDocumentKindClickSafe(id as (typeof TABS)[number]["id"])
 					}
+					onExcelDownload={handleExcelDownload}
 				/>
 
 				{/* 중앙: 데이터 테이블 */}
