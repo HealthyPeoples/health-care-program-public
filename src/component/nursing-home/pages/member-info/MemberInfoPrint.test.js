@@ -101,7 +101,9 @@ describe('MemberInfoPrint — HTML builders', () => {
 
 	it('buildV10010AListPrintHtml — 헤더·행·합계', () => {
 		const html = P.buildV10010AListPrintHtml([SAMPLE_ROW], '우리요양원');
-		assert.match(html, /<title>수급자 전체 목록<\/title>/);
+		assert.match(html, /<title><\/title>/);
+		assert.match(html, /cover-top/);
+		assert.match(html, /수급자 전체 목록/);
 		assert.match(html, /기관: 우리요양원/);
 		assert.match(html, /인원: 1명/);
 		assert.match(html, /홍길동/);

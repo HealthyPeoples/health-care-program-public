@@ -55,20 +55,34 @@ export function buildV10010AListPrintHtml(rows: V10010APrintRow[], institutionNa
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>수급자 전체 목록</title>
+<title></title>
 <style>
-@page { size: A4 landscape; margin: 10mm 8mm 12mm 8mm; }
+@page { size: A4 landscape; margin: 0 8mm 12mm 8mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 9pt; color: #000; background: #fff; }
-.head { text-align: center; margin-bottom: 8px; page-break-after: avoid; }
+.cover-top {
+	position: fixed; left: -8mm; right: -8mm; top: 0; height: 8mm;
+	background: #fff; z-index: 99999;
+	-webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.head {
+	text-align: center;
+	padding-top: 10mm;
+	padding-bottom: 10mm;
+	page-break-after: avoid;
+}
 .title { font-size: 16pt; font-weight: 700; letter-spacing: 0.02em; }
-.meta { margin-top: 4px; font-size: 9.5pt; display: flex; justify-content: space-between; gap: 12px; }
-.tbl { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #000; }
+.meta { margin-top: 4px; margin-bottom: 8px; font-size: 9.5pt; display: flex; justify-content: space-between; gap: 12px; }
+.tbl { width: 100%; border-collapse: collapse; table-layout: fixed; border: 1px solid #000; margin-top: -10mm; }
 .tbl thead { display: table-header-group; }
 .tbl tr { page-break-inside: avoid; break-inside: avoid; }
 .tbl th, .tbl td { border: 1px solid #000; padding: 3px 2px; vertical-align: middle; word-break: break-word; }
 .tbl th { background: #e8e8e8; font-weight: 700; text-align: center; font-size: 8.5pt; }
 .tbl td.c { text-align: center; }
+.tbl thead tr.gap td {
+	height: 10mm; border: none; padding: 0; background: #fff;
+	-webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
 .foot { margin-top: 8px; display: flex; justify-content: space-between; font-size: 9pt; }
 @media print {
 	body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -76,6 +90,7 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 9pt
 </style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="head">
 		<div class="title">수급자 전체 목록</div>
 		<div class="meta">
@@ -86,6 +101,7 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 9pt
 	</div>
 	<table class="tbl">
 		<thead>
+			<tr class="gap"><td colspan="12"></td></tr>
 			<tr>
 				<th style="width:4%">No</th>
 				<th style="width:8%">성명</th>
@@ -487,6 +503,7 @@ export function openPrintPreviewWindow(html: string): boolean {
 	w.document.open();
 	w.document.write(html);
 	w.document.close();
+	w.document.title = "";
 
 	setTimeout(() => {
 		try {
