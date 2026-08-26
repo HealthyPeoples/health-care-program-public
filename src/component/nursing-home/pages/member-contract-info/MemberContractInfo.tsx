@@ -277,15 +277,21 @@ function buildContractPrintHtml(
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
-<title>${title}</title>
+<title></title>
 <style>
-@page { size: A4 landscape; margin: 10mm 10mm 14mm 10mm; }
+@page { size: A4 landscape; margin: 0 10mm 14mm 10mm; }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10pt; color: #000; background: #fff; }
+.cover-top {
+	position: fixed; left: -10mm; right: -10mm; top: 0; height: 8mm;
+	background: #fff; z-index: 99999;
+	-webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
 .head {
 	position: relative;
 	min-height: 52px;
-	margin-bottom: 8px;
+	padding-top: 10mm;
+	padding-bottom: 10mm;
 	page-break-after: avoid;
 }
 .title {
@@ -302,10 +308,11 @@ body { font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; font-size: 10p
 .basis {
 	font-size: 10.5pt;
 	margin-top: 6px;
+	margin-bottom: 8px;
 }
 .sign {
 	position: absolute;
-	top: 0;
+	top: 10mm;
 	right: 0;
 	border-collapse: collapse;
 	font-size: 9pt;
@@ -324,7 +331,7 @@ table.data {
 	border-collapse: collapse;
 	table-layout: fixed;
 	border: 1px solid #000;
-	margin-top: 4px;
+	margin-top: -10mm;
 }
 table.data thead { display: table-header-group; }
 table.data tr { page-break-inside: avoid; break-inside: avoid; }
@@ -352,6 +359,10 @@ th.dual div:first-child {
 }
 td.c { text-align: center; }
 td.name { font-weight: 600; }
+table.data thead tr.gap td {
+	height: 10mm; border: none; padding: 0; background: #fff;
+	-webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
 .footer {
 	margin-top: 10px;
 	display: flex;
@@ -365,6 +376,7 @@ td.name { font-weight: 600; }
 </style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="head">
 		<table class="sign" aria-label="결재">
 			<tr><th>담당</th><th>검토</th><th>결재</th></tr>
@@ -384,6 +396,7 @@ td.name { font-weight: 600; }
 			<col style="width:19%"/>
 		</colgroup>
 		<thead>
+			<tr class="gap"><td colspan="7"></td></tr>
 			<tr>
 				<th>수급자</th>
 				<th>생일</th>
@@ -676,6 +689,7 @@ export default function MemberContractInfo() {
 		}
 		w.document.write(html);
 		w.document.close();
+		w.document.title = '';
 		setTimeout(() => {
 			w.focus();
 			w.print();
