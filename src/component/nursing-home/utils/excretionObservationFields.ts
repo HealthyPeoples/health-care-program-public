@@ -149,6 +149,26 @@ export function toCheckFlag(checked: boolean): '0' | '1' {
 	return checked ? '1' : '0';
 }
 
+/** F33020 소변/대변 양 구분 — 1소량 2보통 3대량 */
+export const EXCRETION_AMT_OPTIONS = [
+	{ code: '1', label: '소량', short: '소' },
+	{ code: '2', label: '보통', short: '보' },
+	{ code: '3', label: '대량', short: '대' },
+] as const;
+
+export type ExcretionAmtCode = '' | '1' | '2' | '3';
+
+export function normalizeAmtGu(v: unknown): ExcretionAmtCode {
+	const s = String(v ?? '').trim();
+	if (s === '1' || s === '2' || s === '3') return s;
+	return '';
+}
+
+export function amtGuToLabel(v: unknown, empty = ''): string {
+	const c = normalizeAmtGu(v);
+	return EXCRETION_AMT_OPTIONS.find((o) => o.code === c)?.label ?? empty;
+}
+
 export function diaperUseToFlag(value: string): '0' | '1' {
 	const v = String(value ?? '').trim();
 	if (v === '1' || v === '있음') return '1';
