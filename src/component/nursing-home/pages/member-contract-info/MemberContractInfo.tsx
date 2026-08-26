@@ -2002,7 +2002,6 @@ export default function MemberContractInfo() {
 									>
 										<option value="">선택</option>
 										<option value="1">일반 (보험자 80% / 수급자 20%)</option>
-										<option value="2">50%경감대상자 (보험자 90% / 수급자 10%)</option>
 										<option value="3">국민기초생활수급권자 (보험자 100% / 수급자 0%)</option>
 										<option value="4">60%경감대상자 (보험자 92% / 수급자 8%)</option>
 										<option value="5">40%경감대상자 (보험자 88% / 수급자 12%)</option>
