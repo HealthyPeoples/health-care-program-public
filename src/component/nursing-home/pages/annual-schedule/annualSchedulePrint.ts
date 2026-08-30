@@ -17,6 +17,7 @@ export type AnnualSchedulePrintItem = {
 	content: string;
 	type: string;
 	done?: boolean;
+	overdue?: boolean;
 };
 
 export type AnnualSchedulePrintData = {
@@ -113,7 +114,13 @@ function dateInRange(dateStr: string, start: string, end: string): boolean {
 	return d >= s && d <= e;
 }
 
-function typeStyle(type?: string): { bg: string; border: string; fg: string; cls: string } {
+function typeStyle(type?: string, overdue?: boolean, done?: boolean): { bg: string; border: string; fg: string; cls: string } {
+	if (overdue) {
+		return { bg: "#ef4444", border: "#b91c1c", fg: "#ffffff", cls: "t-overdue" };
+	}
+	if (done && String(type ?? "").trim() === "사정갱신") {
+		return { bg: "#bef264", border: "#65a30d", fg: "#365314", cls: "t-renewal-done" };
+	}
 	switch (String(type ?? "").trim()) {
 		case "행사":
 			return { bg: "#93c5fd", border: "#1d4ed8", fg: "#1e3a8a", cls: "t-event" };
@@ -123,6 +130,8 @@ function typeStyle(type?: string): { bg: string; border: string; fg: string; cls
 			return { bg: "#6ee7b7", border: "#047857", fg: "#064e3b", cls: "t-edu" };
 		case "기타":
 			return { bg: "#cbd5e1", border: "#475569", fg: "#1e293b", cls: "t-etc" };
+		case "사정갱신":
+			return { bg: "#ddd6fe", border: "#7c3aed", fg: "#4c1d95", cls: "t-renewal" };
 		default:
 			return { bg: "#e2e8f0", border: "#64748b", fg: "#334155", cls: "t-default" };
 	}
@@ -168,9 +177,11 @@ function buildCalendarBody(data: AnnualSchedulePrintData): string {
 					const cls = dow === 0 ? "sun" : dow === 6 ? "sat" : "";
 					const badges = schedulesOnDay(cell.dateStr, data.schedules)
 						.map((item) => {
-							const st = typeStyle(item.type);
-							return `<div class="bar ${st.cls}" style="background-color:${st.bg} !important;color:${st.fg}">${escapeHtml(
-								item.title
+							const overdue = Boolean(item.overdue) && !item.done;
+							const st = typeStyle(item.type, overdue, Boolean(item.done));
+							const label = overdue ? `! ${item.title}` : item.title;
+							return `<div class="bar ${st.cls}${item.done && item.type !== "사정갱신" ? " done" : ""}" style="background-color:${st.bg} !important;color:${st.fg}">${escapeHtml(
+								item.done ? `✓ ${item.title}` : label
 							)}</div>`;
 						})
 						.join("");
@@ -224,6 +235,9 @@ function calendarPageHtml(
       <span><i class="swatch" style="background-color:#fbbf24 !important;border-color:#b45309"></i>휴무</span>
       <span><i class="swatch" style="background-color:#6ee7b7 !important;border-color:#047857"></i>교육</span>
       <span><i class="swatch" style="background-color:#cbd5e1 !important;border-color:#475569"></i>기타</span>
+      <span><i class="swatch" style="background-color:#ddd6fe !important;border-color:#7c3aed"></i>사정갱신</span>
+      <span><i class="swatch" style="background-color:#bef264 !important;border-color:#65a30d"></i>작성 완료</span>
+      <span><i class="swatch" style="background-color:#ef4444 !important;border-color:#b91c1c"></i>마감 미작성</span>
     </div>
   </div>`;
 }
@@ -332,7 +346,11 @@ export function buildAnnualScheduleCalendarPrintHtml(
     .bar.t-off { background-color: #fbbf24 !important; color: #78350f; }
     .bar.t-edu { background-color: #6ee7b7 !important; color: #064e3b; }
     .bar.t-etc { background-color: #cbd5e1 !important; color: #1e293b; }
+    .bar.t-renewal { background-color: #ddd6fe !important; color: #4c1d95; }
+    .bar.t-renewal-done { background-color: #bef264 !important; color: #365314; }
+    .bar.t-overdue { background-color: #ef4444 !important; color: #fff; }
     .bar.t-default { background-color: #e2e8f0 !important; color: #334155; }
+    .bar.done { text-decoration: line-through; }
     .legend { margin-top: 6px; font-size: 9.5pt; flex: 0 0 auto; }
     .legend span { display: inline-block; margin-right: 14px; vertical-align: middle; }
     .swatch {
@@ -379,16 +397,20 @@ export function buildAnnualScheduleListPrintHtml(
 					.slice()
 					.sort((a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title))
 					.map(
-						(s, i) => `<tr>
+						(s, i) => {
+							const overdue = Boolean(s.overdue) && !s.done;
+							const title = overdue ? `! ${s.title}` : s.title;
+							return `<tr class="${overdue ? "overdue" : ""}">
       <td class="c">${i + 1}</td>
       <td>${escapeHtml(formatPeriod(s.date, s.endDate))}</td>
-      <td class="c">${s.done ? "완료" : ""}</td>
+      <td class="c">${s.done ? "완료" : overdue ? "미작성" : ""}</td>
       <td>${nbsp(s.type)}</td>
       <td>
-        <div class="t${s.done ? " done" : ""}">${escapeHtml(s.title)}</div>
+        <div class="t${s.done && String(s.type ?? "").trim() !== "사정갱신" ? " done" : ""}${overdue ? " overdue-t" : ""}">${escapeHtml(title)}</div>
         ${s.content ? `<div class="d">${escapeHtml(s.content)}</div>` : ""}
       </td>
-    </tr>`
+    </tr>`;
+						}
 					)
 					.join("");
 
@@ -417,6 +439,8 @@ export function buildAnnualScheduleListPrintHtml(
     td.c { text-align: center; width: 40px; }
     .t { font-weight: 600; }
     .t.done { text-decoration: line-through; }
+    .t.overdue-t { color: #b91c1c; }
+    tr.overdue td { background: #fef2f2; }
     .d { margin-top: 4px; font-size: 9.5pt; color: #333; white-space: pre-wrap; }
   </style>
 </head>

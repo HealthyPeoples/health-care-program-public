@@ -14,15 +14,30 @@ import {
 	buildAnnualScheduleListPrintHtml,
 	openPrintPreviewWindow,
 } from "./annualSchedulePrint";
+import {
+	ASSESSMENT_RENEWAL_TYPE,
+	assessmentRenewalBadgeClass,
+	fetchAssessmentRenewalSchedules,
+	isAssessmentRenewal,
+	isRenewalOverdue,
+	openNeedsAssessmentRecord,
+	scheduleDisplayTitle,
+	dueCountdownDetail,
+	type AssessmentRenewalSchedule,
+} from "../../utils/assessmentRenewalSchedule";
 
 interface ScheduleItem {
-	id: number;
+	id: number | string;
 	date: string;
 	endDate: string;
 	title: string;
 	content: string;
 	type: string;
 	done: boolean;
+	source?: "manual" | "assessment-renewal";
+	overdue?: boolean;
+	pnum?: string;
+	savedLabel?: string;
 }
 
 function isDoneYn(v: unknown): boolean {
@@ -85,7 +100,10 @@ function overlapsMonth(start: string, end: string, year: number, month: number):
 	return s <= monthEnd && e >= monthStart;
 }
 
-function typeBadgeClass(type?: string): string {
+function typeBadgeClass(type?: string, overdue?: boolean, done?: boolean): string {
+	if (String(type ?? "").trim() === ASSESSMENT_RENEWAL_TYPE) {
+		return assessmentRenewalBadgeClass(Boolean(overdue), Boolean(done));
+	}
 	switch (String(type ?? "").trim()) {
 		case "행사":
 			return "bg-blue-200 text-blue-900";
@@ -124,7 +142,12 @@ function buildCalendarWeeks(leadingBlanks: number, monthDates: Date[]): WeekDay[
 function schedulesOnDay(dateStr: string, schedules: ScheduleItem[]): ScheduleItem[] {
 	return schedules
 		.filter((s) => dateInRange(dateStr, s.date, s.endDate || s.date))
-		.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+		.sort(
+			(a, b) =>
+				a.date.localeCompare(b.date) ||
+				a.title.localeCompare(b.title, "ko") ||
+				String(a.id).localeCompare(String(b.id))
+		);
 }
 
 export default function AnnualSchedule() {
@@ -195,42 +218,52 @@ export default function AnnualSchedule() {
 	const fetchSchedules = async () => {
 		setLoading(true);
 		try {
-			const response = await fetch(`/api/annual-schedule?year=${selectedYear}`, {
-				credentials: "include",
-			});
+			const [response, renewalRows] = await Promise.all([
+				fetch(`/api/annual-schedule?year=${selectedYear}`, {
+					credentials: "include",
+				}),
+				fetchAssessmentRenewalSchedules({ year: selectedYear }),
+			]);
 			const result = await response.json();
-			if (result.success) {
-				const rows: ScheduleItem[] = (result.data || []).map(
-					(r: {
-						AS_SEQ: number;
-						SCH_DATE?: string;
-						SCH_START_DATE?: string;
-						SCH_END_DATE?: string;
-						TITLE: string;
-						CONTENT?: string;
-						SCH_TYPE?: string;
-						DONE_YN?: string;
-					}) => {
-						const start = String(r.SCH_DATE ?? r.SCH_START_DATE ?? "").slice(0, 10);
-						const end = String(r.SCH_END_DATE ?? start).slice(0, 10) || start;
-						return {
-							id: r.AS_SEQ,
-							date: start,
-							endDate: end,
-							title: r.TITLE || "",
-							content: r.CONTENT || "",
-							type: r.SCH_TYPE || "",
-							done: isDoneYn(r.DONE_YN),
-						};
-					}
-				);
-				setScheduleList(rows);
-			} else {
-				setScheduleList([]);
-				if (result.error) {
-					console.error(result.error);
-				}
+			const manual: ScheduleItem[] = result.success
+				? (result.data || []).map(
+						(r: {
+							AS_SEQ: number;
+							SCH_DATE?: string;
+							SCH_START_DATE?: string;
+							SCH_END_DATE?: string;
+							TITLE: string;
+							CONTENT?: string;
+							SCH_TYPE?: string;
+							DONE_YN?: string;
+						}) => {
+							const start = String(r.SCH_DATE ?? r.SCH_START_DATE ?? "").slice(0, 10);
+							const end = String(r.SCH_END_DATE ?? start).slice(0, 10) || start;
+							return {
+								id: r.AS_SEQ,
+								date: start,
+								endDate: end,
+								title: r.TITLE || "",
+								content: r.CONTENT || "",
+								type: r.SCH_TYPE || "",
+								done: isDoneYn(r.DONE_YN),
+								source: "manual" as const,
+							};
+						}
+					)
+				: [];
+			if (!result.success && result.error) {
+				console.error(result.error);
 			}
+			const renewal: ScheduleItem[] = renewalRows.map((r: AssessmentRenewalSchedule) => ({
+				...r,
+				overdue: isRenewalOverdue(r),
+			}));
+			setScheduleList(
+				[...manual, ...renewal].sort(
+					(a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ko")
+				)
+			);
 		} catch {
 			setScheduleList([]);
 		} finally {
@@ -307,6 +340,9 @@ export default function AnnualSchedule() {
 			alert("삭제할 일정을 선택해주세요.");
 			return;
 		}
+		if (isAssessmentRenewal(selectedSchedule) || typeof selectedSchedule.id !== "number") {
+			return;
+		}
 		if (!confirm(`「${selectedSchedule.title}」 일정을 삭제하시겠습니까?`)) {
 			return;
 		}
@@ -342,6 +378,7 @@ export default function AnnualSchedule() {
 	};
 
 	const handleOpenEditModal = (schedule: ScheduleItem) => {
+		if (isAssessmentRenewal(schedule)) return;
 		setIsEditMode(true);
 		setSelectedSchedule(schedule);
 		setFormData({
@@ -365,7 +402,15 @@ export default function AnnualSchedule() {
 		setSelectedSchedule(schedule);
 	};
 
+	const handleGoWrite = (schedule: ScheduleItem, event?: React.MouseEvent) => {
+		event?.preventDefault();
+		event?.stopPropagation();
+		if (schedule.pnum) openNeedsAssessmentRecord(schedule.pnum);
+	};
+
 	const handleToggleDone = async (schedule: ScheduleItem, done: boolean) => {
+		if (isAssessmentRenewal(schedule)) return;
+		if (typeof schedule.id !== "number") return;
 		const prevList = scheduleList;
 		const prevSelected = selectedSchedule;
 		setScheduleList((list) => list.map((s) => (s.id === schedule.id ? { ...s, done } : s)));
@@ -449,15 +494,17 @@ export default function AnnualSchedule() {
 
 		setPrinting(true);
 		try {
-			const response = await fetch(
-				`/api/annual-schedule?startDate=${startDate}&endDate=${endDate}`,
-				{ credentials: "include" }
-			);
+			const [response, renewalRows] = await Promise.all([
+				fetch(`/api/annual-schedule?startDate=${startDate}&endDate=${endDate}`, {
+					credentials: "include",
+				}),
+				fetchAssessmentRenewalSchedules({ startDate, endDate }),
+			]);
 			const result = await response.json();
 			if (!response.ok || !result.success) {
 				throw new Error(result.error || "일정 조회에 실패했습니다.");
 			}
-			const schedules = (result.data || []).map(
+			const manual = (result.data || []).map(
 				(r: {
 					SCH_DATE?: string;
 					SCH_START_DATE?: string;
@@ -479,6 +526,16 @@ export default function AnnualSchedule() {
 					};
 				}
 			);
+			const renewal = renewalRows.map((r) => ({
+				date: r.date,
+				endDate: r.endDate,
+				title: scheduleDisplayTitle(r),
+				content: r.content,
+				type: r.type,
+				done: r.done,
+				overdue: isRenewalOverdue(r),
+			}));
+			const schedules = [...manual, ...renewal];
 
 			const printData = {
 				facilityName,
@@ -705,27 +762,37 @@ export default function AnnualSchedule() {
 														{cell.date.getDate()}
 													</span>
 													<div className="mt-0.5 flex min-h-0 flex-col gap-0.5">
-														{daySchedules.map((schedule) => (
-															<button
-																key={schedule.id}
-																type="button"
-																title={`${schedule.done ? "[완료] " : ""}${schedule.title} (${formatPeriod(schedule.date, schedule.endDate)})`}
-																onClick={(e) => {
-																	e.stopPropagation();
-																	handleSelectSchedule(schedule);
-																}}
-																className={`w-full truncate rounded-full px-2 py-0.5 text-left text-xs font-medium leading-tight ${typeBadgeClass(
-																	schedule.type
-																)} ${
-																	selectedSchedule?.id === schedule.id
-																		? "ring-2 ring-blue-600"
-																		: ""
-																} ${schedule.done ? "line-through opacity-80" : ""} hover:brightness-95`}
-															>
-																{schedule.done ? "✓ " : ""}
-																{schedule.title}
-															</button>
-														))}
+														{daySchedules.map((schedule) => {
+															const overdue = isRenewalOverdue(schedule);
+															const renewal = isAssessmentRenewal(schedule);
+															const label = scheduleDisplayTitle({
+																...schedule,
+																overdue,
+															});
+															return (
+																<button
+																	key={schedule.id}
+																	type="button"
+																	title={`${schedule.done ? "[완료] " : overdue ? "[미작성·마감] " : ""}${label} (${formatPeriod(schedule.date, schedule.endDate)})`}
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		handleSelectSchedule(schedule);
+																	}}
+																	className={`w-full truncate rounded-full px-2 py-0.5 text-left text-xs font-medium leading-tight ${typeBadgeClass(
+																		schedule.type,
+																		overdue,
+																		schedule.done && renewal
+																	)} ${
+																		selectedSchedule?.id === schedule.id
+																			? "ring-2 ring-blue-600"
+																			: ""
+																	} ${schedule.done && !renewal ? "line-through opacity-80" : ""} hover:brightness-95`}
+																>
+																	{schedule.done ? "✓ " : ""}
+																	{label}
+																</button>
+															);
+														})}
 													</div>
 												</div>
 											);
@@ -786,13 +853,27 @@ export default function AnnualSchedule() {
 							<div className="px-3 py-8 text-center text-blue-900/60">일정이 없습니다</div>
 						) : (
 							<div className="p-2 space-y-2">
-								{pagedSchedules.map((schedule) => (
+								{pagedSchedules.map((schedule) => {
+									const renewal = isAssessmentRenewal(schedule);
+									const overdue = isRenewalOverdue(schedule);
+									const doneGreen = renewal && schedule.done;
+									return (
 									<div
 										key={schedule.id}
 										onClick={() => handleSelectSchedule(schedule)}
-										className={`border border-blue-200 rounded p-3 cursor-pointer hover:bg-blue-50 ${
+										className={`border rounded p-3 cursor-pointer hover:bg-blue-50 ${
+											overdue
+												? "border-red-400 bg-red-50 hover:bg-red-50"
+												: doneGreen
+													? "border-lime-400 bg-lime-50 hover:bg-lime-50"
+													: "border-blue-200"
+										} ${
 											selectedSchedule?.id === schedule.id
-												? "bg-blue-100 border-blue-400"
+												? overdue
+													? "bg-red-100 border-red-500"
+													: doneGreen
+														? "bg-lime-100 border-lime-500"
+														: "bg-blue-100 border-blue-400"
 												: ""
 										}`}
 									>
@@ -804,43 +885,81 @@ export default function AnnualSchedule() {
 												<input
 													type="checkbox"
 													checked={schedule.done}
+													disabled={renewal}
 													onChange={(e) => void handleToggleDone(schedule, e.target.checked)}
-													className="h-4 w-4 accent-blue-600"
+													className="h-4 w-4 accent-blue-600 disabled:opacity-80"
 													aria-label={`${schedule.title} 진행 완료`}
 												/>
 												<span className="text-[11px] text-blue-800">완료</span>
 											</label>
 											<div className="min-w-0 flex-1">
 												<div
-													className={`text-sm font-semibold text-blue-900 mb-1 ${
-														schedule.done ? "line-through opacity-80" : ""
-													}`}
+													className={`text-sm font-semibold mb-1 ${
+														overdue
+															? "text-red-700"
+															: doneGreen
+																? "text-lime-900"
+																: "text-blue-900"
+													} ${schedule.done && !renewal ? "line-through opacity-80" : ""}`}
 												>
-													{schedule.title}
+													{scheduleDisplayTitle({ ...schedule, overdue })}
 												</div>
-												<div className="text-xs text-blue-700 mb-1">
+												<div className={`text-xs mb-1 ${overdue ? "text-red-600" : doneGreen ? "text-lime-800" : "text-blue-700"}`}>
 													{formatPeriod(schedule.date, schedule.endDate)}
 												</div>
+												{renewal && !schedule.done ? (
+													<div
+														className={`mb-1 text-xs font-semibold ${
+															overdue ? "text-red-700" : "text-violet-800"
+														}`}
+													>
+														{dueCountdownDetail(schedule.endDate)}
+													</div>
+												) : null}
 												{schedule.content && (
-													<div className="text-xs text-blue-900/70 line-clamp-2">
+													<div className="text-xs text-blue-900/70 line-clamp-4 whitespace-pre-line">
 														{schedule.content}
 													</div>
 												)}
 												{schedule.type && (
 													<div
-														className={`inline-block text-xs mt-1 px-1.5 py-0.5 rounded ${typeBadgeClass(schedule.type)}`}
+														className={`inline-block text-xs mt-1 px-1.5 py-0.5 rounded ${typeBadgeClass(schedule.type, overdue, doneGreen)}`}
 													>
 														{schedule.type}
 													</div>
 												)}
+												{renewal && schedule.pnum && !schedule.done ? (
+													<button
+														type="button"
+														onClick={(e) => handleGoWrite(schedule, e)}
+														className="mt-2 w-full rounded border border-violet-500 bg-violet-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-violet-600"
+													>
+														작성하러가기
+													</button>
+												) : null}
 											</div>
 										</div>
 									</div>
-								))}
+									);
+								})}
 							</div>
 						)}
 					</div>
-					{selectedSchedule && (
+					{selectedSchedule &&
+						isAssessmentRenewal(selectedSchedule) &&
+						selectedSchedule.pnum &&
+						!selectedSchedule.done && (
+						<div className="border-t border-blue-200 bg-blue-50 p-3 space-y-2 shrink-0">
+							<button
+								type="button"
+								onClick={(e) => handleGoWrite(selectedSchedule, e)}
+								className="w-full rounded border border-violet-500 bg-violet-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-600"
+							>
+								작성하러가기
+							</button>
+						</div>
+					)}
+					{selectedSchedule && !isAssessmentRenewal(selectedSchedule) && (
 						<div className="border-t border-blue-200 bg-blue-50 p-3 space-y-2 shrink-0">
 							<button
 								type="button"

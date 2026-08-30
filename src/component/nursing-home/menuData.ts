@@ -172,6 +172,13 @@ export const sections3: Sections3 = {
       { name: '등급별급여Table 등록', link: '/nursingHome/grade-salary-table' },
     ],
   },
+  '자금입출금관리': {
+    '자금입출금': [
+      { name: '입출금 전표등록', link: '/nursingHome/fund-voucher-registration' },
+      { name: '원장조회(계정과목별)', link: '/nursingHome/ledger-by-account' },
+      { name: '계정별결산서', link: '/nursingHome/account-settlement' },
+    ],
+  },
   '직원(사원)관리': {
     '사원 기본정보관리': [
       { name: '사원 기본(인적)정보 등록', link: '/nursingHome/employee-basic-info' },

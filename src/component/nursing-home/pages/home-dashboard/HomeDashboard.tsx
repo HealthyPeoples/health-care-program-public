@@ -11,6 +11,17 @@
  * @module component/nursing-home/pages/home-dashboard/HomeDashboard
  */
 import React, { useEffect, useMemo, useState } from "react";
+import {
+	ASSESSMENT_RENEWAL_TYPE,
+	assessmentRenewalBadgeClass,
+	fetchAssessmentRenewalSchedules,
+	isAssessmentRenewal,
+	isRenewalOverdue,
+	openNeedsAssessmentRecord,
+	scheduleDisplayTitle,
+	dueCountdownDetail,
+	type AssessmentRenewalSchedule,
+} from "../../utils/assessmentRenewalSchedule";
 
 const PREVIEW_LIMIT = 5;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
@@ -31,13 +42,17 @@ interface DataRoomPreview {
 }
 
 interface SchedulePreview {
-	id: number;
+	id: number | string;
 	date: string;
 	endDate: string;
 	title: string;
 	content: string;
 	type: string;
 	done: boolean;
+	source?: "manual" | "assessment-renewal";
+	overdue?: boolean;
+	pnum?: string;
+	savedLabel?: string;
 }
 
 type WeekDay = { date: Date | null; dateStr: string | null };
@@ -90,7 +105,10 @@ function overlapsMonth(start: string, end: string, year: number, month: number):
 	return s <= monthEnd && e >= monthStart;
 }
 
-function typeBadgeClass(type?: string): string {
+function typeBadgeClass(type?: string, overdue?: boolean, done?: boolean): string {
+	if (String(type ?? "").trim() === ASSESSMENT_RENEWAL_TYPE) {
+		return assessmentRenewalBadgeClass(Boolean(overdue), Boolean(done));
+	}
 	switch (String(type ?? "").trim()) {
 		case "행사":
 			return "bg-blue-200 text-blue-900";
@@ -126,7 +144,12 @@ function buildCalendarWeeks(leadingBlanks: number, monthDates: Date[]): WeekDay[
 function schedulesOnDay(dateStr: string, schedules: SchedulePreview[]): SchedulePreview[] {
 	return schedules
 		.filter((s) => dateInRange(dateStr, s.date, s.endDate || s.date))
-		.sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+		.sort(
+			(a, b) =>
+				a.date.localeCompare(b.date) ||
+				a.title.localeCompare(b.title, "ko") ||
+				String(a.id).localeCompare(String(b.id))
+		);
 }
 
 function attachLabel(fileCount: number, files: Array<{ fileName?: string }>): string {
@@ -200,6 +223,7 @@ function mapScheduleRows(rows: AnnualScheduleApiRow[]): SchedulePreview[] {
 			content: r.CONTENT || "",
 			type: r.SCH_TYPE || "",
 			done: isDoneYn(r.DONE_YN),
+			source: "manual" as const,
 		};
 	});
 }
@@ -276,6 +300,7 @@ export default function HomeDashboard() {
 		schedule: SchedulePreview
 	) => {
 		event.stopPropagation();
+		if (isAssessmentRenewal(schedule) || typeof schedule.id !== "number") return;
 		const done = event.target.checked;
 		const prevList = schedules;
 		setSchedules((list) => list.map((s) => (s.id === schedule.id ? { ...s, done } : s)));
@@ -406,16 +431,27 @@ export default function HomeDashboard() {
 
 		const loadSchedules = async () => {
 			try {
-				const schRes = await fetch(`/api/annual-schedule?year=${selectedYear}`, {
-					credentials: "include",
-				});
+				const [schRes, renewalRows] = await Promise.all([
+					fetch(`/api/annual-schedule?year=${selectedYear}`, {
+						credentials: "include",
+					}),
+					fetchAssessmentRenewalSchedules({ year: selectedYear }),
+				]);
 				const schJson = await schRes.json().catch(() => ({}));
 				if (cancelled) return;
-				if (schRes.ok && schJson?.success && Array.isArray(schJson.data)) {
-					setSchedules(mapScheduleRows(schJson.data as AnnualScheduleApiRow[]));
-				} else {
-					setSchedules([]);
-				}
+				const manual =
+					schRes.ok && schJson?.success && Array.isArray(schJson.data)
+						? mapScheduleRows(schJson.data as AnnualScheduleApiRow[])
+						: [];
+				const renewal: SchedulePreview[] = renewalRows.map((r: AssessmentRenewalSchedule) => ({
+					...r,
+					overdue: isRenewalOverdue(r),
+				}));
+				setSchedules(
+					[...manual, ...renewal].sort(
+						(a, b) => a.date.localeCompare(b.date) || a.title.localeCompare(b.title, "ko")
+					)
+				);
 			} catch (err) {
 				console.error("메인 대시보드 일정 조회 실패:", err);
 				if (!cancelled) setSchedules([]);
@@ -582,17 +618,47 @@ export default function HomeDashboard() {
 															{cell.date.getDate()}
 														</span>
 														<div className="mt-0.5 flex min-h-0 flex-col gap-0.5 overflow-hidden">
-															{shown.map((schedule) => (
-																<span
-																	key={schedule.id}
-																	title={schedule.title}
-																	className={`block truncate rounded-full px-1 py-px text-[10px] font-medium leading-tight ${typeBadgeClass(
-																		schedule.type
-																	)} ${schedule.done ? "line-through opacity-80" : ""}`}
-																>
-																	{schedule.title}
-																</span>
-															))}
+															{shown.map((schedule) => {
+																const overdue = isRenewalOverdue(schedule);
+																const label = scheduleDisplayTitle({
+																	...schedule,
+																	overdue,
+																});
+																const renewal = isAssessmentRenewal(schedule);
+																if (renewal) {
+																	return (
+																		<button
+																			key={schedule.id}
+																			type="button"
+																			title={label}
+																			onClick={(e) => {
+																				e.preventDefault();
+																				e.stopPropagation();
+																				openAnnual();
+																			}}
+																			className={`block w-full truncate rounded-full px-1 py-px text-left text-[10px] font-medium leading-tight ${typeBadgeClass(
+																				schedule.type,
+																				overdue,
+																				schedule.done
+																			)}`}
+																		>
+																			{schedule.done ? "✓ " : ""}
+																			{label}
+																		</button>
+																	);
+																}
+																return (
+																	<span
+																		key={schedule.id}
+																		title={schedule.title}
+																		className={`block truncate rounded-full px-1 py-px text-[10px] font-medium leading-tight ${typeBadgeClass(
+																			schedule.type
+																		)} ${schedule.done ? "line-through opacity-80" : ""}`}
+																	>
+																		{schedule.title}
+																	</span>
+																);
+															})}
 															{extra > 0 ? (
 																<span className="px-1 text-[10px] text-blue-700/80">+{extra}</span>
 															) : null}
@@ -667,10 +733,20 @@ export default function HomeDashboard() {
 							<div className="px-3 py-10 text-center text-sm text-blue-900/60">일정이 없습니다</div>
 						) : (
 							<div className="space-y-2">
-								{monthSchedules.map((schedule) => (
+								{monthSchedules.map((schedule) => {
+									const renewal = isAssessmentRenewal(schedule);
+									const overdue = isRenewalOverdue(schedule);
+									const doneGreen = renewal && schedule.done;
+									return (
 									<div
 										key={schedule.id}
-										className="rounded border border-blue-200 bg-white p-3"
+										className={`rounded border bg-white p-3 ${
+											overdue
+												? "border-red-400"
+												: doneGreen
+													? "border-lime-400"
+													: "border-blue-200"
+										}`}
 									>
 										<div className="flex items-start gap-2">
 											<label
@@ -681,41 +757,71 @@ export default function HomeDashboard() {
 												<input
 													type="checkbox"
 													checked={schedule.done}
+													disabled={renewal}
 													onChange={(e) => void handleToggleDone(e, schedule)}
-													className="h-4 w-4 accent-blue-600"
+													className="h-4 w-4 accent-blue-600 disabled:opacity-80"
 													aria-label={`${schedule.title} 진행 완료`}
 												/>
 												<span className="text-[11px] text-blue-800">완료</span>
 											</label>
 											<div className="min-w-0 flex-1">
 												<div
-													className={`mb-1 text-sm font-semibold text-blue-900 ${
-														schedule.done ? "line-through opacity-80" : ""
-													}`}
+													className={`mb-1 text-sm font-semibold ${
+														overdue
+															? "text-red-700"
+															: doneGreen
+																? "text-lime-900"
+																: "text-blue-900"
+													} ${schedule.done && !renewal ? "line-through opacity-80" : ""}`}
 												>
-													{schedule.title}
+													{scheduleDisplayTitle({ ...schedule, overdue })}
 												</div>
-												<div className="mb-1 text-xs text-blue-700">
+												<div className={`mb-1 text-xs ${overdue ? "text-red-600" : doneGreen ? "text-lime-800" : "text-blue-700"}`}>
 													{formatPeriod(schedule.date, schedule.endDate)}
 												</div>
+												{renewal && !schedule.done ? (
+													<div
+														className={`mb-1 text-xs font-semibold ${
+															overdue ? "text-red-700" : "text-violet-800"
+														}`}
+													>
+														{dueCountdownDetail(schedule.endDate)}
+													</div>
+												) : null}
 												{schedule.content ? (
-													<div className="line-clamp-2 text-xs text-blue-900/70">
+													<div className="line-clamp-4 whitespace-pre-line text-xs text-blue-900/70">
 														{schedule.content}
 													</div>
 												) : null}
 												{schedule.type ? (
 													<div
 														className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs ${typeBadgeClass(
-															schedule.type
+															schedule.type,
+															overdue,
+															doneGreen
 														)}`}
 													>
 														{schedule.type}
 													</div>
 												) : null}
+												{renewal && schedule.pnum && !schedule.done ? (
+													<button
+														type="button"
+														onClick={(e) => {
+															e.preventDefault();
+															e.stopPropagation();
+															openNeedsAssessmentRecord(schedule.pnum!);
+														}}
+														className="mt-2 w-full rounded border border-violet-500 bg-violet-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-violet-600"
+													>
+														작성하러가기
+													</button>
+												) : null}
 											</div>
 										</div>
 									</div>
-								))}
+									);
+								})}
 							</div>
 						)}
 					</div>

@@ -62,6 +62,11 @@ import {
 	type F51012UiSnapshot,
 } from './f51012Mapper';
 import { openNeedsAssessmentBatchPrint, openNeedsAssessmentPrint, openNeedsAssessmentBlankPrint, printMemberFromViewRow } from './needsAssessmentRecordPrint';
+import {
+	NEEDS_ASSESSMENT_HREF,
+	PENDING_NEEDS_ASSESSMENT_PNUM_KEY,
+	peekPendingNeedsAssessmentPnum,
+} from '../../utils/assessmentRenewalSchedule';
 
 interface MemberData {
 	ANCD: string;
@@ -174,6 +179,9 @@ export default function NeedsAssessmentRecord() {
 	const [searchTerm, setSearchTerm] = useState('');
 	const [currentPage, setCurrentPage] = useState(1);
 	const itemsPerPage = 10;
+	const skipPageResetRef = useRef(false);
+	const pendingPnumRef = useRef('');
+	const [pendingPnum, setPendingPnum] = useState('');
 
 	const availableFloors = availableFloorsFromMembers(memberList);
 
@@ -293,10 +301,29 @@ export default function NeedsAssessmentRecord() {
 		fetchMembers();
 	}, []);
 
+	useEffect(() => {
+		const applyFromEvent = (pnum: string) => {
+			const pn = String(pnum || '').trim();
+			if (!pn) return;
+			pendingPnumRef.current = pn;
+			setPendingPnum(pn);
+		};
+		const handler = (e: Event) => {
+			const detail = (e as CustomEvent).detail as { href?: string; pnum?: string };
+			if (detail?.href !== NEEDS_ASSESSMENT_HREF) return;
+			applyFromEvent(detail.pnum || peekPendingNeedsAssessmentPnum());
+		};
+		window.addEventListener('NH_OPEN_TAB', handler as EventListener);
+		applyFromEvent(peekPendingNeedsAssessmentPnum());
+		return () => window.removeEventListener('NH_OPEN_TAB', handler as EventListener);
+	}, []);
+
 	// 검색어 변경 시 실시간 검색 (디바운싱)
 	useEffect(() => {
 		const timer = setTimeout(() => {
-			setCurrentPage(1);
+			if (!skipPageResetRef.current) {
+				setCurrentPage(1);
+			}
 			fetchMembers(searchTerm);
 		}, 300);
 
@@ -343,6 +370,46 @@ export default function NeedsAssessmentRecord() {
 		applyF51012Snapshot(emptySnapshot(member.P_NM || '', ''));
 		void fetchRecordDates(member.ANCD, member.PNUM);
 	};
+
+	useEffect(() => {
+		const pn = String(pendingPnum || pendingPnumRef.current || '').trim();
+		if (!pn || loading || memberList.length === 0) return;
+
+		if (searchTerm) {
+			skipPageResetRef.current = true;
+			setSearchTerm('');
+			return;
+		}
+
+		const member = memberList.find((m) => String(m.PNUM ?? '').trim() === pn);
+		if (!member) return;
+
+		skipPageResetRef.current = true;
+		setSelectedStatus('입소');
+		setSelectedGrade('');
+		setSelectedFloor('');
+
+		const admitted = memberList
+			.filter((m) => String(m.P_ST || '').trim() === '1')
+			.sort((a, b) => (a.P_NM || '').trim().localeCompare((b.P_NM || '').trim(), 'ko'));
+		const idx = admitted.findIndex((m) => String(m.PNUM ?? '').trim() === pn);
+		setCurrentPage(idx >= 0 ? Math.floor(idx / itemsPerPage) + 1 : 1);
+		handleSelectMember(member);
+
+		pendingPnumRef.current = '';
+		setPendingPnum('');
+		try {
+			sessionStorage.removeItem(PENDING_NEEDS_ASSESSMENT_PNUM_KEY);
+		} catch {
+			/* ignore */
+		}
+		const t = window.setTimeout(() => {
+			skipPageResetRef.current = false;
+		}, 500);
+		return () => window.clearTimeout(t);
+		// 수급자 1회 선택 — handleSelectMember는 렌더마다 새로 만들어도 동작은 동일
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [pendingPnum, memberList, loading, searchTerm]);
 
 	// 작성일자(RQDT) 선택 — 해당 일자 F51012 상세 조회
 	const handleSelectDate = async (index: number) => {
