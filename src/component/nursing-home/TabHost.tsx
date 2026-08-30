@@ -59,6 +59,9 @@ import MonthlySalaryData from '@/component/nursing-home/pages/monthly-salary-dat
 import MonthlySalaryCollection from '@/component/nursing-home/pages/monthly-salary-collection/MonthlySalaryCollection';
 import MonthlySalaryStatement from '@/component/nursing-home/pages/monthly-salary-statement/MonthlySalaryStatement';
 import GradeSalaryTable from '@/component/nursing-home/pages/grade-salary-table/GradeSalaryTable';
+import FundVoucherRegistration from '@/component/nursing-home/pages/fund-voucher-registration/FundVoucherRegistration';
+import LedgerByAccount from '@/component/nursing-home/pages/ledger-by-account/LedgerByAccount';
+import AccountSettlement from '@/component/nursing-home/pages/account-settlement/AccountSettlement';
 import EmployeeAttendance from '@/component/nursing-home/pages/employee-attendance/EmployeeAttendance';
 import EmployeeAttendanceMonthly from '@/component/nursing-home/pages/employee-attendance-monthly/EmployeeAttendanceMonthly';
 import EmployeeAnnualLeave from '@/component/nursing-home/pages/employee-annual-leave/EmployeeAnnualLeave';
@@ -225,6 +228,12 @@ function renderInternal(href: string) {
       return <MonthlySalaryStatement />;
     case '/nursingHome/grade-salary-table':
       return <GradeSalaryTable />;
+    case '/nursingHome/fund-voucher-registration':
+      return <FundVoucherRegistration />;
+    case '/nursingHome/ledger-by-account':
+      return <LedgerByAccount />;
+    case '/nursingHome/account-settlement':
+      return <AccountSettlement />;
     case '/nursingHome/employee-attendance':
       return <EmployeeAttendance />;
     case '/nursingHome/employee-attendance-monthly':
