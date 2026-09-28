@@ -8,7 +8,7 @@
  *
  * @module component/nursing-home/pages/monthly-salary-statement/useMonthlySalaryStatement
  */
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
 	openPrintPreviewWindow,
@@ -62,7 +62,9 @@ export function useMonthlySalaryStatement() {
 	const [searchError, setSearchError] = useState<string | null>(null);
 	const [facilityIssueDate, setFacilityIssueDate] = useState("");
 	const [issueDateModalOpen, setIssueDateModalOpen] = useState(false);
-	const [issueDateDraft, setIssueDateDraft] = useState("");
+	const [issueDateModalKey, setIssueDateModalKey] = useState(0);
+	const [issueDateDefault, setIssueDateDefault] = useState("");
+	const issueDateInputRef = useRef<HTMLInputElement>(null);
 	const [facilityName, setFacilityName] = useState("");
 	const [facilityInfo, setFacilityInfo] = useState<LoginFacilityPrintInfo | null>(null);
 
@@ -241,7 +243,7 @@ export function useMonthlySalaryStatement() {
 			const body = printRows
 				.map(
 					(row) =>
-						`<div class="f24-page">${buildBenefitStatement24Body(payYearMonth, row, facilityInfo)}</div>`
+						`<div class="f24-page">${buildBenefitStatement24Body(payYearMonth, row, facilityInfo, facilityIssueDate)}</div>`
 				)
 				.join("");
 			openPrintPreviewWindow(wrapF24PrintHtml(body));
@@ -249,7 +251,7 @@ export function useMonthlySalaryStatement() {
 			console.error(e);
 			alert(e instanceof Error ? e.message : "급여명세서 출력 중 오류가 발생했습니다.");
 		}
-	}, [payYearMonth, statementRows, checkedPnums, facilityInfo]);
+	}, [payYearMonth, statementRows, checkedPnums, facilityInfo, facilityIssueDate]);
 
 	const printPaymentConfirmation = useCallback(async () => {
 		const selectedRows = statementRows.filter((r) => checkedPnums.has(r.pnum));
@@ -283,13 +285,18 @@ export function useMonthlySalaryStatement() {
 			const printRows = selectedRows.map(
 				(sr) => byPnum.get(String(sr.pnum).trim()) ?? statementRowToV40100GFallback(payYearMonth, sr)
 			);
-			const html = buildPaymentConfirmation25PrintHtml(payYearMonth, printRows, facilityInfo);
+			const html = buildPaymentConfirmation25PrintHtml(
+				payYearMonth,
+				printRows,
+				facilityInfo,
+				facilityIssueDate
+			);
 			openPrintPreviewWindow(html);
 		} catch (e) {
 			console.error(e);
 			alert(e instanceof Error ? e.message : "납부확인서 출력 중 오류가 발생했습니다.");
 		}
-	}, [payYearMonth, statementRows, checkedPnums, facilityInfo]);
+	}, [payYearMonth, statementRows, checkedPnums, facilityInfo, facilityIssueDate]);
 
 	const handleDocumentKindClick = useCallback(
 		(id: (typeof TABS)[number]["id"]) => {
@@ -596,20 +603,25 @@ export function useMonthlySalaryStatement() {
 			if (!confirmLeaveEditMode()) return;
 			discardEditAndLeave();
 		}
-		setIssueDateDraft(
+		setIssueDateDefault(
 			facilityIssueDate || lastDayOfPayYearMonth(payYearMonth) || ""
 		);
+		setIssueDateModalKey((n) => n + 1);
 		setIssueDateModalOpen(true);
 	};
 
 	const handleSaveFacilityIssueDate = () => {
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(issueDateDraft)) {
+		const next = String(issueDateInputRef.current?.value || "").trim();
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
 			alert("발행일자를 YYYY-MM-DD 형식으로 선택해 주세요.");
 			return;
 		}
-		setFacilityIssueDate(issueDateDraft);
+		setFacilityIssueDate(next);
+		setIssueDateDefault(next);
 		setIssueDateModalOpen(false);
-		alert("발행일자가 일괄 저장되었습니다.");
+		window.setTimeout(() => {
+			alert("발행일자가 일괄 저장되었습니다.");
+		}, 0);
 	};
 
 	const handleRecipientFilterChange = (v: string) => {
@@ -649,8 +661,9 @@ export function useMonthlySalaryStatement() {
 		formData,
 		formEditMode,
 		issueDateModalOpen,
-		issueDateDraft,
-		setIssueDateDraft,
+		issueDateModalKey,
+		issueDateDefault,
+		issueDateInputRef,
 		setIssueDateModalOpen,
 		setFormData,
 		handlePayYearMonthChange,

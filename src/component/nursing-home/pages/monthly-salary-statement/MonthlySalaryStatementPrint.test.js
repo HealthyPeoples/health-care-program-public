@@ -127,7 +127,7 @@ describe("MonthlySalaryStatementPrint — builders", () => {
 		assert.match(hook, /\/api\/v40100d\?/);
 		assert.match(hook, /\/api\/v40100e\?/);
 		assert.match(hook, /\/api\/v40100g\?/);
-		assert.match(hook, /buildBenefitStatement24Body\(payYearMonth, row, facilityInfo\)/);
+		assert.match(hook, /buildBenefitStatement24Body\(payYearMonth, row, facilityInfo, facilityIssueDate\)/);
 		assert.match(hook, /facilityRow\.ETC/);
 		assert.doesNotMatch(hook, /function openPrintPreviewWindow/);
 		assert.doesNotMatch(hook, /function buildSalaryOccurrencePrintHtml/);
@@ -203,5 +203,65 @@ describe("MonthlySalaryStatementPrint — builders", () => {
 		assert.match(html, /식사재료비④<\/td>\s*<td class="f24-r">434,000<\/td>/);
 		assert.match(html, /기타 ⑧<\/td>\s*<td class="f24-r">1,000<\/td>/);
 		assert.match(html, /비급여계 ⑩\(④\+⑤\+⑥\+⑦\+⑧\)<\/td>\s*<td class="f24-r">435,000<\/td>/);
+	});
+
+	it("발행일자를 바꾸면 급여명세서와 납부확인서 하단에 그 날짜가 들어간다", () => {
+		const statement = Print.buildBenefitStatement24Body(
+			"2026-08",
+			{
+				PNUM: "1",
+				SALMM: "202608",
+				recipient: "홍길동",
+				recognitionNo: "",
+				periodFrom: "",
+				periodTo: "",
+				orgCode: "",
+				orgName: "테스트원",
+				orgAddr: "",
+				orgBizNo: "",
+				orgOwner: "",
+				orgTel: "",
+				bankAccount: "",
+				otherCostDesc: "",
+				daysUsed: 0,
+				nhaContribution: 0,
+				recipientContribution: 0,
+				mealFee: 0,
+				nonBenefitSnack: 0,
+				nonBenefitMedical: 0,
+				beautyCost: 0,
+				roomUpgradeFee: 0,
+				contractedMedical: 0,
+				contractedPrescription: 0,
+				otherCost: 0,
+			},
+			null,
+			"2026-09-15"
+		);
+		assert.match(statement, /2026년 9월 15일/);
+
+		const payment = Print.buildPaymentConfirmation25PrintHtml(
+			"2026-08",
+			[
+				{
+					PNUM: "1",
+					SALYY: "2026",
+					recipient: "홍길동",
+					rrn: "",
+					birthday: "",
+					orgCode: "",
+					orgName: "테스트원",
+					orgAddr: "",
+					orgBizNo: "",
+					orgOwner: "",
+					orgTel: "",
+					ANGH: "",
+					months: [],
+				},
+			],
+			null,
+			"2026-10-03"
+		);
+		assert.match(payment, /2026년 10월 3일/);
 	});
 });

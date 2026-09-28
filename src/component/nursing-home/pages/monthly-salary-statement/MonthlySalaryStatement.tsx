@@ -41,8 +41,9 @@ export default function MonthlySalaryStatement() {
 		formData,
 		formEditMode,
 		issueDateModalOpen,
-		issueDateDraft,
-		setIssueDateDraft,
+		issueDateModalKey,
+		issueDateDefault,
+		issueDateInputRef,
 		setIssueDateModalOpen,
 		setFormData,
 		handlePayYearMonthChange,
@@ -152,9 +153,10 @@ export default function MonthlySalaryStatement() {
 							<div className="mb-4 flex items-center gap-2">
 								<label className="w-20 shrink-0 text-sm font-medium text-blue-900">발행일자</label>
 								<input
+									key={issueDateModalKey}
+									ref={issueDateInputRef}
 									type="date"
-									value={issueDateDraft}
-									onChange={(e) => setIssueDateDraft(e.target.value)}
+									defaultValue={issueDateDefault}
 									className="flex-1 rounded border border-blue-300 bg-white px-3 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
 								/>
 							</div>

@@ -619,6 +619,20 @@ function formatSalmmFooterDate(payYearMonth: string): string {
 	return `&nbsp;&nbsp;&nbsp;&nbsp;년 &nbsp;&nbsp;월 &nbsp;&nbsp;&nbsp;일`;
 }
 
+/** 발행일자(YYYY-MM-DD)가 있으면 하단 일자를 그 날짜로 채운다. */
+function formatFooterIssueDate(issueDate: string | undefined, payYearMonth: string): string {
+	const s = String(issueDate || "").trim();
+	const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+	if (m) {
+		const mo = parseInt(m[2], 10);
+		const day = parseInt(m[3], 10);
+		if (mo >= 1 && mo <= 12 && day >= 1 && day <= 31) {
+			return `${m[1]}년 ${mo}월 ${day}일`;
+		}
+	}
+	return formatSalmmFooterDate(payYearMonth);
+}
+
 /** V40100E 월별 급여명세서 (API 매핑) */
 export interface V40100EPrintRow {
 	PNUM: string;
@@ -708,7 +722,8 @@ function formatYmdDisp(ymd: string): string {
 export function buildBenefitStatement24Body(
 	payYearMonth: string,
 	row: V40100EPrintRow,
-	facility?: LoginFacilityPrintInfo | null
+	facility?: LoginFacilityPrintInfo | null,
+	issueDate?: string
 ): string {
 	row = overlayLoginFacilityOnStatementRow(row, facility);
 	const salmm = row.SALMM || payYearMonthToSalmm(payYearMonth) || "";
@@ -913,7 +928,7 @@ export function buildBenefitStatement24Body(
 </table>
 
 <div class="f24-bank">${escapeHtml(bankLine)}</div>
-<div class="f24-date">${formatSalmmFooterDate(footerYm)}</div>
+<div class="f24-date">${formatFooterIssueDate(issueDate, footerYm)}</div>
 <div class="f24-foot2">
 	<span>장기요양기관명 : ${escapeHtml(orgName)}</span>
 	<span class="f24-rep">대표자명 : ${escapeHtml(orgOwner)}</span>
@@ -1376,13 +1391,14 @@ export function statementRowToV40100GFallback(
 function buildPaymentConfirmation25Body(
 	payYearMonth: string,
 	row: V40100GPrintRow,
-	facility?: LoginFacilityPrintInfo | null
+	facility?: LoginFacilityPrintInfo | null,
+	issueDate?: string
 ): string {
 	row = overlayLoginFacilityOnPaymentRow(row, facility);
 	const year =
 		(row.SALYY && String(row.SALYY).replace(/\D/g, "").slice(0, 4)) ||
 		(payYearMonth.length >= 4 ? payYearMonth.slice(0, 4) : String(new Date().getFullYear()));
-	const footerDate = formatSalmmFooterDate(payYearMonth);
+	const footerDate = formatFooterIssueDate(issueDate, payYearMonth);
 
 	const monthCells: {
 		c1: string;
@@ -1646,10 +1662,14 @@ ${bodyPages}
 export function buildPaymentConfirmation25PrintHtml(
 	payYearMonth: string,
 	rows: V40100GPrintRow[],
-	facility?: LoginFacilityPrintInfo | null
+	facility?: LoginFacilityPrintInfo | null,
+	issueDate?: string
 ): string {
 	const body = rows
-		.map((row) => `<div class="f25-page">${buildPaymentConfirmation25Body(payYearMonth, row, facility)}</div>`)
+		.map(
+			(row) =>
+				`<div class="f25-page">${buildPaymentConfirmation25Body(payYearMonth, row, facility, issueDate)}</div>`
+		)
 		.join("");
 	return wrapF25PrintHtml(body);
 }
