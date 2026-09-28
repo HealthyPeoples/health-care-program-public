@@ -365,8 +365,17 @@ html, body {
 	text-align: right; font-size: 8.5pt; line-height: 1.45; margin: 0 0 3mm; color: #222;
 }
 .qscore.blankBox {
-	width: 10mm; height: 6mm; border: 1px solid #000; text-align: center;
-	margin-left: auto;
+	width: 8mm;
+	height: 4.2mm;
+	min-height: 0;
+	font-size: 0;
+	line-height: 0;
+	border: 1px solid #000;
+	text-align: center;
+	padding: 0;
+	margin: 0 0 0 auto;
+	flex: 0 0 8mm;
+	align-self: center;
 }
 .opinion {
 	border: 1.5px solid #000; margin-bottom: 4mm;
