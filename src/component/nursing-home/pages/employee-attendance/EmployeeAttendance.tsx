@@ -182,7 +182,7 @@ export default function EmployeeAttendance() {
 	const attendanceItemsPerPage = 10;
 	const attendanceFetchSeq = useRef(0);
 	const formDataRef = useRef(formData);
-	formDataRef.current = formData;
+	const formVersionRef = useRef(0);
 	const savingRef = useRef(false);
 	const lastSavedRef = useRef<{
 		key: string;
@@ -236,11 +236,10 @@ export default function EmployeeAttendance() {
 	};
 
 	const patchFormData = (updater: (prev: AttendanceForm) => AttendanceForm) => {
-		setFormData((prev) => {
-			const next = updater(prev);
-			formDataRef.current = next;
-			return next;
-		});
+		const next = updater(formDataRef.current);
+		formVersionRef.current += 1;
+		formDataRef.current = next;
+		setFormData(next);
 	};
 
 	const applyClassificationChange = (prev: AttendanceForm, next: string): AttendanceForm => {
@@ -484,8 +483,9 @@ export default function EmployeeAttendance() {
 	// 근무일자 변경 시에만 목록 조회·입력폼 초기화 (Date 객체 참조 변경은 무시)
 	useEffect(() => {
 		fetchAttendanceData(workDateStr);
-		setFormData({ ...initialForm });
+		formVersionRef.current += 1;
 		formDataRef.current = { ...initialForm };
+		setFormData({ ...initialForm });
 		setSelectedEmployee(null);
 		setAttendanceCurrentPage(1);
 	}, [workDateStr]);
@@ -830,7 +830,9 @@ export default function EmployeeAttendance() {
 			if (result.success) {
 				alert("근태 데이터가 삭제되었습니다.");
 				if (formData.ANCD === row.ANCD && formData.EMPNO === row.EMPNO) {
-					setFormData(initialForm);
+					formVersionRef.current += 1;
+					formDataRef.current = { ...initialForm };
+					setFormData({ ...initialForm });
 					setSelectedEmployee(null);
 				}
 				await fetchAttendanceData(formatDate(workDate));
@@ -899,6 +901,7 @@ export default function EmployeeAttendance() {
 			return;
 		}
 
+		const versionAtSave = formVersionRef.current;
 		savingRef.current = true;
 		setSaving(true);
 		try {
@@ -935,18 +938,18 @@ export default function EmployeeAttendance() {
 			const result = await response.json();
 			if (result.success) {
 				const savedRow = {
-					...payload,
 					...(result.data || {}),
-					ANCD: Number(result.data?.ANCD ?? payload.ANCD),
-					EMPNO: Number(result.data?.EMPNO ?? payload.EMPNO),
-					WDT: toYmd(result.data?.WDT ?? payload.WDT),
-					JOBADD: result.data?.JOBADD ?? payload.JOBADD,
-					JOBSH: result.data?.JOBSH ?? payload.JOBSH,
-					WGU: result.data?.WGU ?? payload.WGU,
-					HODES: result.data?.HODES ?? payload.HODES,
-					STM: result.data?.STM ?? payload.STM,
-					ETM: result.data?.ETM ?? payload.ETM,
-					EMPNM: result.data?.EMPNM ?? payload.EMPNM,
+					...payload,
+					ANCD: Number(payload.ANCD),
+					EMPNO: Number(payload.EMPNO),
+					WDT: payload.WDT,
+					JOBADD: payload.JOBADD ?? "",
+					JOBSH: payload.JOBSH,
+					WGU: payload.WGU,
+					HODES: payload.HODES ?? "",
+					STM: payload.STM ?? "",
+					ETM: payload.ETM ?? "",
+					EMPNM: payload.EMPNM,
 				};
 				lastSavedRef.current = {
 					key: attendanceRowKey(savedRow),
@@ -954,20 +957,18 @@ export default function EmployeeAttendance() {
 					at: Date.now(),
 				};
 				setAttendanceData((prev) => upsertAttendanceList(prev, savedRow));
-				patchFormData((prev) => ({
-					...prev,
-					workDate: savedRow.WDT,
-					workType: normalizeAttendanceJobsh(savedRow.JOBSH) || prev.workType,
-					workClassification: getWorkClassificationTextFromCode(
-						savedRow.WGU,
-						savedRow.HODES,
-						savedRow.JOBSH
-					),
-					leaveReason: savedRow.HODES || "",
-					workStartTime: savedRow.STM || "",
-					workEndTime: savedRow.ETM || "",
-					workLocation: savedRow.JOBADD || prev.workLocation,
-				}));
+				if (formVersionRef.current === versionAtSave) {
+					patchFormData((prev) => ({
+						...prev,
+						workDate: savedRow.WDT,
+						workType: payload.JOBSH,
+						workClassification: current.workClassification,
+						leaveReason: payload.HODES || "",
+						workStartTime: payload.STM || "",
+						workEndTime: payload.ETM || "",
+						workLocation: payload.JOBADD || prev.workLocation,
+					}));
+				}
 				await fetchAttendanceData(savedRow.WDT, { resetPrintKeys: false, silent: true });
 				setAttendanceData((prev) => upsertAttendanceList(prev, savedRow));
 				alert("근태 데이터가 저장되었습니다.");
@@ -1294,10 +1295,11 @@ export default function EmployeeAttendance() {
 									type="text"
 									value={formData.employeeName}
 									onChange={(e) =>
-										setFormData((prev) => ({ ...prev, employeeName: e.target.value }))
+										patchFormData((prev) => ({ ...prev, employeeName: e.target.value }))
 									}
 									placeholder="이름"
-									className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+									disabled={saving}
+									className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none disabled:opacity-60"
 								/>
 							</div>
 
@@ -1310,9 +1312,10 @@ export default function EmployeeAttendance() {
 									type="text"
 									value={formData.workLocation}
 									onChange={(e) =>
-										setFormData((prev) => ({ ...prev, workLocation: e.target.value }))
+										patchFormData((prev) => ({ ...prev, workLocation: e.target.value }))
 									}
-									className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+									disabled={saving}
+									className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none disabled:opacity-60"
 								/>
 							</div>
 
@@ -1326,17 +1329,24 @@ export default function EmployeeAttendance() {
 										{WORK_CLASSIFICATIONS.map((classification) => (
 											<label
 												key={classification}
+												onMouseDown={() => {
+													if (saving) return;
+													patchFormData((prev) =>
+														applyClassificationChange(prev, classification)
+													);
+												}}
 												className={`flex cursor-pointer items-center gap-2 rounded border px-2 py-1.5 ${
 													formData.workClassification === classification
 														? "border-blue-500 bg-blue-50"
 														: "border-blue-300 bg-white hover:bg-blue-50"
-												}`}
+												} ${saving ? "cursor-not-allowed opacity-60" : ""}`}
 											>
 												<input
 													type="radio"
 													name="editWorkClassification"
 													value={classification}
 													checked={formData.workClassification === classification}
+													disabled={saving}
 													onChange={() =>
 														patchFormData((prev) =>
 															applyClassificationChange(prev, classification)
@@ -1360,18 +1370,20 @@ export default function EmployeeAttendance() {
 									type="time"
 									value={formData.workStartTime}
 									onChange={(e) =>
-										setFormData((prev) => ({ ...prev, workStartTime: e.target.value }))
+										patchFormData((prev) => ({ ...prev, workStartTime: e.target.value }))
 									}
-									className="rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+									disabled={saving}
+									className="rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none disabled:opacity-60"
 								/>
 								<span className="text-sm text-blue-900">~</span>
 								<input
 									type="time"
 									value={formData.workEndTime}
 									onChange={(e) =>
-										setFormData((prev) => ({ ...prev, workEndTime: e.target.value }))
+										patchFormData((prev) => ({ ...prev, workEndTime: e.target.value }))
 									}
-									className="rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none"
+									disabled={saving}
+									className="rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none disabled:opacity-60"
 								/>
 								<span className="ml-2 text-xs text-blue-900/70">Ex) 08:00</span>
 							</div>
@@ -1384,10 +1396,11 @@ export default function EmployeeAttendance() {
 								<textarea
 									value={formData.leaveReason}
 									onChange={(e) =>
-										setFormData((prev) => ({ ...prev, leaveReason: e.target.value }))
+										patchFormData((prev) => ({ ...prev, leaveReason: e.target.value }))
 									}
 									rows={4}
-									className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none resize-y"
+									disabled={saving}
+									className="flex-1 rounded border border-blue-300 bg-white px-2 py-1.5 text-sm text-blue-900 focus:border-blue-500 focus:outline-none resize-y disabled:opacity-60"
 									placeholder="휴무사유를 입력하세요"
 								/>
 							</div>
@@ -1562,11 +1575,17 @@ export default function EmployeeAttendance() {
 											{WORK_CLASSIFICATIONS.map((classification) => (
 												<label
 													key={classification}
+													onMouseDown={() => {
+														if (createSaving) return;
+														setCreateFormData((prev) =>
+															applyClassificationChange(prev, classification)
+														);
+													}}
 													className={`flex cursor-pointer items-center gap-2 rounded border px-2 py-1.5 ${
 														createFormData.workClassification === classification
 															? "border-blue-500 bg-blue-50"
 															: "border-blue-300 bg-white hover:bg-blue-50"
-													}`}
+													} ${createSaving ? "cursor-not-allowed opacity-60" : ""}`}
 												>
 													<input
 														type="radio"
@@ -1575,6 +1594,7 @@ export default function EmployeeAttendance() {
 														checked={
 															createFormData.workClassification === classification
 														}
+														disabled={createSaving}
 														onChange={() =>
 															setCreateFormData((prev) =>
 																applyClassificationChange(prev, classification)

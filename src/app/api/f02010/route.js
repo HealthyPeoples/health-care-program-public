@@ -244,24 +244,38 @@ export async function POST(req) {
     }
 
     const wdt = ymd(WDT);
-    const jobsh = String(JOBSH ?? '').trim();
-    const wgu = String(WGU ?? '').trim();
+    const jobsh = String(JOBSH ?? '').trim().slice(0, 50);
+    const wgu = String(WGU ?? '').trim().slice(0, 1);
 
-    // 같은 배치에서 UPDATE → 없으면 INSERT. JS에서 @@ROWCOUNT를 잘못 읽으면
-    // 2회째부터 INSERT만 시도하거나 중복 행이 생겨 목록이 옛값을 보여준다.
+    // PK(ANCD, EMPNO, WDT) 기준으로 갱신한다.
+    // @@ROWCOUNT는 트리거/드라이버에 따라 0으로 보여 INSERT가 실패하거나
+    // 방금 쓴 JOBSH 대신 이전 행이 조회될 수 있다. OUTPUT으로 쓴 행만 돌려준다.
     const request = pool.request();
     request.input('ANCD', sql.Int, Number(ANCD));
     request.input('EMPNO', sql.Int, Number(EMPNO));
     request.input('WDT', sql.VarChar(10), wdt);
     request.input('JOBADD', sql.VarChar(50), JOBADD || '');
-    request.input('JOBSH', sql.VarChar(10), jobsh);
-    request.input('WGU', sql.VarChar(10), wgu);
-    request.input('HODES', sql.NVarChar(500), HODES || '');
-    request.input('STM', sql.VarChar(10), STM || '');
-    request.input('ETM', sql.VarChar(10), ETM || '');
+    request.input('JOBSH', sql.VarChar(50), jobsh);
+    request.input('WGU', sql.Char(1), wgu);
+    request.input('HODES', sql.NVarChar(200), String(HODES || '').slice(0, 200));
+    request.input('STM', sql.VarChar(5), String(STM || '').slice(0, 5));
+    request.input('ETM', sql.VarChar(5), String(ETM || '').slice(0, 5));
 
     const saved = await request.query(`
       SET NOCOUNT ON;
+
+      DECLARE @saved TABLE (
+        ANCD int,
+        EMPNO int,
+        WDT date,
+        JOBADD varchar(50),
+        JOBSH varchar(50),
+        WGU char(1),
+        HODES varchar(200),
+        STM char(5),
+        ETM char(5),
+        INDT datetime
+      );
 
       UPDATE [돌봄시설DB].[dbo].[F02010]
       SET
@@ -272,61 +286,74 @@ export async function POST(req) {
         [STM] = @STM,
         [ETM] = @ETM,
         [INDT] = GETDATE()
+      OUTPUT
+        inserted.[ANCD],
+        inserted.[EMPNO],
+        inserted.[WDT],
+        inserted.[JOBADD],
+        inserted.[JOBSH],
+        inserted.[WGU],
+        inserted.[HODES],
+        inserted.[STM],
+        inserted.[ETM],
+        inserted.[INDT]
+      INTO @saved (ANCD, EMPNO, WDT, JOBADD, JOBSH, WGU, HODES, STM, ETM, INDT)
       WHERE [ANCD] = @ANCD
         AND [EMPNO] = @EMPNO
-        AND CONVERT(date, [WDT]) = CONVERT(date, @WDT);
+        AND [WDT] = CONVERT(date, @WDT);
 
-      IF @@ROWCOUNT = 0
+      IF NOT EXISTS (SELECT 1 FROM @saved)
       BEGIN
         INSERT INTO [돌봄시설DB].[dbo].[F02010]
           ([ANCD], [EMPNO], [WDT], [JOBADD], [JOBSH], [WGU], [HODES], [STM], [ETM], [INDT])
+        OUTPUT
+          inserted.[ANCD],
+          inserted.[EMPNO],
+          inserted.[WDT],
+          inserted.[JOBADD],
+          inserted.[JOBSH],
+          inserted.[WGU],
+          inserted.[HODES],
+          inserted.[STM],
+          inserted.[ETM],
+          inserted.[INDT]
+        INTO @saved (ANCD, EMPNO, WDT, JOBADD, JOBSH, WGU, HODES, STM, ETM, INDT)
         VALUES
           (@ANCD, @EMPNO, CONVERT(date, @WDT), @JOBADD, @JOBSH, @WGU, @HODES, @STM, @ETM, GETDATE());
       END
-      ELSE
-      BEGIN
-        ;WITH dup AS (
-          SELECT
-            ROW_NUMBER() OVER (
-              PARTITION BY [ANCD], [EMPNO], CONVERT(date, [WDT])
-              ORDER BY [INDT] DESC
-            ) AS rn
-          FROM [돌봄시설DB].[dbo].[F02010]
-          WHERE [ANCD] = @ANCD
-            AND [EMPNO] = @EMPNO
-            AND CONVERT(date, [WDT]) = CONVERT(date, @WDT)
-        )
-        DELETE FROM dup WHERE rn > 1;
-      END
 
       SELECT TOP 1
-        f02010.[ANCD],
-        f02010.[EMPNO],
-        CONVERT(varchar(10), f02010.[WDT], 23) AS [WDT],
-        f02010.[JOBADD],
-        f02010.[JOBSH],
-        f02010.[WGU],
-        f02010.[HODES],
-        f02010.[STM],
-        f02010.[ETM],
-        f02010.[INDT],
+        s.[ANCD],
+        s.[EMPNO],
+        CONVERT(varchar(10), s.[WDT], 23) AS [WDT],
+        s.[JOBADD],
+        s.[JOBSH],
+        s.[WGU],
+        s.[HODES],
+        s.[STM],
+        s.[ETM],
+        s.[INDT],
         f01010.[EMPNM],
         f01010.[JOB],
         f01010.[JOBLIST]
-      FROM [돌봄시설DB].[dbo].[F02010] f02010
+      FROM @saved s
       LEFT JOIN [돌봄시설DB].[dbo].[F01010] f01010
-        ON f02010.[ANCD] = f01010.[ANCD]
-        AND f02010.[EMPNO] = f01010.[EMPNO]
-      WHERE f02010.[ANCD] = @ANCD
-        AND f02010.[EMPNO] = @EMPNO
-        AND CONVERT(date, f02010.[WDT]) = CONVERT(date, @WDT)
-      ORDER BY f02010.[INDT] DESC;
+        ON s.[ANCD] = f01010.[ANCD]
+        AND s.[EMPNO] = f01010.[EMPNO];
     `);
 
     const savedRow =
       (Array.isArray(saved?.recordsets)
         ? saved.recordsets[saved.recordsets.length - 1]?.[0]
         : saved?.recordset?.[0]) || saved?.recordset?.[0] || null;
+
+    const writtenJobsh = String(savedRow?.JOBSH ?? '').trim();
+    if (!savedRow || writtenJobsh !== jobsh) {
+      return jsonError({
+        success: false,
+        error: '근무구분이 저장되지 않았습니다. 다시 저장해 주세요.'
+      }, 500);
+    }
 
     return jsonOk({
       success: true,
