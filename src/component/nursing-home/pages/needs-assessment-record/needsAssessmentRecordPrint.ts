@@ -355,7 +355,7 @@ export function buildNeedsAssessmentPrintHtml(
 	${sectionTitle('5. 인지상태')}
 	<p class="subNote">(인지기능저하, 정신상태, 감정, 문제행동 등)</p>
 	<table class="block cog">
-		<tr><th style="width:36px">No</th><th>구분</th><th style="width:48px">확인</th></tr>
+		<tr><th class="cogNo">No</th><th class="cogName">구분</th><th class="cogChk">확인</th></tr>
 		${cogHtml}
 	</table>
 	<div class="grow">
@@ -466,7 +466,8 @@ html, body {
 	color: #000;
 	background: #fff;
 	line-height: 1.28;
-	padding: 7mm 7mm 8mm;
+	margin: 0;
+	padding: 0;
 }
 @page { size: A4 portrait; margin: 0; }
 @media print {
@@ -474,14 +475,22 @@ html, body {
 }
 .page {
 	page-break-after: always;
+	break-after: page;
 	position: relative;
 	display: flex;
 	flex-direction: column;
-	min-height: 282mm;
-	padding-bottom: 2mm;
+	width: 210mm;
+	height: 296mm;
+	min-height: 296mm;
+	max-height: 296mm;
+	padding: 6mm 8mm 5mm;
+	overflow: hidden;
 	box-sizing: border-box;
 }
-.record:last-child .page:last-child { page-break-after: auto; }
+.record:last-child .page:last-child {
+	page-break-after: auto;
+	break-after: auto;
+}
 .title { text-align: center; font-size: 16pt; font-weight: 700; margin: 1.5mm 0 2mm; letter-spacing: 2px; }
 .topMeta { display: flex; justify-content: flex-end; margin-bottom: 1mm; }
 .metaBox { border-collapse: collapse; font-size: 9pt; table-layout: auto; }
@@ -523,7 +532,10 @@ table.adlWrap { border: 1px solid #000; }
 .basisText { vertical-align: top !important; white-space: normal; min-height: 8mm; }
 .basisText.tall { min-height: 16mm; }
 .basisText.overall { min-height: 36mm; }
-.cat { width: 16%; text-align: center; font-weight: 700; background: #fafafa; }
+table.block th.cat,
+table.block td.cat { width: 14%; text-align: center; font-weight: 700; background: #fafafa; }
+table.block th.cat + th,
+table.block td.cat + td { width: 86%; }
 .opt { white-space: nowrap; display: inline-block; margin: 0 3px 0 0; }
 .rehabTable td { border: 1px solid #000; vertical-align: middle; padding: 3px 5px; width: 25%; }
 .nurseTable td { border: 1px solid #000; vertical-align: middle; padding: 3px 4px; width: 20%; white-space: nowrap; }
@@ -533,7 +545,20 @@ table.adlWrap { border: 1px solid #000; }
 .subNote { font-size: 8pt; margin: -0.5mm 0 1mm; }
 .chkBig { font-weight: 700; font-size: 12pt; min-height: 8mm; padding-top: 1mm; }
 table.needs3 td.center { text-align: center; vertical-align: top; }
-table.cog td.num { width: 36px; text-align: center; }
+table.block.cog th,
+table.block.cog td { width: auto; }
+table.block.cog th.cogNo,
+table.block.cog td.num {
+	width: 7mm;
+	padding-left: 0;
+	padding-right: 0;
+	text-align: center;
+	white-space: nowrap;
+}
+table.block.cog th.cogName,
+table.block.cog td:nth-child(2) { width: auto; text-align: left; }
+table.block.cog th.cogChk,
+table.block.cog td.chk { width: 12mm; text-align: center; }
 table.cog .grp { text-align: left; background: #eee; }
 .p1 {
 	font-size: 8.5pt;
