@@ -279,6 +279,7 @@ type V14030CEvalRow = {
 	PNUM?: number | null;
 	name?: string;
 	joinLevel?: string;
+	playLevel?: string;
 	happLevel?: string;
 	remark?: string;
 };
@@ -654,13 +655,21 @@ function buildIndivEvalTableHtml(evals: V14030CEvalRow[]): string {
 			return `<tr>
 	<td class="eval-name">${escapeHtml(String(ev.name ?? "").trim() || " ")}</td>
 	<td class="eval-lv">${escapeHtml(String(ev.joinLevel ?? "").trim() || " ")}</td>
+	<td class="eval-lv">${escapeHtml(String(ev.playLevel ?? "").trim() || " ")}</td>
 	<td class="eval-lv">${escapeHtml(String(ev.happLevel ?? "").trim() || " ")}</td>
 	<td class="eval-rm">${escapeHtml(String(ev.remark ?? "").trim() || " ")}</td>
 </tr>`;
 		})
 		.join("");
 	return `<table class="eval-table">
-<thead><tr><th>수급자</th><th>참여도</th><th>만족도</th><th>특이사항</th></tr></thead>
+<colgroup>
+	<col class="eval-col-name"/>
+	<col class="eval-col-lv"/>
+	<col class="eval-col-lv"/>
+	<col class="eval-col-lv"/>
+	<col class="eval-col-rm"/>
+</colgroup>
+<thead><tr><th class="eval-name">수급자</th><th class="eval-lv">참여도</th><th class="eval-lv">수행도</th><th class="eval-lv">만족도</th><th class="eval-rm">특이사항</th></tr></thead>
 <tbody>${body}</tbody>
 </table>`;
 }
@@ -837,9 +846,12 @@ body {
 .eval-table { width: 100%; border-collapse: collapse; font-size: 9pt; table-layout: fixed; }
 .eval-table th, .eval-table td { border: 1px solid #000; padding: 3px 5px; vertical-align: middle; }
 .eval-table th { text-align: center; font-weight: 600; background: #f5f5f5; }
-.eval-name { width: 18%; }
-.eval-lv { width: 12%; text-align: center; }
-.eval-rm { width: 58%; word-break: break-word; }
+.eval-col-name { width: 15%; }
+.eval-col-lv { width: 8%; }
+.eval-col-rm { width: 61%; }
+.eval-table th.eval-name, .eval-table td.eval-name { word-break: keep-all; }
+.eval-table th.eval-lv, .eval-table td.eval-lv { text-align: center; white-space: nowrap; padding: 2px 1px; }
+.eval-table th.eval-rm, .eval-table td.eval-rm { word-break: break-word; }
 .eval-empty { font-size: 9.5pt; color: #444; padding: 4px 0; }
 .row-photo { height: auto; }
 .row-photo td { height: 40mm; vertical-align: top; }
