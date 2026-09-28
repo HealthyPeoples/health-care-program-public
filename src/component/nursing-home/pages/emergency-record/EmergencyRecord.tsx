@@ -61,6 +61,7 @@ export default function EmergencyRecord() {
 		handler: '' // EMHND (담당자)
 	});
 	const EMDES_MAX_LENGTH = 500;
+	const ACTION_MAX_LENGTH = 1000;
 
 	// 날짜 생성 함수
 	const handleCreateDate = () => {
@@ -268,9 +269,10 @@ export default function EmergencyRecord() {
 
 	const handleLimitedTextChange = (field: 'emergencySituation' | 'actionTaken', value: string) => {
 		const label = field === 'emergencySituation' ? '응급상황' : '조치사항';
-		if (value.length > EMDES_MAX_LENGTH) {
-			alert(`${label}은 ${EMDES_MAX_LENGTH}자까지 입력할 수 있습니다.`);
-			handleFormChange(field, value.slice(0, EMDES_MAX_LENGTH));
+		const max = field === 'emergencySituation' ? EMDES_MAX_LENGTH : ACTION_MAX_LENGTH;
+		if (value.length > max) {
+			alert(`${label}은 ${max}자까지 입력할 수 있습니다.`);
+			handleFormChange(field, value.slice(0, max));
 			return;
 		}
 		handleFormChange(field, value);
@@ -305,8 +307,8 @@ export default function EmergencyRecord() {
 			alert(`응급상황은 ${EMDES_MAX_LENGTH}자까지 입력할 수 있습니다.`);
 			return;
 		}
-		if (formData.actionTaken.length > EMDES_MAX_LENGTH) {
-			alert(`조치사항은 ${EMDES_MAX_LENGTH}자까지 입력할 수 있습니다.`);
+		if (formData.actionTaken.length > ACTION_MAX_LENGTH) {
+			alert(`조치사항은 ${ACTION_MAX_LENGTH}자까지 입력할 수 있습니다.`);
 			return;
 		}
 
@@ -415,24 +417,17 @@ export default function EmergencyRecord() {
 			return residentNumber.substring(0, 7) + '******';
 		};
 
-		const today = new Date();
-		const year = today.getFullYear();
-		const month = String(today.getMonth() + 1).padStart(2, '0');
-		const day = String(today.getDate()).padStart(2, '0');
-		const issueDate = `${year}-${month}-${day}`;
-		const printDate = `${year}-${month}-${day}`;
-
 		const printHTML = `
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>응급상황기록</title>
+	<title></title>
 	<style>
 		@page {
 			size: A4;
-			margin: 20mm;
+			margin: 0 18mm 14mm 18mm;
 		}
 		* {
 			margin: 0;
@@ -446,11 +441,30 @@ export default function EmergencyRecord() {
 			color: #000;
 			background: #fff;
 		}
+		.cover-top {
+			position: fixed;
+			left: -18mm;
+			right: -18mm;
+			top: 0;
+			height: 10mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 		.print-container {
 			width: 100%;
 			max-width: 210mm;
 			margin: 0 auto;
-			padding: 0;
+			padding: 14mm 0 0;
+		}
+		.doc-title {
+			margin: 0 0 16px;
+			font-size: 18pt;
+			font-weight: bold;
+			line-height: 1.3;
+			text-align: center;
+			letter-spacing: 0.12em;
 		}
 		.info-table {
 			width: 100%;
@@ -501,7 +515,9 @@ export default function EmergencyRecord() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="print-container">
+		<h1 class="doc-title">응급상황기록</h1>
 		<table class="info-table">
 			<tr>
 				<td class="label">수급자</td>
@@ -797,8 +813,8 @@ export default function EmergencyRecord() {
 								<label className="text-sm font-medium text-blue-900">조치사항</label>
 								<span className="text-xs text-blue-700">
 									{isEditMode
-										? `${formData.actionTaken.length} / ${EMDES_MAX_LENGTH}자`
-										: `최대 ${EMDES_MAX_LENGTH}자`}
+										? `${formData.actionTaken.length} / ${ACTION_MAX_LENGTH}자`
+										: `최대 ${ACTION_MAX_LENGTH}자`}
 								</span>
 							</div>
 							{isEditMode ? (

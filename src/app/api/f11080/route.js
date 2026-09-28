@@ -17,7 +17,7 @@ const VARCHAR_LIMITS = {
 	EMPL: 200,
 	EMTM: 5,
 	EMDES1: 500,
-	EMDES2: 500,
+	EMDES2: 1000,
 	EMDES3: 500,
 	EMHOS: 200,
 	EMETC: 500,
@@ -30,6 +30,25 @@ const VARCHAR_LIMITS = {
 function toVarchar(value, max) {
 	if (value == null || value === '') return null;
 	return String(value).slice(0, max);
+}
+
+/** 조치사항(EMDES2). varchar(1000)은 한글 약 500자까지만 담는다. */
+async function ensureActionTakenColumn(pool) {
+	await pool.request().query(`
+		IF EXISTS (
+			SELECT 1
+			FROM [돌봄시설DB].sys.columns c
+			INNER JOIN [돌봄시설DB].sys.types t ON c.user_type_id = t.user_type_id
+			INNER JOIN [돌봄시설DB].sys.tables tb ON c.object_id = tb.object_id
+			WHERE tb.name = N'F11080'
+				AND c.name = N'EMDES2'
+				AND (t.name <> N'nvarchar' OR c.max_length < 2000)
+		)
+		BEGIN
+			ALTER TABLE [돌봄시설DB].[dbo].[F11080]
+			ALTER COLUMN [EMDES2] NVARCHAR(1000) NULL;
+		END
+	`);
 }
 
 
@@ -49,6 +68,12 @@ export async function GET(req) {
     const pool = await connPool;
     if (!pool) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+    }
+
+    try {
+      await ensureActionTakenColumn(pool);
+    } catch (colErr) {
+      console.warn('F11080 EMDES2 컬럼 확장 경고:', colErr?.message || colErr);
     }
 
     const request = pool.request();
@@ -113,6 +138,12 @@ export async function POST(req) {
     const pool = await connPool;
     if (!pool) {
       return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+    }
+
+    try {
+      await ensureActionTakenColumn(pool);
+    } catch (colErr) {
+      console.warn('F11080 EMDES2 컬럼 확장 경고:', colErr?.message || colErr);
     }
 
     const request = pool.request();
