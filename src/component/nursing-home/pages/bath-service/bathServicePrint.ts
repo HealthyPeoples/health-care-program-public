@@ -94,9 +94,9 @@ function toYmd(v: unknown): string {
 	return '';
 }
 
-function formatDateDot(ymd: string): string {
+function formatPrintDate(ymd: string): string {
 	if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '';
-	return `${ymd.slice(5, 7)}.${ymd.slice(8, 10)}`;
+	return `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}`;
 }
 
 function bathMethodLabel(row?: BathPrintRow): string {
@@ -154,7 +154,7 @@ const ROW_DEFS: { key: keyof BathPrintRow | 'DATE' | 'METHOD'; label: string; me
 
 function cellValue(row: BathPrintRow | undefined, key: (typeof ROW_DEFS)[number]['key']): string {
 	if (!row) return '';
-	if (key === 'DATE') return formatDateDot(toYmd(row.VDT));
+	if (key === 'DATE') return formatPrintDate(toYmd(row.VDT));
 	if (key === 'METHOD') return bathMethodLabel(row);
 	if (key === 'SRV_TM') return String(row.SRV_TM || '').trim();
 	return String(row[key] || '').trim();
@@ -200,7 +200,7 @@ function renderPage(opts: {
 		</table>
 	</div>
 	${renderSheet(opts.slots)}
-	<p class="note">목욕전·이동방법·목욕후: 양호 / 이상 / 거부 &nbsp;·&nbsp; 한 장에 ${BATH_PRINT_SLOTS}회 기록</p>
+	<p class="note">목욕전·목욕후: 양호 / 이상 / 거부 &nbsp;·&nbsp; 이동방법: 휠체어 / 목욕의자 / 목욕침대 / 자립이동 &nbsp;·&nbsp; 한 장에 ${BATH_PRINT_SLOTS}회 기록</p>
 </div>`;
 }
 

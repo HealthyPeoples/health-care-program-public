@@ -72,13 +72,15 @@ type BathFormData = {
 	beneficiaryStatus: string;
 	bathingMethod: string;
 	beforeBath: StatValue;
-	moveMethod: StatValue;
+	moveMethod: string;
 	afterBath: StatValue;
 	remarks: string;
 	provider: string;
 };
 
 const BATH_METHOD_OPTIONS = ['샤워식-목욕의자', '샤워식-입욕', '목욕의자', '입욕', '기타'] as const;
+
+const MOVE_METHOD_OPTIONS = ['휠체어', '목욕의자', '목욕침대', '자립이동'] as const;
 
 const timeInputClass =
 	'w-14 px-2 py-1.5 text-sm text-center border border-blue-300 rounded bg-white focus:outline-none focus:border-blue-500';
@@ -216,6 +218,17 @@ function normalizeStat(v: unknown, fallback: StatValue = '양호'): StatValue {
 	return fallback;
 }
 
+function normalizeMoveMethod(v: unknown): string {
+	return String(v ?? '').trim();
+}
+
+function moveMethodChoices(current: string): string[] {
+	const base = [...MOVE_METHOD_OPTIONS];
+	if (current && !(base as string[]).includes(current)) return [current, ...base];
+	if (!current) return ['', ...base];
+	return base;
+}
+
 function createEmptyForm(beneficiary = '', provider = ''): BathFormData {
 	return {
 		serviceDate: '',
@@ -224,7 +237,7 @@ function createEmptyForm(beneficiary = '', provider = ''): BathFormData {
 		beneficiaryStatus: '',
 		bathingMethod: '샤워식-목욕의자',
 		beforeBath: '양호',
-		moveMethod: '양호',
+		moveMethod: '휠체어',
 		afterBath: '양호',
 		remarks: '',
 		provider,
@@ -248,6 +261,7 @@ export default function BathService() {
 	const [formMode, setFormMode] = useState<'view' | 'edit' | 'create'>('view');
 	const [formSnapshot, setFormSnapshot] = useState<BathFormData | null>(null);
 	const [unsavedNewDate, setUnsavedNewDate] = useState<string | null>(null);
+	const [newServiceDate, setNewServiceDate] = useState(todayYmd);
 
 	const formatDateYmd = (v: unknown) => {
 		if (v == null || v === '') return '';
@@ -503,7 +517,7 @@ export default function BathService() {
 				beneficiaryStatus: String(row?.BEN_STAT ?? row?.ben_stat ?? '').trim(),
 				bathingMethod: codeToBathMethod(row?.BATH_METH ?? row?.bath_meth, row?.BATH_METH_NM ?? row?.bath_meth_nm),
 				beforeBath: normalizeStat(row?.BEF_STAT ?? row?.bef_stat, beforeFromLegacy),
-				moveMethod: normalizeStat(row?.MOVE_STAT ?? row?.move_stat, '양호'),
+				moveMethod: normalizeMoveMethod(row?.MOVE_STAT ?? row?.move_stat),
 				afterBath: normalizeStat(row?.AFT_STAT ?? row?.aft_stat, afterFromLegacy),
 				remarks: String(row?.SRV_WRNG_DESC ?? row?.srv_wrng_desc ?? '').trim(),
 				provider:
@@ -576,38 +590,63 @@ export default function BathService() {
 		applyViewDate(nextIndex, nextDates);
 	};
 
-	const handleCreateDate = () => {
-		if (!selectedMember) {
-			alert('수급자를 선택해주세요.');
-			return;
-		}
-		if (formMode === 'create') return;
-		if (!confirmLeaveForm()) return;
-
-		const date = todayYmd();
-		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-			alert('제공일자를 생성할 수 없습니다.');
-			return;
-		}
-
-		const savedDates = discardDraftDate();
+	const openExistingDate = (date: string, savedDates: string[]) => {
 		const existingIdx = savedDates.indexOf(date);
-		if (existingIdx >= 0) {
-			setServiceDates(savedDates);
-			setUnsavedNewDate(null);
-			applyViewDate(existingIdx, savedDates);
-			alert('오늘 제공일자가 이미 있습니다. 수정 버튼으로 변경하세요.');
-			return;
-		}
+		if (existingIdx < 0) return;
+		setServiceDates(savedDates);
+		setUnsavedNewDate(null);
+		setFormSnapshot(null);
+		applyViewDate(existingIdx, savedDates);
+		alert('선택한 제공일자가 이미 있습니다. 수정 버튼으로 변경하세요.');
+	};
 
+	const placeDraftDate = (date: string, savedDates: string[], resetForm: boolean) => {
 		const nextDates = [date, ...savedDates];
 		setServiceDates(nextDates);
 		setServiceDatePage(1);
 		setSelectedDateIndex(0);
 		setUnsavedNewDate(date);
+		setNewServiceDate(date);
 		setFormSnapshot(null);
 		setFormMode('create');
-		applyEmptyFormForDate(date);
+		if (resetForm) applyEmptyFormForDate(date);
+		else setFormData((prev) => ({ ...prev, serviceDate: date }));
+	};
+
+	const handleCreateDate = () => {
+		if (!selectedMember) {
+			alert('수급자를 선택해주세요.');
+			return;
+		}
+
+		const date = String(newServiceDate || '').trim();
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+			alert('생성할 제공일자를 선택해주세요.');
+			return;
+		}
+		if (formMode === 'create' && unsavedNewDate === date) return;
+
+		const savedDates = discardDraftDate();
+		if (savedDates.includes(date)) {
+			if (isFormOpen && !confirmLeaveForm()) return;
+			openExistingDate(date, savedDates);
+			return;
+		}
+		if (formMode === 'edit' && !confirmLeaveForm()) return;
+		placeDraftDate(date, savedDates, formMode !== 'create');
+	};
+
+	const handleDraftDateChange = (date: string) => {
+		setNewServiceDate(date);
+		if (formMode !== 'create' || !unsavedNewDate || date === unsavedNewDate) return;
+		if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+		const savedDates = discardDraftDate();
+		if (savedDates.includes(date)) {
+			alert('선택한 제공일자가 이미 있습니다. 수정 버튼으로 변경하세요.');
+			setNewServiceDate(unsavedNewDate);
+			return;
+		}
+		placeDraftDate(date, savedDates, false);
 	};
 
 	const handleEnterEdit = () => {
@@ -1128,13 +1167,22 @@ export default function BathService() {
 				<div className="flex flex-col w-full xl:w-1/4 min-w-0 shrink-0 px-4 py-3 border-r border-blue-200 bg-blue-50 border-b xl:border-b-0 min-h-[240px] xl:min-h-0 overflow-hidden">
 					<div className="mb-2 flex items-center justify-between gap-2">
 						<label className="text-sm font-medium text-blue-900">제공일자</label>
-						<button
-							type="button"
-							onClick={handleCreateDate}
-							className="px-2 py-1 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
-						>
-							신규
-						</button>
+						<div className="flex items-center gap-1">
+							<input
+								type="date"
+								value={newServiceDate}
+								onChange={(e) => handleDraftDateChange(e.target.value)}
+								className="px-1 py-1 text-xs border border-blue-300 rounded bg-white"
+								aria-label="생성할 제공일자"
+							/>
+							<button
+								type="button"
+								onClick={handleCreateDate}
+								className="px-2 py-1 text-xs border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"
+							>
+								신규
+							</button>
+						</div>
 					</div>
 					<div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
 						<div className="flex-1 overflow-y-auto bg-white">
@@ -1142,7 +1190,7 @@ export default function BathService() {
 								<div className="px-2 py-1 text-sm text-blue-900/60">로딩 중...</div>
 							) : serviceDates.length === 0 ? (
 								<div className="px-2 py-1 text-sm text-blue-900/60">
-									{selectedMember ? '오른쪽 신규 버튼으로 일자를 생성해주세요' : '수급자를 선택해주세요'}
+									{selectedMember ? '날짜를 선택한 뒤 신규로 생성해주세요' : '수급자를 선택해주세요'}
 								</div>
 							) : (
 								currentDateItems.map((date, localIndex) => {
@@ -1255,10 +1303,13 @@ export default function BathService() {
 							<div className="flex items-center gap-2">
 								<label className="text-sm font-medium text-blue-900 whitespace-nowrap bg-blue-100 px-3 py-1.5 border border-blue-300 rounded">일자</label>
 								<input
-									type="text"
+									type={formMode === 'create' ? 'date' : 'text'}
 									value={formData.serviceDate}
-									readOnly
-									className="px-3 py-1.5 text-sm border border-blue-200 rounded bg-gray-50 min-w-[130px]"
+									readOnly={formMode !== 'create'}
+									onChange={(e) => handleDraftDateChange(e.target.value)}
+									className={`px-3 py-1.5 text-sm border border-blue-200 rounded min-w-[130px] ${
+										formMode === 'create' ? 'bg-white' : 'bg-gray-50'
+									}`}
 									placeholder="신규로 생성"
 								/>
 							</div>
@@ -1305,33 +1356,65 @@ export default function BathService() {
 						<div className="overflow-x-auto border border-blue-300 rounded">
 							<table className="w-full text-sm border-collapse">
 								<tbody>
-									{(
-										[
-											{ key: 'beforeBath', label: '목욕전' },
-											{ key: 'moveMethod', label: '이동방법' },
-											{ key: 'afterBath', label: '목욕후' },
-										] as const
-									).map((row) => (
-										<tr key={row.key}>
-											<th className="w-28 px-3 py-2 font-medium text-center text-blue-900 border border-blue-200 bg-blue-50">
-												{row.label}
-											</th>
-											<td className="px-3 py-2 border border-blue-200">
-												<select
-													value={formData[row.key]}
-													disabled={!canEdit}
-													onChange={(e) =>
-														setFormData((prev) => ({ ...prev, [row.key]: e.target.value as StatValue }))
-													}
-													className={`w-full max-w-xs ${fieldCls}${!canEdit ? ' cursor-not-allowed' : ''}`}
-												>
-													{STAT_OPTIONS.map((opt) => (
-														<option key={opt.value} value={opt.value}>{opt.label}</option>
-													))}
-												</select>
-											</td>
-										</tr>
-									))}
+									<tr>
+										<th className="w-28 px-3 py-2 font-medium text-center text-blue-900 border border-blue-200 bg-blue-50">
+											목욕전
+										</th>
+										<td className="px-3 py-2 border border-blue-200">
+											<select
+												value={formData.beforeBath}
+												disabled={!canEdit}
+												onChange={(e) =>
+													setFormData((prev) => ({ ...prev, beforeBath: e.target.value as StatValue }))
+												}
+												className={`w-full max-w-xs ${fieldCls}${!canEdit ? ' cursor-not-allowed' : ''}`}
+											>
+												{STAT_OPTIONS.map((opt) => (
+													<option key={opt.value} value={opt.value}>{opt.label}</option>
+												))}
+											</select>
+										</td>
+									</tr>
+									<tr>
+										<th className="w-28 px-3 py-2 font-medium text-center text-blue-900 border border-blue-200 bg-blue-50">
+											이동방법
+										</th>
+										<td className="px-3 py-2 border border-blue-200">
+											<select
+												value={formData.moveMethod}
+												disabled={!canEdit}
+												onChange={(e) =>
+													setFormData((prev) => ({ ...prev, moveMethod: e.target.value }))
+												}
+												className={`w-full max-w-xs ${fieldCls}${!canEdit ? ' cursor-not-allowed' : ''}`}
+											>
+												{moveMethodChoices(formData.moveMethod).map((opt) => (
+													<option key={opt || 'empty'} value={opt}>
+														{opt || '미입력'}
+													</option>
+												))}
+											</select>
+										</td>
+									</tr>
+									<tr>
+										<th className="w-28 px-3 py-2 font-medium text-center text-blue-900 border border-blue-200 bg-blue-50">
+											목욕후
+										</th>
+										<td className="px-3 py-2 border border-blue-200">
+											<select
+												value={formData.afterBath}
+												disabled={!canEdit}
+												onChange={(e) =>
+													setFormData((prev) => ({ ...prev, afterBath: e.target.value as StatValue }))
+												}
+												className={`w-full max-w-xs ${fieldCls}${!canEdit ? ' cursor-not-allowed' : ''}`}
+											>
+												{STAT_OPTIONS.map((opt) => (
+													<option key={opt.value} value={opt.value}>{opt.label}</option>
+												))}
+											</select>
+										</td>
+									</tr>
 								</tbody>
 							</table>
 						</div>
