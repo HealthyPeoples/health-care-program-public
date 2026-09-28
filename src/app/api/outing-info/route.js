@@ -146,8 +146,7 @@ export async function GET(req) {
       SELECT
         o.*,
         f10010.[P_NM],
-        f10010.[P_BRDT],
-        ROW_NUMBER() OVER (ORDER BY o.[START_DT] ASC, o.[START_TM] ASC, o.[OP_SEQ] ASC) AS MENUM
+        f10010.[P_BRDT]
       FROM ${OUTING_TABLE} o
       LEFT JOIN [돌봄시설DB].[dbo].[F10010] f10010
         ON o.[ANCD] = f10010.[ANCD]
@@ -161,10 +160,79 @@ export async function GET(req) {
       ORDER BY o.[START_DT] ASC, o.[START_TM] ASC, o.[OP_SEQ] ASC
     `);
 
+		// 외출(GYN=0)은 당일 복귀입니다. 대장에 없어도 급여실적에 있으면 목록에 넣습니다.
+		const dayOutings = await pool
+			.request()
+			.input('ANCD', sql.Int, Number(gate.sessionAncd))
+			.input('FR', sql.Date, start)
+			.input('TO', sql.Date, end)
+			.query(`
+        SELECT
+          f.[PNUM],
+          f.[SVDT],
+          f.[IO_TM_INFO],
+          f10010.[P_NM],
+          f10010.[P_BRDT]
+        FROM [돌봄시설DB].[dbo].[F14020] f
+        LEFT JOIN [돌봄시설DB].[dbo].[F10010] f10010
+          ON f.[ANCD] = f10010.[ANCD]
+         AND CAST(f.[PNUM] AS VARCHAR) = CAST(f10010.[PNUM] AS VARCHAR)
+        WHERE f.[ANCD] = @ANCD
+          AND f.[SVDT] >= @FR
+          AND f.[SVDT] <= @TO
+          AND LTRIM(RTRIM(CAST(f.[GYN] AS VARCHAR(10)))) = '0'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ${OUTING_TABLE} o
+            WHERE o.[ANCD] = f.[ANCD]
+              AND CAST(o.[PNUM] AS VARCHAR) = CAST(f.[PNUM] AS VARCHAR)
+              AND o.[START_DT] <= f.[SVDT]
+              AND (o.[END_DT] IS NULL OR o.[END_DT] >= f.[SVDT])
+          )
+      `);
+
+		const extra = (dayOutings.recordset || []).map((r) => {
+			const day = toYmd(r.SVDT);
+			const io = String(r.IO_TM_INFO || '').trim();
+			const range = /^(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})$/.exec(io);
+			const pnum = Number(r.PNUM) || 0;
+			const ymdNum = Number(String(day).replace(/\D/g, '')) || 0;
+			return {
+				OP_SEQ: null,
+				SYN_ID: -(Math.abs(pnum) * 100000000 + ymdNum),
+				PNUM: r.PNUM,
+				GYN: '0',
+				START_DT: day,
+				START_TM: range ? padTime5(range[1]) : '',
+				END_DT: day,
+				END_TM: range ? padTime5(range[2]) : '',
+				DEST: '',
+				PURPOSE: '',
+				GUARDIAN: '',
+				RELATION: '',
+				CONTACT: '',
+				P_NM: r.P_NM,
+				P_BRDT: r.P_BRDT
+			};
+		});
+
+		const data = [...(result.recordset || []), ...extra].sort((a, b) => {
+			const da = toYmd(a.START_DT);
+			const db = toYmd(b.START_DT);
+			if (da !== db) return da < db ? -1 : 1;
+			const ta = String(a.START_TM || '');
+			const tb = String(b.START_TM || '');
+			if (ta !== tb) return ta < tb ? -1 : 1;
+			return (Number(a.OP_SEQ) || 0) - (Number(b.OP_SEQ) || 0);
+		});
+		data.forEach((row, index) => {
+			row.MENUM = index + 1;
+		});
+
 		return jsonOk({
 			success: true,
-			data: result.recordset || [],
-			count: (result.recordset || []).length,
+			data,
+			count: data.length,
 			year: y,
 			month: m,
 			svdt: dayMode ? start : null

@@ -69,8 +69,8 @@ function gynLabel(gyn: string): string {
 
 function mapApiToRow(item: any, index: number): OutingRow {
 	return {
-		id: Number(item.OP_SEQ) || index + 1,
-		opSeq: item.OP_SEQ != null ? Number(item.OP_SEQ) : null,
+		id: Number(item.OP_SEQ) || Number(item.SYN_ID) || index + 1,
+		opSeq: item.OP_SEQ != null && item.OP_SEQ !== "" ? Number(item.OP_SEQ) : null,
 		serialNo: Number(item.MENUM) || index + 1,
 		pnum: String(item.PNUM ?? "").trim(),
 		beneficiaryName: String(item.P_NM ?? "").trim(),
@@ -428,8 +428,13 @@ export default function OutingInfo() {
 					})()
 				: `기준월: ${formatYmLabel(selectedMonth)}`;
 
+		const monthToken = /^\d{4}-\d{2}$/.test(selectedMonth)
+			? selectedMonth.slice(5, 7)
+			: "";
 		const printTitle =
-			viewMode === "day" ? "외출/외박 처리 대장" : "외출/외박 처리 대장 (월간)";
+			viewMode === "day"
+				? "외출/외박 처리 대장"
+				: `외출/외박 처리 대장 (${monthToken}월)`;
 
 		const FIRST_PAGE_ROWS = 13;
 		const NEXT_PAGE_ROWS = 16;

@@ -7,9 +7,8 @@
  * 외박중 `ON:YYYY-MM-DD|HH:mm`)과 맞춰야 합니다.
  *
  * @remarks
- * `parseIoTmInfo`가 `ON:`을 인식하지 못하면 gyn=2 저장 시
- * `removeOutingLinksForDay`로 fall-through 되어 대장이 지워질 수 있습니다.
- * UI(`DailyBeneficiaryPerformance`) 쪽 parseIoTmInfo와 형식을 동기화하세요.
+ * `ON:YYYY-MM-DD|HH:mm`(외박중)은 출발 대장을 유지합니다.
+ * 종료시각이 있는 외출·복귀일이 잡힌 외박은 이후 급여실적 저장에서 지우지 않습니다.
  *
  * @module outingF14020Sync
  */
@@ -134,14 +133,28 @@ function parseMinutes(t) {
  * IO_TM_INFO를 sync용 kind로 파싱합니다.
  *
  * @param {string|null|undefined} info
- * @returns {{ kind: 'return'|'range'|'single'|'empty', start: string, end: string, returnTime: string }}
- *
- * @remarks
- * UI와 달리 `ON:날짜|시각`(외박중)을 아직 처리하지 않습니다.
- * ON: 값이 오면 kind=`empty`가 되어 대장 링크 삭제 경로로 갈 수 있습니다.
+ * @returns {{ kind: 'return'|'range'|'single'|'ongoing'|'empty', start: string, end: string, returnTime: string, leaveDate?: string }}
  */
 function parseIoTmInfo(info) {
 	const s = String(info || '').trim();
+	const ongoingStrict = /^ON:(\d{4}-\d{2}-\d{2})\|(\d{1,2}:\d{2})$/i.exec(s);
+	if (ongoingStrict) {
+		return {
+			kind: 'ongoing',
+			leaveDate: ongoingStrict[1],
+			start: padTime5(ongoingStrict[2]),
+			end: '',
+			returnTime: ''
+		};
+	}
+	const ongoingLoose = /^ON:(.+)\|(\d{1,2}:\d{2})$/i.exec(s);
+	if (ongoingLoose) {
+		const leaveDate = toYmd(ongoingLoose[1]);
+		const leaveTime = padTime5(ongoingLoose[2]);
+		if (leaveDate && leaveTime) {
+			return { kind: 'ongoing', leaveDate, start: leaveTime, end: '', returnTime: '' };
+		}
+	}
 	const ret = /^R[:：]?\s*(\d{1,2}:\d{2})$/i.exec(s) || /^복귀\s*[:：]?\s*(\d{1,2}:\d{2})$/.exec(s);
 	if (ret) return { kind: 'return', returnTime: padTime5(ret[1]), start: '', end: '' };
 	const range = /^(\d{1,2}:\d{2})\s*[~\-–]\s*(\d{1,2}:\d{2})$/.exec(s);
@@ -446,32 +459,24 @@ async function removeOutingLinksForDay(pool, ancd, pnum, svdt) {
 	request.input('SVDT', sql.Date, svdt);
 	request.input('MOD_DATE', sql.NVarChar(30), nowStr());
 
-	// 1) 당일 외출 대장 삭제
+	// 종료시각이 있는 외출(당일 복귀)은 대장에 남긴다.
 	await request.query(`
     DELETE FROM ${OUTING_TABLE}
     WHERE [ANCD]=@ANCD
       AND CAST([PNUM] AS VARCHAR)=CAST(@PNUM AS VARCHAR)
       AND [GYN]='0'
       AND [START_DT]=@SVDT
+      AND (END_TM IS NULL OR LTRIM(RTRIM(END_TM)) = '')
   `);
 
-	// 2) 당일 시작 외박 대장 삭제
+	// 아직 복귀일이 없는 당일 시작 외박만 해제한다.
 	await request.query(`
     DELETE FROM ${OUTING_TABLE}
     WHERE [ANCD]=@ANCD
       AND CAST([PNUM] AS VARCHAR)=CAST(@PNUM AS VARCHAR)
       AND [GYN]='2'
       AND [START_DT]=@SVDT
-  `);
-
-	// 3) 당일 복귀로 잡혀 있던 외박 → 복귀 해제
-	await request.query(`
-    UPDATE ${OUTING_TABLE}
-    SET [END_DT]=NULL, [END_TM]=NULL, [MOD_DATE]=@MOD_DATE
-    WHERE [ANCD]=@ANCD
-      AND CAST([PNUM] AS VARCHAR)=CAST(@PNUM AS VARCHAR)
-      AND [GYN]='2'
-      AND [END_DT]=@SVDT
+      AND [END_DT] IS NULL
   `);
 }
 
@@ -483,7 +488,8 @@ async function removeOutingLinksForDay(pool, ancd, pnum, svdt) {
  * @param {{ pnum: number|string, svdt: string, gyn: string, ioTmInfo: string }} row
  * @returns {Promise<void|number|null>}
  *
- * 분기: 외출 range → upsert / 외박 start → upsert(preserveEnd) / 복귀 R: → END_DT 갱신 /
+ * 분기: 외출 range → upsert / 외박 start → upsert(preserveEnd) /
+ * 외박중 ON: → 출발 대장 유지 / 복귀 R: → END_DT 갱신 /
  * 그 외 → {@link removeOutingLinksForDay}
  */
 async function syncOutingFromF14020Row(pool, ancd, { pnum, svdt, gyn, ioTmInfo }) {
@@ -505,6 +511,24 @@ async function syncOutingFromF14020Row(pool, ancd, { pnum, svdt, gyn, ioTmInfo }
 			END_DT: day,
 			END_TM: parsed.end
 		});
+		return;
+	}
+
+	// 외박중(중간일): 출발 대장을 유지하고 복귀일은 지우지 않는다.
+	if (parsed.kind === 'ongoing' && parsed.leaveDate && parsed.start) {
+		await upsertOutingInfo(
+			pool,
+			ancd,
+			{
+				PNUM: p,
+				GYN: '2',
+				START_DT: parsed.leaveDate,
+				START_TM: parsed.start,
+				END_DT: null,
+				END_TM: null
+			},
+			{ preserveEndIfExists: true }
+		);
 		return;
 	}
 
