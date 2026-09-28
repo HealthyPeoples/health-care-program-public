@@ -65,15 +65,22 @@ function formatAsOfLabel(ymd: string) {
 	return `${y}년 ${Number(m)}월 ${Number(d)}일`;
 }
 
-/** 기준일에 재원: 입소일 ≤ 기준일, 퇴소일이 없거나 퇴소일 > 기준일 */
+/** 기준일에 재원. 기준일 시점에 퇴소 상태이면 수급자 현황에서 제외 */
 function isResidentOn(member: MemberData, asOf: string) {
+	const status = String(member.P_ST ?? '').trim();
 	const asOfYmd = toYmd(asOf);
-	if (!asOfYmd) return String(member.P_ST || '').trim() === '1';
+	if (!asOfYmd) return status === '1';
+
 	const sdt = toYmd(member.P_SDT);
 	const edt = toYmd(member.P_EDT);
+
 	if (sdt && sdt > asOfYmd) return false;
+	// 퇴소일이 기준일 당일 또는 이전이면 퇴소
 	if (edt && edt <= asOfYmd) return false;
-	if (!sdt && String(member.P_ST || '').trim() !== '1') return false;
+	// 현황이 퇴소인데, 퇴소일이 기준일보다 나중이 아니면 제외
+	// (퇴소일이 기준일 이후이면 그날까지는 재원)
+	if (status === '9' && !(edt && edt > asOfYmd)) return false;
+	if (!sdt && status !== '1') return false;
 	return true;
 }
 
