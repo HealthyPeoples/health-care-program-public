@@ -3,7 +3,7 @@
  *
  * @description
  * 입소자 입소일(P_SDT) 기준 6개월 주기와 욕구사정(F51012) 작성일로
- * D-30~마감 일정을 조회 시점에 계산합니다. ANNUAL_SCHEDULE에 저장하지 않습니다.
+ * 마감일 당일 일정을 조회 시점에 계산합니다. ANNUAL_SCHEDULE에 저장하지 않습니다.
  *
  * @module app/api/assessment-renewal-schedule/route
  */
@@ -121,8 +121,8 @@ function buildCycles(member, rqdts, rangeStart, rangeEnd, today) {
 
 		const savedRqdt = cycleSaveRqdt(rqdts, prevDue, nextStart, firstCycle);
 
-		// 미작성 보라색은 D-30(오늘 >= 시작일)부터만 표시
-		if (!savedRqdt && today < start) continue;
+		// 미작성은 마감일 당일에만 달력·목록에 표시
+		if (!savedRqdt && today < due) continue;
 
 		const done = Boolean(savedRqdt);
 		const overdue = !done && today > due;
@@ -151,7 +151,7 @@ function buildCycles(member, rqdts, rangeStart, rangeEnd, today) {
 			ID: `ar:${pnum}:${due}`,
 			PNUM: pnum,
 			P_NM: name,
-			SCH_DATE: start,
+			SCH_DATE: due,
 			SCH_END_DATE: due,
 			DUE_DATE: due,
 			ADMIT_DATE: admit,
