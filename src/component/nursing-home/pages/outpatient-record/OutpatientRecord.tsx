@@ -26,6 +26,7 @@ type OutpatientRow = {
 	ANCD?: number | string;
 	PNUM?: number | string;
 	MEDT: string;
+	ME_SEQ?: number;
 	REGU: string;
 	MEGU: string;
 	MEGYN: string;
@@ -152,6 +153,15 @@ function megynTone(v: string, amt?: number | null) {
 		: "bg-amber-100 text-amber-800 border-amber-300";
 }
 
+function visitSeq(seq?: number | null) {
+	const n = Number(seq);
+	return Number.isFinite(n) && n > 0 ? n : 1;
+}
+
+function visitKey(medt: string, seq?: number | null) {
+	return `${medt}#${visitSeq(seq)}`;
+}
+
 export default function OutpatientRecord() {
 	const [selectedMember, setSelectedMember] = useState<BeneficiaryMember | null>(null);
 	const [rows, setRows] = useState<OutpatientRow[]>([]);
@@ -161,7 +171,7 @@ export default function OutpatientRecord() {
 		unpaid: 0,
 		count: 0,
 	});
-	const [selectedMedt, setSelectedMedt] = useState<string | null>(null);
+	const [selectedKey, setSelectedKey] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [listPage, setListPage] = useState(1);
@@ -172,11 +182,12 @@ export default function OutpatientRecord() {
 	const [modalMode, setModalMode] = useState<ModalMode>(null);
 	const [modalForm, setModalForm] = useState<ModalForm>(() => emptyForm());
 	const [origMedt, setOrigMedt] = useState<string | null>(null);
+	const [origSeq, setOrigSeq] = useState<number | null>(null);
 	const [currentEmpnm, setCurrentEmpnm] = useState("");
 	const [printLoading, setPrintLoading] = useState(false);
 	const [unpaidPrintLoading, setUnpaidPrintLoading] = useState(false);
 
-	const selectedRow = rows.find((r) => r.MEDT === selectedMedt) || null;
+	const selectedRow = rows.find((r) => visitKey(r.MEDT, r.ME_SEQ) === selectedKey) || null;
 
 	useEffect(() => {
 		const loadUser = async () => {
@@ -196,7 +207,7 @@ export default function OutpatientRecord() {
 
 	const fetchList = async (
 		pnum: string,
-		preferMedt?: string | null,
+		preferKey?: string | null,
 		range?: { startDate?: string; endDate?: string }
 	) => {
 		setLoading(true);
@@ -219,24 +230,24 @@ export default function OutpatientRecord() {
 			});
 
 			if (list.length === 0) {
-				setSelectedMedt(null);
+				setSelectedKey(null);
 				setListPage(1);
 				return;
 			}
 
 			const target =
-				(preferMedt && list.find((r) => r.MEDT === preferMedt)) || list[0];
+				(preferKey && list.find((r) => visitKey(r.MEDT, r.ME_SEQ) === preferKey)) || list[0];
 			const idx = Math.max(
 				0,
-				list.findIndex((r) => r.MEDT === target.MEDT)
+				list.findIndex((r) => visitKey(r.MEDT, r.ME_SEQ) === visitKey(target.MEDT, target.ME_SEQ))
 			);
-			setSelectedMedt(target.MEDT);
+			setSelectedKey(visitKey(target.MEDT, target.ME_SEQ));
 			setListPage(Math.floor(idx / LIST_PAGE_SIZE) + 1);
 		} catch (e) {
 			console.error("외래진료 조회 오류:", e);
 			setRows([]);
 			setSummary({ totalFee: 0, collected: 0, unpaid: 0, count: 0 });
-			setSelectedMedt(null);
+			setSelectedKey(null);
 			setListPage(1);
 		} finally {
 			setLoading(false);
@@ -246,15 +257,15 @@ export default function OutpatientRecord() {
 	const handleSelectMember = (member: BeneficiaryMember) => {
 		setModalMode(null);
 		setSelectedMember(member);
-		setSelectedMedt(null);
+		setSelectedKey(null);
 		setListPage(1);
 	};
 
 	useEffect(() => {
 		if (!selectedMember) return;
 		if (startDate && endDate && startDate > endDate) return;
-		fetchList(String(selectedMember.PNUM), selectedMedt, { startDate, endDate });
-		// selectedMedt는 기간 변경 시 유지 선호용이라 deps에서 제외
+		fetchList(String(selectedMember.PNUM), selectedKey, { startDate, endDate });
+		// selectedKey는 기간 변경 시 유지 선호용이라 deps에서 제외
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedMember?.PNUM, startDate, endDate]);
 
@@ -262,7 +273,7 @@ export default function OutpatientRecord() {
 	useTabRefresh(() => {
 		if (!selectedMember) return;
 		if (startDate && endDate && startDate > endDate) return;
-		void fetchList(String(selectedMember.PNUM), selectedMedt, { startDate, endDate });
+		void fetchList(String(selectedMember.PNUM), selectedKey, { startDate, endDate });
 	});
 
 	const openCreateModal = () => {
@@ -271,6 +282,7 @@ export default function OutpatientRecord() {
 			return;
 		}
 		setOrigMedt(null);
+		setOrigSeq(null);
 		setModalForm(emptyForm());
 		setModalMode("create");
 	};
@@ -285,6 +297,7 @@ export default function OutpatientRecord() {
 			return;
 		}
 		setOrigMedt(selectedRow.MEDT);
+		setOrigSeq(visitSeq(selectedRow.ME_SEQ));
 		setModalForm(rowToForm(selectedRow));
 		setModalMode("edit");
 	};
@@ -296,8 +309,9 @@ export default function OutpatientRecord() {
 			return;
 		}
 		if (isFeeExempt(row.MEGAMT) || String(row.MEGYN).trim() === "1") return;
-		setSelectedMedt(row.MEDT);
+		setSelectedKey(visitKey(row.MEDT, row.ME_SEQ));
 		setOrigMedt(row.MEDT);
+		setOrigSeq(visitSeq(row.ME_SEQ));
 		setModalForm(rowToForm(row));
 		setModalMode("payment");
 	};
@@ -306,6 +320,7 @@ export default function OutpatientRecord() {
 		if (saving) return;
 		setModalMode(null);
 		setOrigMedt(null);
+		setOrigSeq(null);
 		setModalForm(emptyForm());
 	};
 
@@ -375,13 +390,16 @@ export default function OutpatientRecord() {
 			alert("수급자를 선택해주세요.");
 			return;
 		}
-		if (!confirm(`${row.MEDT} 진료내역을 삭제할까요?`)) return;
+		const seqLabel =
+			rows.filter((r) => r.MEDT === row.MEDT).length > 1 ? ` ${visitSeq(row.ME_SEQ)}차` : "";
+		if (!confirm(`${row.MEDT}${seqLabel} 진료내역을 삭제할까요?`)) return;
 
 		setSaving(true);
 		try {
 			const qs = new URLSearchParams({
 				pnum: String(selectedMember.PNUM),
 				medt: row.MEDT,
+				meSeq: String(visitSeq(row.ME_SEQ)),
 			});
 			const res = await fetch(`/api/f11010?${qs.toString()}`, { method: "DELETE" });
 			const json = await res.json().catch(() => ({}));
@@ -425,6 +443,9 @@ export default function OutpatientRecord() {
 			MERDSC1: modalForm.MERDSC1.trim(),
 			MERDSC2: modalForm.MERDSC2.trim(),
 			INEMPNM: currentEmpnm,
+			...(modalMode !== "create"
+				? { ME_SEQ: visitSeq(origSeq), origME_SEQ: visitSeq(origSeq) }
+				: {}),
 		};
 
 		if (modalMode === "create") {
@@ -446,9 +467,13 @@ export default function OutpatientRecord() {
 				return;
 			}
 			alert("저장되었습니다.");
-			const keepMedt = modalForm.MEDT;
+			const savedSeq = Number(json?.data?.ME_SEQ);
+			const keepKey = visitKey(
+				modalForm.MEDT,
+				Number.isFinite(savedSeq) && savedSeq > 0 ? savedSeq : origSeq
+			);
 			closeModal();
-			await fetchList(String(selectedMember.PNUM), keepMedt);
+			await fetchList(String(selectedMember.PNUM), keepKey);
 		} catch (e) {
 			console.error(e);
 			alert("저장 중 오류가 발생했습니다.");
@@ -686,16 +711,19 @@ export default function OutpatientRecord() {
 										pagedRows.map((row) => {
 											const exempt = isFeeExempt(row.MEGAMT);
 											const isUnpaid = !exempt && String(row.MEGYN).trim() !== "1";
+											const key = visitKey(row.MEDT, row.ME_SEQ);
+											const sameDay = rows.filter((r) => r.MEDT === row.MEDT).length > 1;
 											return (
 												<tr
-													key={row.MEDT}
-													onClick={() => setSelectedMedt(row.MEDT)}
+													key={key}
+													onClick={() => setSelectedKey(key)}
 													className={`border-b border-blue-50 cursor-pointer hover:bg-blue-50 ${
-														selectedMedt === row.MEDT ? "bg-blue-100" : ""
+														selectedKey === key ? "bg-blue-100" : ""
 													}`}
 												>
 													<td className="px-3 py-2.5 text-center whitespace-nowrap border-r border-blue-100">
 														{row.MEDT || "-"}
+														{sameDay ? ` ${visitSeq(row.ME_SEQ)}차` : ""}
 													</td>
 													<td className="px-3 py-2.5 text-right whitespace-nowrap border-r border-blue-100">
 														{formatAmount(row.MEGAMT)}
@@ -872,6 +900,11 @@ export default function OutpatientRecord() {
 									disabled={modalMode !== "create"}
 									className="w-full px-3 py-2 text-sm bg-white border border-blue-300 rounded disabled:bg-gray-100"
 								/>
+								{modalMode === "create" && (
+									<p className="mt-1 text-xs text-blue-900/60">
+										같은 날짜에도 여러 건을 등록할 수 있습니다.
+									</p>
+								)}
 							</div>
 
 							<div>

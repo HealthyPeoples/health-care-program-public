@@ -10,6 +10,8 @@ import { connPool, sql } from '../../../config/server';
 import { assertAnCdMatchesSession, parseUserInfoCookieValue } from '../../../config/sessionServer';
 import { jsonOk, jsonError } from '../../../utils/apiResponse';
 
+const { ensureF11010MeSeq } = require('../../../lib/ensureF11010MeSeq');
+
 const TABLE_NAME = '[돌봄시설DB].[dbo].[F11010]';
 
 function toYmd(v) {
@@ -74,6 +76,7 @@ function mapRow(r) {
 		MERDSC1: r.MERDSC1 != null ? String(r.MERDSC1) : '',
 		MERDSC2: r.MERDSC2 != null ? String(r.MERDSC2) : '',
 		INDT: toYmd(r.INDT),
+		ME_SEQ: r.ME_SEQ != null && Number(r.ME_SEQ) > 0 ? Number(r.ME_SEQ) : 1,
 		ETC: r.ETC != null ? String(r.ETC) : '',
 		INEMPNO: r.INEMPNO,
 		INEMPNM: r.INEMPNM != null ? String(r.INEMPNM) : '',
@@ -157,6 +160,7 @@ export async function GET(req) {
 
 		const pool = await connPool;
 		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		await ensureF11010MeSeq(pool);
 
 		const request = pool.request();
 		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
@@ -179,7 +183,7 @@ export async function GET(req) {
       SELECT *
       FROM ${TABLE_NAME}
       ${where}
-      ORDER BY [MEDT] DESC
+      ORDER BY [MEDT] DESC, ISNULL([ME_SEQ], 1) ASC
     `);
 
 		const data = (result.recordset || []).map(mapRow);
@@ -218,6 +222,7 @@ export async function POST(req) {
 
 		const pool = await connPool;
 		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		await ensureF11010MeSeq(pool);
 
 		const now = new Date();
 		const indt = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -228,23 +233,44 @@ export async function POST(req) {
 		request.input('PNUM', sql.Int, Number(pnum));
 		bindRecordInputs(request, body, { medt, inempno, indt });
 
+		let meSeq = 1;
 		try {
-			await request.query(`
-        INSERT INTO ${TABLE_NAME}
-          ([ANCD],[PNUM],[MEDT],[REGU],[MEGU],[MEGYN],[MEGDT],[MEGAMT],
-           [MERDSC1],[MERDSC2],[INDT],[ETC],[INEMPNO],[INEMPNM],[REEMPNM],[MENM])
-        VALUES
-          (@ANCD,@PNUM,@MEDT,@REGU,@MEGU,@MEGYN,@MEGDT,@MEGAMT,
-           @MERDSC1,@MERDSC2,@INDT,@ETC,@INEMPNO,@INEMPNM,@REEMPNM,@MENM)
+			const inserted = await request.query(`
+        SET NOCOUNT ON;
+        BEGIN TRY
+          BEGIN TRAN;
+          DECLARE @NEXT_SEQ INT;
+          SELECT @NEXT_SEQ = ISNULL(MAX(ISNULL([ME_SEQ], 1)), 0) + 1
+          FROM ${TABLE_NAME} WITH (UPDLOCK, HOLDLOCK)
+          WHERE [ANCD] = @ANCD
+            AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
+            AND CONVERT(date, [MEDT]) = CONVERT(date, @MEDT);
+
+          INSERT INTO ${TABLE_NAME}
+            ([ANCD],[PNUM],[MEDT],[REGU],[MEGU],[MEGYN],[MEGDT],[MEGAMT],
+             [MERDSC1],[MERDSC2],[INDT],[ETC],[INEMPNO],[INEMPNM],[REEMPNM],[MENM],[ME_SEQ])
+          VALUES
+            (@ANCD,@PNUM,@MEDT,@REGU,@MEGU,@MEGYN,@MEGDT,@MEGAMT,
+             @MERDSC1,@MERDSC2,@INDT,@ETC,@INEMPNO,@INEMPNM,@REEMPNM,@MENM,@NEXT_SEQ);
+          COMMIT TRAN;
+          SELECT @NEXT_SEQ AS ME_SEQ;
+        END TRY
+        BEGIN CATCH
+          IF @@TRANCOUNT > 0 ROLLBACK TRAN;
+          THROW;
+        END CATCH
       `);
+			const sets = inserted.recordsets || [];
+			const seqRow = sets.length ? sets[sets.length - 1]?.[0] : inserted.recordset?.[0];
+			meSeq = Number(seqRow?.ME_SEQ) || 1;
 		} catch (insertErr) {
 			if (String(insertErr?.number) === '2627' || /PRIMARY KEY|duplicate/i.test(String(insertErr?.message || ''))) {
-				return jsonError({ success: false, error: '동일 진료일자의 내역이 이미 등록되어 있습니다' }, 409);
+				return jsonError({ success: false, error: '같은 진료 순번이 이미 있습니다. 다시 저장해주세요.' }, 409);
 			}
 			throw insertErr;
 		}
 
-		return jsonOk({ success: true, data: { PNUM: Number(pnum), MEDT: medt } });
+		return jsonOk({ success: true, data: { PNUM: Number(pnum), MEDT: medt, ME_SEQ: meSeq } });
 	} catch (err) {
 		console.error('F11010 추가 오류:', err);
 		return jsonError({ success: false, error: err.message, details: String(err) });
@@ -262,6 +288,8 @@ export async function PUT(req) {
 		const pnum = pick(body, 'PNUM');
 		const origMedt = toNullableDate(pick(body, 'origMEDT') ?? pick(body, 'MEDT'));
 		const medt = toNullableDate(pick(body, 'MEDT')) || origMedt;
+		const origSeqRaw = parseInt(String(pick(body, 'origME_SEQ') ?? pick(body, 'ME_SEQ') ?? '1'), 10);
+		const origSeq = Number.isFinite(origSeqRaw) && origSeqRaw > 0 ? origSeqRaw : 1;
 
 		if (pnum == null || String(pnum).trim() === '' || !origMedt || !medt) {
 			return jsonError({ success: false, error: 'PNUM, MEDT는 필수입니다' }, 400);
@@ -269,37 +297,38 @@ export async function PUT(req) {
 
 		const pool = await connPool;
 		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		await ensureF11010MeSeq(pool);
 
 		const inempno = await resolveInEmpno(pool, gate.sessionAncd, req, body);
-		const keyChanged = origMedt !== medt;
-
-		if (keyChanged) {
-			const dup = await pool
+		let meSeq = origSeq;
+		if (origMedt !== medt) {
+			const next = await pool
 				.request()
 				.input('ANCD', sql.Int, Number(gate.sessionAncd))
 				.input('PNUM', sql.Int, Number(pnum))
 				.input('MEDT', sql.Date, medt)
 				.query(`
-          SELECT TOP 1 1 AS X
+          SELECT ISNULL(MAX(ISNULL([ME_SEQ], 1)), 0) + 1 AS NEXT_SEQ
           FROM ${TABLE_NAME}
           WHERE [ANCD] = @ANCD
             AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
             AND CONVERT(date, [MEDT]) = CONVERT(date, @MEDT)
         `);
-			if (dup.recordset?.[0]) {
-				return jsonError({ success: false, error: '변경하려는 진료일자가 이미 존재합니다' }, 409);
-			}
+			meSeq = Number(next.recordset?.[0]?.NEXT_SEQ) || 1;
 		}
 
 		const request = pool.request();
 		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
 		request.input('PNUM', sql.Int, Number(pnum));
 		request.input('ORIG_MEDT', sql.Date, origMedt);
+		request.input('ORIG_SEQ', sql.Int, origSeq);
+		request.input('ME_SEQ', sql.Int, meSeq);
 		bindRecordInputs(request, body, { medt, inempno, indt: null });
 
 		const result = await request.query(`
       UPDATE ${TABLE_NAME}
       SET [MEDT] = @MEDT,
+          [ME_SEQ] = @ME_SEQ,
           [REGU] = @REGU,
           [MEGU] = @MEGU,
           [MEGYN] = @MEGYN,
@@ -315,6 +344,7 @@ export async function PUT(req) {
       WHERE [ANCD] = @ANCD
         AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
         AND CONVERT(date, [MEDT]) = CONVERT(date, @ORIG_MEDT)
+        AND ISNULL([ME_SEQ], 1) = @ORIG_SEQ
     `);
 
 		const affected = Array.isArray(result.rowsAffected)
@@ -324,14 +354,14 @@ export async function PUT(req) {
 			return jsonError({ success: false, error: '수정할 행을 찾지 못했습니다' }, 404);
 		}
 
-		return jsonOk({ success: true, affected, data: { PNUM: Number(pnum), MEDT: medt } });
+		return jsonOk({ success: true, affected, data: { PNUM: Number(pnum), MEDT: medt, ME_SEQ: meSeq } });
 	} catch (err) {
 		console.error('F11010 수정 오류:', err);
 		return jsonError({ success: false, error: err.message, details: String(err) });
 	}
 }
 
-/** DELETE /api/f11010?pnum=&medt= */
+/** DELETE /api/f11010?pnum=&medt=&meSeq= */
 export async function DELETE(req) {
 	try {
 		const sp = req.nextUrl.searchParams;
@@ -340,23 +370,28 @@ export async function DELETE(req) {
 
 		const pnum = sp.get('pnum');
 		const medt = toNullableDate(sp.get('medt'));
+		const meSeqRaw = parseInt(String(sp.get('meSeq') || sp.get('ME_SEQ') || '1'), 10);
+		const meSeq = Number.isFinite(meSeqRaw) && meSeqRaw > 0 ? meSeqRaw : 1;
 		if (!pnum || !medt) {
 			return jsonError({ success: false, error: 'pnum, medt가 필요합니다' }, 400);
 		}
 
 		const pool = await connPool;
 		if (!pool) return jsonError({ success: false, error: '데이터베이스 연결 실패' });
+		await ensureF11010MeSeq(pool);
 
 		const request = pool.request();
 		request.input('ANCD', sql.Int, Number(gate.sessionAncd));
 		request.input('PNUM', sql.Int, Number(pnum));
 		request.input('MEDT', sql.Date, medt);
+		request.input('ME_SEQ', sql.Int, meSeq);
 
 		const result = await request.query(`
       DELETE FROM ${TABLE_NAME}
       WHERE [ANCD] = @ANCD
         AND CAST([PNUM] AS VARCHAR) = CAST(@PNUM AS VARCHAR)
         AND CONVERT(date, [MEDT]) = CONVERT(date, @MEDT)
+        AND ISNULL([ME_SEQ], 1) = @ME_SEQ
     `);
 
 		const affected = Array.isArray(result.rowsAffected)
