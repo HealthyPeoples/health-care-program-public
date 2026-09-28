@@ -24,7 +24,7 @@ import { useTabRefresh } from '../../hooks/useTabRefresh';
 import {
 	availableFloorsFromMembers,
 	compareVitalRow,
-	extractFloorFromRoomNo,
+	matchesFloorButton,
 	normalizeRoomNo,
 	type VitalSortMode,
 } from '../../utils/roomNoFloor';
@@ -37,6 +37,7 @@ interface VitalSignsPeriodicData {
 	beneficiaryName: string;
 	weight: string;
 	livingRoom: string;
+	floor: string;
 	edema: boolean;
 	edemaArea: string;
 	edemaDegree: string;
@@ -94,6 +95,7 @@ export default function VitalSignsPeriodic() {
 						beneficiaryName: item.P_NM || '',
 						weight: item.WEIGHT != null && item.WEIGHT !== '' ? String(item.WEIGHT) : '',
 						livingRoom: roomNo,
+						floor: item.P_FLOOR != null && item.P_FLOOR !== '' ? String(item.P_FLOOR) : '',
 						edema: bjynToBool(item.BJYN),
 						edemaArea: String(item.BJPA ?? ''),
 						edemaDegree: bjdgToLabel(item.BJDG),
@@ -254,21 +256,15 @@ export default function VitalSignsPeriodic() {
 			return false;
 		}
 		
-		// 생활실 필터링 (ROOM_NO 또는 층수)
-		if (selectedLivingRoom) {
-			const floorMatch = /^(\d+)층$/.exec(selectedLivingRoom);
-			if (floorMatch) {
-				if (extractFloorFromRoomNo(row.livingRoom) !== Number(floorMatch[1])) return false;
-			} else if (row.livingRoom !== selectedLivingRoom) {
-				return false;
-			}
+		if (selectedLivingRoom && !matchesFloorButton({ ROOM_NO: row.livingRoom, P_FLOOR: row.floor }, selectedLivingRoom)) {
+			return false;
 		}
 		
 		return true;
 	});
 
 	const availableFloors = useMemo(
-		() => availableFloorsFromMembers(vitalSignsData.map((row) => ({ ROOM_NO: row.livingRoom }))),
+		() => availableFloorsFromMembers(vitalSignsData.map((row) => ({ ROOM_NO: row.livingRoom, P_FLOOR: row.floor }))),
 		[vitalSignsData]
 	);
 
@@ -298,6 +294,7 @@ export default function VitalSignsPeriodic() {
 			beneficiaryName: '',
 			weight: '',
 			livingRoom: '',
+			floor: '',
 			edema: false,
 			edemaArea: '',
 			edemaDegree: '',

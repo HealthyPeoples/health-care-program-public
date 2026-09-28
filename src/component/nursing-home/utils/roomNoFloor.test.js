@@ -50,6 +50,7 @@ describe('roomNoFloor', () => {
 		extractFloorFromPFloor,
 		extractMemberFloor,
 		availableFloorsFromMembers,
+		matchesFloorButton,
 	} = loadUtil();
 
 	it('ROOM_NO 0·빈값·100미만은 층 인코딩으로 보지 않음', () => {
@@ -78,6 +79,19 @@ describe('roomNoFloor', () => {
 			{ ROOM_NO: null, P_FLOOR: null },
 		]);
 		assert.deepEqual(floors, [1, 2, 3]);
+	});
+
+	it('방번호가 4층 이상이어도 P_FLOOR 1·2·3층 버튼이 생긴다', () => {
+		const floors = availableFloorsFromMembers([
+			{ ROOM_NO: '12', P_FLOOR: 1 },
+			{ ROOM_NO: '', P_FLOOR: 2 },
+			{ ROOM_NO: '0', P_FLOOR: 3 },
+			{ ROOM_NO: '401', P_FLOOR: null },
+		]);
+		assert.deepEqual(floors, [1, 2, 3, 4]);
+		assert.equal(matchesFloorButton({ ROOM_NO: '12', P_FLOOR: 1 }, '1층'), true);
+		assert.equal(matchesFloorButton({ ROOM_NO: '401', P_FLOOR: 1 }, '1층'), false);
+		assert.equal(matchesFloorButton({ ROOM_NO: '401', P_FLOOR: 1 }, '4층'), true);
 	});
 
 	it('PNUM 키 정규화', () => {

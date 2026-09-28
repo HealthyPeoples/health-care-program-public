@@ -103,6 +103,18 @@ export function countNoRoom<T extends { ROOM_NO?: unknown }>(members: T[]): numb
 	return members.filter((m) => normalizeRoomNo(m?.ROOM_NO) === '').length;
 }
 
+/** 층별 버튼("1층") 일치. 방번호가 층을 나타내지 않으면 P_FLOOR를 사용합니다. */
+export function matchesFloorButton(
+	member: { ROOM_NO?: unknown; P_FLOOR?: unknown } | null | undefined,
+	buttonLabel: string
+): boolean {
+	const label = String(buttonLabel ?? '').trim();
+	if (!label) return true;
+	const floorMatch = /^(\d+)층$/.exec(label);
+	if (!floorMatch) return normalizeRoomNo(member?.ROOM_NO) === label;
+	return extractMemberFloor(member) === Number(floorMatch[1]);
+}
+
 export function availableFloorsFromMembers<
 	T extends { ROOM_NO?: unknown; P_FLOOR?: unknown },
 >(members: T[]): number[] {
