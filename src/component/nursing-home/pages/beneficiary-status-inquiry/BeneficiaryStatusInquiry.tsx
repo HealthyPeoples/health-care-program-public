@@ -332,11 +332,11 @@ export default function BeneficiaryStatusInquiry() {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>수급자 현황</title>
+	<title></title>
 	<style>
 		@page {
 			size: A4 landscape;
-			margin: 10mm;
+			margin: 0 10mm 10mm 10mm;
 		}
 		* {
 			margin: 0;
@@ -350,10 +350,21 @@ export default function BeneficiaryStatusInquiry() {
 			color: #000;
 			background: #fff;
 		}
+		.cover-top {
+			position: fixed;
+			left: -10mm;
+			right: -10mm;
+			top: 0;
+			height: 8mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 		.print-container {
 			width: 100%;
 			margin: 0 auto;
-			padding: 0;
+			padding: 10mm 0 0;
 		}
 		.header {
 			text-align: center;
@@ -410,6 +421,7 @@ export default function BeneficiaryStatusInquiry() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="print-container">
 		<div class="header">
 			<h1>수급자 현황</h1>
@@ -511,6 +523,7 @@ export default function BeneficiaryStatusInquiry() {
 
 		printWindow.document.write(printHTML);
 		printWindow.document.close();
+		printWindow.document.title = '';
 	};
 
 	// 닫기 함수

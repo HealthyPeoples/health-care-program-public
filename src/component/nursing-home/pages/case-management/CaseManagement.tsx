@@ -690,11 +690,11 @@ export default function CaseManagement() {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>사례관리</title>
+	<title></title>
 	<style>
 		@page {
 			size: A4;
-			margin: 20mm;
+			margin: 0 20mm 20mm 20mm;
 		}
 		* {
 			margin: 0;
@@ -708,11 +708,22 @@ export default function CaseManagement() {
 			color: #000;
 			background: #fff;
 		}
+		.cover-top {
+			position: fixed;
+			left: -20mm;
+			right: -20mm;
+			top: 0;
+			height: 10mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 		.print-container {
 			width: 100%;
 			max-width: 210mm;
 			margin: 0 auto;
-			padding: 0;
+			padding: 14mm 0 0;
 		}
 		.page-break {
 			page-break-after: always;
@@ -771,6 +782,7 @@ export default function CaseManagement() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	${pagesHtml}
 	<script>
 		window.onload = function() {
@@ -783,6 +795,7 @@ export default function CaseManagement() {
 
 		printWindow.document.write(printHTML);
 		printWindow.document.close();
+		printWindow.document.title = '';
 	};
 
 	const toggleChecked = (key: string) => {

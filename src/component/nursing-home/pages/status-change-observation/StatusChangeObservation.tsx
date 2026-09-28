@@ -422,23 +422,17 @@ export default function StatusChangeObservation() {
 			return;
 		}
 
-		const today = new Date();
-		const year = today.getFullYear();
-		const month = String(today.getMonth() + 1).padStart(2, '0');
-		const day = String(today.getDate()).padStart(2, '0');
-		const printDate = `${year}-${month}-${day}`;
-
 		const printHTML = `
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>상태변화 관찰</title>
+	<title></title>
 	<style>
 		@page {
 			size: A4;
-			margin: 20mm;
+			margin: 0 20mm 20mm 20mm;
 		}
 		* {
 			margin: 0;
@@ -452,11 +446,29 @@ export default function StatusChangeObservation() {
 			color: #000;
 			background: #fff;
 		}
+		.cover-top {
+			position: fixed;
+			left: -20mm;
+			right: -20mm;
+			top: 0;
+			height: 10mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 		.print-container {
 			width: 100%;
 			max-width: 210mm;
 			margin: 0 auto;
-			padding: 0;
+			padding: 14mm 0 0;
+		}
+		.doc-title {
+			margin: 0 0 16px;
+			font-size: 18pt;
+			font-weight: bold;
+			line-height: 1.3;
+			text-align: center;
 		}
 		.info-table {
 			width: 100%;
@@ -507,7 +519,9 @@ export default function StatusChangeObservation() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="print-container">
+		<h1 class="doc-title">상태변화 관찰</h1>
 		<table class="info-table">
 			<tr>
 				<td class="label">수급자</td>
@@ -541,6 +555,7 @@ export default function StatusChangeObservation() {
 
 		printWindow.document.write(printHTML);
 		printWindow.document.close();
+		printWindow.document.title = '';
 	};
 
 	// 전체 출력 함수
@@ -584,12 +599,6 @@ export default function StatusChangeObservation() {
 			return;
 		}
 
-		const today = new Date();
-		const year = today.getFullYear();
-		const month = String(today.getMonth() + 1).padStart(2, '0');
-		const day = String(today.getDate()).padStart(2, '0');
-		const printDate = `${year}-${month}-${day}`;
-
 		// 모든 관찰 기록을 출력
 		const observationsHTML = observationList.map((obs, index) => {
 			const formatDate = (dateStr: string) => {
@@ -607,7 +616,8 @@ export default function StatusChangeObservation() {
 			};
 
 			return `
-				<div style="page-break-after: ${index < observationList.length - 1 ? 'always' : 'auto'};">
+				<div class="obs-page" style="page-break-after: ${index < observationList.length - 1 ? 'always' : 'auto'};">
+					<h1 class="doc-title">상태변화 관찰</h1>
 					<table class="info-table">
 						<tr>
 							<td class="label">수급자</td>
@@ -639,11 +649,11 @@ export default function StatusChangeObservation() {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>상태변화 관찰 전체</title>
+	<title></title>
 	<style>
 		@page {
 			size: A4;
-			margin: 20mm;
+			margin: 0 20mm 20mm 20mm;
 		}
 		* {
 			margin: 0;
@@ -657,11 +667,32 @@ export default function StatusChangeObservation() {
 			color: #000;
 			background: #fff;
 		}
+		.cover-top {
+			position: fixed;
+			left: -20mm;
+			right: -20mm;
+			top: 0;
+			height: 10mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
 		.print-container {
 			width: 100%;
 			max-width: 210mm;
 			margin: 0 auto;
 			padding: 0;
+		}
+		.obs-page {
+			padding-top: 14mm;
+		}
+		.doc-title {
+			margin: 0 0 16px;
+			font-size: 18pt;
+			font-weight: bold;
+			line-height: 1.3;
+			text-align: center;
 		}
 		.info-table {
 			width: 100%;
@@ -712,6 +743,7 @@ export default function StatusChangeObservation() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="print-container">
 		${observationsHTML}
 	</div>
@@ -726,6 +758,7 @@ export default function StatusChangeObservation() {
 
 		printWindow.document.write(printHTML);
 		printWindow.document.close();
+		printWindow.document.title = '';
 	};
 
 	// 삭제 함수

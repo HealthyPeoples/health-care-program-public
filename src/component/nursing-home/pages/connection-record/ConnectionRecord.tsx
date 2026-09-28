@@ -575,7 +575,6 @@ export default function ConnectionRecord() {
 		const month = String(today.getMonth() + 1).padStart(2, '0');
 		const day = String(today.getDate()).padStart(2, '0');
 		const issueDate = `${year}-${month}-${day}`;
-		const printDate = `${year}-${month}-${day}`;
 
 		// 출력용 HTML 생성
 		const printHTML = `
@@ -836,7 +835,7 @@ export default function ConnectionRecord() {
 			</div>
 			<div class="footer-bottom">
 				<div>R11020B</div>
-				<div>출력일자: ${printDate} 페이지: 1</div>
+				<div>페이지: 1</div>
 			</div>
 		</div>
 	</div>

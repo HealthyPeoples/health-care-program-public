@@ -687,9 +687,9 @@ export default function GuardianMeeting() {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>보호자간담회</title>
+	<title></title>
 	<style>
-		@page { size: A4; margin: 20mm; }
+		@page { size: A4; margin: 0 20mm 20mm 20mm; }
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
 			font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
@@ -698,7 +698,18 @@ export default function GuardianMeeting() {
 			color: #000;
 			background: #fff;
 		}
-		.print-container { width: 100%; max-width: 210mm; margin: 0 auto; }
+		.cover-top {
+			position: fixed;
+			left: -20mm;
+			right: -20mm;
+			top: 0;
+			height: 10mm;
+			background: #fff;
+			z-index: 99999;
+			-webkit-print-color-adjust: exact;
+			print-color-adjust: exact;
+		}
+		.print-container { width: 100%; max-width: 210mm; margin: 0 auto; padding: 14mm 0 0; }
 		.header { text-align: center; margin-bottom: 20px; }
 		.header h1 { font-size: 18pt; font-weight: bold; }
 		.info-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #000; }
@@ -722,6 +733,7 @@ export default function GuardianMeeting() {
 	</style>
 </head>
 <body>
+	<div class="cover-top"></div>
 	<div class="print-container">
 		<div class="header">
 			<h1>보호자간담회</h1>
@@ -778,6 +790,7 @@ export default function GuardianMeeting() {
 
 		printWindow.document.write(printHTML);
 		printWindow.document.close();
+		printWindow.document.title = '';
 	};
 
 	const handleClose = () => {
