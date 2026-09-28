@@ -42,10 +42,14 @@ const MEAL_KIND_LABEL_BY_CODE: Record<string, string> = Object.fromEntries(
 	MEAL_KIND_OPTIONS.map((o) => [o.value, o.label])
 );
 
-/** 식사종류 코드를 표시 문구로 변환합니다. */
+/**
+ * 인쇄 식이 칸 문구.
+ * 1~7 코드는 목록 이름으로 바꾸고, 한글처럼 코드가 아닌 값은 원문 그대로 둡니다.
+ */
 function mealKindLabel(code: string | null | undefined): string {
 	const key = String(code ?? '').trim();
-	return MEAL_KIND_LABEL_BY_CODE[key] || '';
+	if (!key) return '';
+	return MEAL_KIND_LABEL_BY_CODE[key] || key;
 }
 
 function fieldCls(editing: boolean) {
