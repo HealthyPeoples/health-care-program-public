@@ -96,7 +96,7 @@ function computeOccurrenceColumnSums(rows: V40100PrintRow[]) {
 	for (const row of rows) {
 		sumNha += Number(row.nhaContribution || 0);
 		sumSal2 += Number(row.recipientContribution || 0);
-		sumB1 += Number(row.nonBenefitMeal || 0);
+		sumB1 += occurrenceMealOnly(row);
 		sumB2 += Number(row.nonBenefitSnack || 0);
 		sumB3 += Number(row.nonBenefitMedical || 0);
 		sumB4 += Number(row.beautyCost || 0);
@@ -113,6 +113,12 @@ function moneyKoNum(n: number): string {
 	return Number(n || 0).toLocaleString("ko-KR");
 }
 
+/** 발생내역서 비급여식대 칸은 식사비만. 뷰의 비급여식대는 식사비+간식비이다. */
+function occurrenceMealOnly(row: V40100PrintRow): number {
+	if (row.mealFee != null && Number.isFinite(Number(row.mealFee))) return Number(row.mealFee);
+	return Number(row.nonBenefitMeal || 0);
+}
+
 function renderOccurrencePrintDataRow(row: V40100PrintRow): string {
 	const idDisp = String(row.recognitionNo || "").trim()
 		? escapeHtml(String(row.recognitionNo).trim())
@@ -123,7 +129,7 @@ function renderOccurrencePrintDataRow(row: V40100PrintRow): string {
 				<td class="t id">${idDisp}</td>
 				<td class="n">${moneyKoNum(row.nhaContribution)}</td>
 				<td class="n">${moneyKoNum(row.recipientContribution)}</td>
-				<td class="n">${moneyKoNum(row.nonBenefitMeal)}</td>
+				<td class="n">${moneyKoNum(occurrenceMealOnly(row))}</td>
 				<td class="n">${moneyKoNum(row.nonBenefitSnack)}</td>
 				<td class="n">${moneyKoNum(row.nonBenefitMedical)}</td>
 				<td class="n">${moneyKoNum(row.beautyCost)}</td>
@@ -169,7 +175,10 @@ export interface V40100PrintRow {
 	recognitionNo: string;
 	nhaContribution: number;
 	recipientContribution: number;
+	/** V40100 비급여식대 = 식사비+간식비 */
 	nonBenefitMeal: number;
+	/** V40100 식대 = 식사비만 */
+	mealFee?: number;
 	nonBenefitSnack: number;
 	nonBenefitMedical: number;
 	beautyCost: number;

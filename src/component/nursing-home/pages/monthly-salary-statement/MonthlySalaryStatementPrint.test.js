@@ -71,6 +71,35 @@ describe("MonthlySalaryStatementPrint — builders", () => {
 		assert.match(html, /<!DOCTYPE html>/i);
 	});
 
+	it("발생내역서 비급여식대는 식사비만 표시한다", () => {
+		const html = Print.buildSalaryOccurrencePrintHtml("2026-08", [
+			{
+				PNUM: "1",
+				SALMM: "202608",
+				yearMonthLabel: "(2026-08월분)",
+				recipient: "홍길동",
+				grade: "1등급",
+				recognitionNo: "L1",
+				nhaContribution: 0,
+				recipientContribution: 0,
+				nonBenefitMeal: 434000,
+				mealFee: 372000,
+				nonBenefitSnack: 62000,
+				nonBenefitMedical: 0,
+				beautyCost: 0,
+				roomUpgradeFee: 0,
+				contractedMedical: 0,
+				contractedPrescription: 0,
+				otherCost: 0,
+				recipientBurdenTotal: 434000,
+			},
+		]);
+		const mealCells = html.match(/<td class="n">372,000<\/td>/g) || [];
+		assert.equal(mealCells.length, 2);
+		assert.match(html, /<td class="n">372,000<\/td>\s*<td class="n">62,000<\/td>/);
+		assert.match(html, /434,000/);
+	});
+
 	it("발부대장 HTML에 폼 반영", () => {
 		const html = Print.buildStatementLedgerPrintHtml(
 			"2024-06",
