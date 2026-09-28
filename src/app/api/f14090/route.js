@@ -252,6 +252,23 @@ export async function POST(req) {
 
     const pick = (k) => (body && Object.prototype.hasOwnProperty.call(body, k) ? body[k] : null);
 
+    const INT_KEYS = new Set([
+      'PH_BATH_CNT',
+      'NS_SBDP',
+      'NS_EBDP',
+      'SV_CNT',
+      'AB_CNT',
+    ]);
+    const DECIMAL_KEYS = new Set(['NS_TMPBD']);
+
+    const toNullableNumber = (raw) => {
+      if (raw == null) return null;
+      const s = String(raw).trim();
+      if (s === '') return null;
+      const n = Number(s);
+      return Number.isFinite(n) ? n : null;
+    };
+
     // === 수정 가능 컬럼들 ===
     const editableKeys = [
       // 신체활동
@@ -278,7 +295,20 @@ export async function POST(req) {
     request.input('ANCD', gate.sessionAncd);
     request.input('YYYYMM', String(yyyymm));
     request.input('PNUM', String(pnum));
-    keys.forEach((k) => request.input(k, pick(k) == null ? null : String(pick(k))));
+    keys.forEach((k) => {
+      const raw = pick(k);
+      if (INT_KEYS.has(k)) {
+        const n = toNullableNumber(raw);
+        request.input(k, sql.Int, n == null ? null : Math.trunc(n));
+        return;
+      }
+      if (DECIMAL_KEYS.has(k)) {
+        request.input(k, sql.Decimal(10, 2), toNullableNumber(raw));
+        return;
+      }
+      const text = raw == null ? '' : String(raw);
+      request.input(k, text);
+    });
 
     const setSql = keys.map((k) => `T.[${k}] = @${k}`).join(',\n          ');
     const insertCols = keys.map((k) => `[${k}]`).join(',');
