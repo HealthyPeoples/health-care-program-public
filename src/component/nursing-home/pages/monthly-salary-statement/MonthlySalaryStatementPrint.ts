@@ -715,13 +715,14 @@ export function buildBenefitStatement24Body(
 	const sal2 = row.recipientContribution;
 	const v3 = sal1 + sal2;
 
-	const v4 = row.mealFee;
+	// 식사재료비④ = 식사비 + 간식비 (간식은 기타⑧에 넣지 않음)
+	const v4 = row.mealFee + row.nonBenefitSnack;
 	const v5 = row.roomUpgradeFee;
 	const v6 = row.beautyCost;
 	const v7a = row.nonBenefitMedical;
 	const v7b = row.contractedMedical;
 	const v7c = row.contractedPrescription;
-	const v8 = row.otherCost + row.nonBenefitSnack;
+	const v8 = row.otherCost;
 	const v8Label = row.otherCostDesc || "기타";
 	const v10 = v4 + v5 + v6 + v7a + v7b + v7c + v8;
 	const v11 = v3 + v10;
@@ -1312,7 +1313,7 @@ export function statementRowToV40100GFallback(
 		payYearMonth.length >= 7 ? parseInt(payYearMonth.slice(5, 7), 10) : NaN;
 	const sal1 = parseRowAmount(row.nhaContribution);
 	const sal2 = parseRowAmount(row.recipientContribution);
-	const v4 = parseRowAmount(row.nonBenefitMeal);
+	const v4 = parseRowAmount(row.nonBenefitMeal) + parseRowAmount(row.nonBenefitSnack);
 	const v5 = parseRowAmount(row.roomUpgradeFee);
 	const v6 = parseRowAmount(row.beautyCost);
 	const v7a = parseRowAmount(row.outpatientFee);
@@ -1321,7 +1322,6 @@ export function statementRowToV40100GFallback(
 	const v8 =
 		parseRowAmount(row.bathFee) +
 		parseRowAmount(row.dementiaFee) +
-		parseRowAmount(row.nonBenefitSnack) +
 		parseRowAmount(row.otherCostsRecipient);
 	const nonBenefit = v4 + v5 + v6 + v7a + v7b + v7c + v8;
 	const months: V40100GMonthAmt[] = [];

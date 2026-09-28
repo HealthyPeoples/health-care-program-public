@@ -142,4 +142,37 @@ describe("MonthlySalaryStatementPrint — builders", () => {
 		assert.match(html, /입금통장정보 : 기업은행:110-123-456 예금주:너싱홈 로아/);
 		assert.doesNotMatch(html, /너싱홈\s*해원/);
 	});
+
+	it("식사재료비는 식사비와 간식비의 합이고 간식비는 기타에 다시 넣지 않는다", () => {
+		const html = Print.buildBenefitStatement24Body("2026-08", {
+			PNUM: "1",
+			SALMM: "202608",
+			recipient: "홍길동",
+			recognitionNo: "L000",
+			periodFrom: "2026-08-01",
+			periodTo: "2026-08-31",
+			orgCode: "",
+			orgName: "테스트원",
+			orgAddr: "",
+			orgBizNo: "",
+			orgOwner: "",
+			orgTel: "",
+			bankAccount: "",
+			otherCostDesc: "",
+			daysUsed: 31,
+			nhaContribution: 0,
+			recipientContribution: 0,
+			mealFee: 372000,
+			nonBenefitSnack: 62000,
+			nonBenefitMedical: 0,
+			beautyCost: 0,
+			roomUpgradeFee: 0,
+			contractedMedical: 0,
+			contractedPrescription: 0,
+			otherCost: 1000,
+		});
+		assert.match(html, /식사재료비④<\/td>\s*<td class="f24-r">434,000<\/td>/);
+		assert.match(html, /기타 ⑧<\/td>\s*<td class="f24-r">1,000<\/td>/);
+		assert.match(html, /비급여계 ⑩\(④\+⑤\+⑥\+⑦\+⑧\)<\/td>\s*<td class="f24-r">435,000<\/td>/);
+	});
 });
