@@ -115,12 +115,12 @@ body { font-family: 'Malgun Gothic', 'Gulim', sans-serif; font-size: 10px; margi
 .page:last-child { page-break-after: auto; }
 .top { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px; gap: 8px; }
 h1 { margin: 0; font-size: 18px; letter-spacing: 1px; font-weight: 700; }
-.who { min-width: 180px; border-collapse: collapse; }
-.who th, .who td { border: 1px solid #111; padding: 3px 6px; }
+.who { min-width: 180px; margin-right: 1px; border-collapse: separate; border-spacing: 0; border-right: 1px solid #111; border-bottom: 1px solid #111; }
+.who th, .who td { border-top: 1px solid #111; border-left: 1px solid #111; border-right: 0; border-bottom: 0; padding: 3px 6px; }
 .who th { width: 52px; background: #f3f3f3; font-weight: 700; text-align: center; }
 .who td { min-width: 120px; }
-.sheet { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.sheet th, .sheet td { border: 1px solid #111; text-align: center; vertical-align: middle; font-size: 12px; }
+.sheet { width: calc(100% - 1px); border-collapse: separate; border-spacing: 0; table-layout: fixed; border-right: 1px solid #111; border-bottom: 1px solid #111; }
+.sheet th, .sheet td { border-top: 1px solid #111; border-left: 1px solid #111; border-right: 0; border-bottom: 0; text-align: center; vertical-align: middle; font-size: 12px; }
 .sheet thead th { background: #f3f3f3; font-weight: 700; padding: 3px 1px; font-size: 12px; }
 .sheet tbody td { height: 20px; padding: 1px 1px; font-size: 12px; }
 .sheet .date { width: 7%; font-weight: 700; }
