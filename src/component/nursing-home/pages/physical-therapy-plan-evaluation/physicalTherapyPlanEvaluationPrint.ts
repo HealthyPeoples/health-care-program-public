@@ -159,27 +159,48 @@ html, body {
 	text-underline-offset: 3px;
 }
 .approve {
-	position: absolute; right: 0; top: 0;
-	border-collapse: collapse; width: 38mm; font-size: 8.5pt;
+	position: absolute; right: 1px; top: 0;
+	border-collapse: separate; border-spacing: 0;
+	border-right: 1px solid #000; border-bottom: 1px solid #000;
+	width: 38mm; font-size: 8.5pt;
 }
-.approve th, .approve td { border: 1px solid #000; text-align: center; padding: 1px; }
+.approve th, .approve td {
+	border-top: 1px solid #000; border-left: 1px solid #000;
+	border-right: 0; border-bottom: 0;
+	text-align: center; padding: 1px;
+}
 .approve th { font-weight: 700; height: 6mm; }
 .approve td.stamp { height: 12mm; }
-.info, .sheet, .inner, .ex-grid {
+.info, .sheet {
+	width: calc(100% - 1px);
+	border-collapse: separate;
+	border-spacing: 0;
+	border-right: 1px solid #000;
+	border-bottom: 1px solid #000;
+	table-layout: fixed;
+	empty-cells: show;
+}
+.inner {
 	width: 100%; border-collapse: collapse; table-layout: fixed; empty-cells: show;
 }
 .info { margin-bottom: 2mm; }
 .info th, .info td,
 .sheet > thead > tr > th,
 .sheet > tbody > tr > td {
-	border: 1px solid #000; vertical-align: middle; padding: 3px 4px;
+	border-top: 1px solid #000;
+	border-left: 1px solid #000;
+	border-right: 0;
+	border-bottom: 0;
+	vertical-align: middle;
+	padding: 3px 4px;
 }
 .info th { font-weight: 700; text-align: center; background: #f3f3f3; white-space: nowrap; }
 .info td { text-align: center; }
 .sheet > thead > tr > th { background: #f3f3f3; font-weight: 700; text-align: center; }
 .c-area { width: 14%; }
 .c-method { width: 11%; }
-.c-detail { width: 75%; }
+.c-lists { width: 37.5%; }
+.c-diagram { width: 37.5%; }
 .area, .method { text-align: center; font-weight: 700; }
 .text { text-align: left; vertical-align: top; height: 11mm; white-space: pre-wrap; }
 .sheet > tbody > tr > td.pad0 { padding: 0; vertical-align: top; }
@@ -193,22 +214,16 @@ html, body {
 .site.on { font-weight: 700; text-decoration: underline; }
 .inner td { border: none; padding: 1.5px 6px; font-size: 9pt; text-align: left; width: 50%; }
 .chk-on { font-weight: 700; }
-.ex-grid { height: 100%; }
-.ex-grid td { vertical-align: top; padding: 0; }
-.ex-grid td.lists { width: 50%; }
-.ex-grid td.diagram {
-	width: 50%;
-	border-left: 1px solid #000;
+.sheet > tbody > tr > td.diagram {
 	text-align: center;
 	vertical-align: middle;
 	padding: 1.5mm;
 }
-.ex-grid td.diagram img {
+.sheet > tbody > tr > td.diagram img {
 	width: 100%;
 	max-height: 95mm;
 	object-fit: contain;
 }
-.ex-simple { border-top: 1px solid #000; }
 .foot-label { text-align: center; font-weight: 700; background: #f3f3f3; }
 @media print {
 	.page { width: 100%; min-height: auto; padding: 0; }
@@ -273,80 +288,73 @@ function buildPage(row: V32010PrintRow): string {
 		<colgroup>
 			<col class="c-area" />
 			<col class="c-method" />
-			<col class="c-detail" />
+			<col class="c-lists" />
+			<col class="c-diagram" />
 		</colgroup>
 		<thead>
-			<tr><th>영역</th><th>급여방법</th><th>급여세부내역</th></tr>
+			<tr><th>영역</th><th>급여방법</th><th colspan="2">급여세부내역</th></tr>
 		</thead>
 		<tbody>
 			<tr>
 				<td class="area" rowspan="2">목표 및 평가</td>
 				<td class="method">목표</td>
-				<td class="text">${esc(cell(row, '장기적목표'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, '장기적목표'))}</td>
 			</tr>
 			<tr>
 				<td class="method">평가</td>
-				<td class="text">${esc(cell(row, '장기적평가'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, '장기적평가'))}</td>
 			</tr>
 			<tr>
 				<td class="area" rowspan="3">신체활동 및 재활영역</td>
 				<td class="method">진단명</td>
-				<td class="text">${esc(cell(row, '진단명'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, '진단명'))}</td>
 			</tr>
 			<tr>
 				<td class="method">문제점</td>
-				<td class="text">${esc(cell(row, '문제점'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, '문제점'))}</td>
 			</tr>
 			<tr>
 				<td class="method">제공방법</td>
-				<td class="text">${esc(cell(row, '대체방안'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, '대체방안'))}</td>
 			</tr>
 			<tr>
 				<td class="area"></td>
 				<td class="method">치료부위</td>
-				<td class="pad0">${sites(row)}</td>
+				<td class="pad0" colspan="2">${sites(row)}</td>
 			</tr>
 			<tr>
 				<td class="area" rowspan="2">운동치료</td>
 				<td class="method">기구이용</td>
-				<td class="pad0" rowspan="2">
-					<table class="ex-grid">
-						<tr>
-							<td class="lists">${pairTable(row, EQUIP_L, EQUIP_R)}</td>
-							<td class="diagram" rowspan="2">
-								<img src="${esc(diagramSrc)}" alt="치료부위" />
-							</td>
-						</tr>
-						<tr>
-							<td class="lists ex-simple">${pairTable(row, SIMPLE_L, SIMPLE_R)}</td>
-						</tr>
-					</table>
+				<td class="pad0">${pairTable(row, EQUIP_L, EQUIP_R)}</td>
+				<td class="diagram" rowspan="2">
+					<img src="${esc(diagramSrc)}" alt="치료부위" />
 				</td>
 			</tr>
 			<tr>
 				<td class="method">단순운동</td>
+				<td class="pad0">${pairTable(row, SIMPLE_L, SIMPLE_R)}</td>
 			</tr>
 			<tr>
 				<td class="area">Modalities</td>
 				<td class="method"></td>
-				<td class="pad0">${pairTable(row, MOD_L, MOD_R)}</td>
+				<td class="pad0" colspan="2">${pairTable(row, MOD_L, MOD_R)}</td>
 			</tr>
 			<tr>
 				<td class="area" rowspan="3">기타치료</td>
 				<td class="method">기타치료1</td>
-				<td class="text">${esc(cell(row, 'PETC_1'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, 'PETC_1'))}</td>
 			</tr>
 			<tr>
 				<td class="method">기타치료2</td>
-				<td class="text">${esc(cell(row, 'PETC_2'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, 'PETC_2'))}</td>
 			</tr>
 			<tr>
 				<td class="method">기타치료3</td>
-				<td class="text">${esc(cell(row, 'PETC_3'))}</td>
+				<td class="text" colspan="2">${esc(cell(row, 'PETC_3'))}</td>
 			</tr>
 			<tr>
 				<td class="foot-label">급여 제공 횟수</td>
-				<td class="text" colspan="2">${esc(cell(row, '급여제공횟수'))}</td>
+				<td class="text" colspan="3">${esc(cell(row, '급여제공횟수'))}</td>
 			</tr>
 		</tbody>
 	</table>

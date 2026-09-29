@@ -287,14 +287,20 @@ html, body {
 }
 .approve {
 	position: absolute;
-	right: 0;
+	right: 1px;
 	top: 0;
-	border-collapse: collapse;
+	border-collapse: separate;
+	border-spacing: 0;
+	border-right: 1px solid #000;
+	border-bottom: 1px solid #000;
 	width: 38mm;
 	font-size: 8.5pt;
 }
 .approve th, .approve td {
-	border: 1px solid #000;
+	border-top: 1px solid #000;
+	border-left: 1px solid #000;
+	border-right: 0;
+	border-bottom: 0;
 	text-align: center;
 	padding: 1px;
 }
@@ -304,15 +310,21 @@ html, body {
 }
 .approve td.stamp { height: 12mm; }
 .info {
-	width: 100%;
-	border-collapse: collapse;
+	width: calc(100% - 1px);
+	border-collapse: separate;
+	border-spacing: 0;
+	border-right: 1px solid #000;
+	border-bottom: 1px solid #000;
 	margin-bottom: 2mm;
 	table-layout: fixed;
 	flex: 0 0 auto;
 	empty-cells: show;
 }
 .info th, .info td {
-	border: 1px solid #000;
+	border-top: 1px solid #000;
+	border-left: 1px solid #000;
+	border-right: 0;
+	border-bottom: 0;
 	padding: 3px 4px;
 	vertical-align: middle;
 	font-size: 9pt;
