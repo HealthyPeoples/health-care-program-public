@@ -555,9 +555,9 @@ export default function VitalSigns() {
 		<div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white text-black">
 			<div className="mx-auto w-full max-w-[1600px] min-w-0 p-3 sm:p-4">
 				{/* 상단: 날짜 네비게이션 및 출력 */}
-				<div className="mb-4 flex items-center border-b border-blue-200 pb-3 relative">
-					{/* 가운데: 날짜 네비게이션 */}
-					<div className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-4">
+				<div className="mb-4 grid grid-cols-1 gap-3 border-b border-blue-200 pb-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
+					<div className="hidden sm:block" />
+					<div className="flex items-center justify-center gap-2 sm:gap-4">
 						<button 
 							onClick={() => handleDateChange(-1)}
 							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
@@ -565,14 +565,22 @@ export default function VitalSigns() {
 							<span>◀</span>
 							<span>이전일</span>
 						</button>
-						<div className="flex items-center gap-2">
-							<input
-								type="date"
-								value={selectedDate}
-								onChange={(e) => setSelectedDate(e.target.value)}
-								className="px-3 py-1.5 text-sm border border-blue-300 rounded bg-white text-blue-900"
-							/>
-						</div>
+						<input
+							type="date"
+							value={selectedDate}
+							onChange={(e) => {
+								if (e.target.value) setSelectedDate(e.target.value);
+							}}
+							onClick={(e) => {
+								try {
+									e.currentTarget.showPicker();
+								} catch {
+									// 달력이 이미 열려 있으면 브라우저가 예외를 던진다.
+								}
+							}}
+							aria-label="조회 날짜"
+							className="min-w-[11.5rem] cursor-pointer px-3 py-1.5 text-sm border border-blue-300 rounded bg-white text-blue-900"
+						/>
 						<button 
 							onClick={() => handleDateChange(1)}
 							className="flex items-center gap-1 px-3 py-1.5 text-sm border border-blue-300 rounded bg-blue-100 hover:bg-blue-200 text-blue-900"
@@ -581,8 +589,7 @@ export default function VitalSigns() {
 							<span>▶</span>
 						</button>
 					</div>
-					{/* 오른쪽: 출력 버튼 */}
-					<div className="ml-auto flex items-end gap-2">
+					<div className="flex items-center justify-end gap-2">
 						<button 
 							onClick={() => openPrintModal('individual')}
 							className="px-4 py-1.5 text-sm border border-blue-400 rounded bg-blue-200 hover:bg-blue-300 text-blue-900 font-medium"

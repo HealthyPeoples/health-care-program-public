@@ -140,12 +140,6 @@ const COMMON_CSS = `
     margin: 8px 0 6px 0;
     font-size: 10pt;
   }
-  .footer {
-    margin-top: 10px;
-    display: flex;
-    justify-content: space-between;
-    font-size: 9pt;
-  }
 `;
 
 export type PrintMeta = {
@@ -181,11 +175,7 @@ function groupRowsByPerson(rows: Record<string, unknown>[]): Record<string, unkn
 	});
 }
 
-function renderNursingLogPage(
-	rows: Record<string, unknown>[],
-	meta: PrintMeta,
-	pageLabel: string
-): string {
+function renderNursingLogPage(rows: Record<string, unknown>[], meta: PrintMeta): string {
 	const info = headerInfo(rows, meta.fallback);
 	const sortedRows = [...rows].sort((a, b) =>
 		formatSurveyDate(a['조사일자']).localeCompare(formatSurveyDate(b['조사일자']))
@@ -251,10 +241,6 @@ function renderNursingLogPage(
       ${bodyRows || `<tr><td colspan="11" style="padding:20px;">데이터가 없습니다</td></tr>`}
     </tbody>
   </table>
-  <div class="footer">
-    <span>R30030</span>
-    <span>${esc(pageLabel)}</span>
-  </div>
   </div>`;
 }
 
@@ -303,7 +289,7 @@ ${NURSING_LOG_CSS}
 </style>
 </head>
 <body>
-  ${renderNursingLogPage(rows, meta, '페이지: 1')}
+  ${renderNursingLogPage(rows, meta)}
 </body>
 </html>`;
 }
@@ -312,7 +298,7 @@ ${NURSING_LOG_CSS}
 export function buildNursingLogAllHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
 	const groups = groupRowsByPerson(rows);
 	const pages = groups
-		.map((group, idx) => renderNursingLogPage(group, meta, `페이지: ${idx + 1}/${groups.length}`))
+		.map((group) => renderNursingLogPage(group, meta))
 		.join('');
 
 	return `<!DOCTYPE html>
@@ -325,7 +311,7 @@ ${NURSING_LOG_CSS}
 </style>
 </head>
 <body>
-  ${pages || renderNursingLogPage([], meta, '페이지: 1')}
+  ${pages || renderNursingLogPage([], meta)}
 </body>
 </html>`;
 }
@@ -361,11 +347,7 @@ ${COMMON_CSS}
 }
 `;
 
-function renderHealthRecordPage(
-	rows: Record<string, unknown>[],
-	meta: PrintMeta,
-	pageLabel: string
-): string {
+function renderHealthRecordPage(rows: Record<string, unknown>[], meta: PrintMeta): string {
 	const info = headerInfo(rows, meta.fallback);
 	const sortedRows = [...rows].sort((a, b) =>
 		formatSurveyDate(a['조사일자']).localeCompare(formatSurveyDate(b['조사일자']))
@@ -425,10 +407,6 @@ function renderHealthRecordPage(
       ${bodyRows || `<tr><td colspan="8" style="padding:20px;">데이터가 없습니다</td></tr>`}
     </tbody>
   </table>
-  <div class="footer">
-    <span></span>
-    <span>${esc(pageLabel)}</span>
-  </div>
   </div>`;
 }
 
@@ -444,7 +422,7 @@ ${HEALTH_RECORD_CSS}
 </style>
 </head>
 <body>
-  ${renderHealthRecordPage(rows, meta, '1/1 페이지')}
+  ${renderHealthRecordPage(rows, meta)}
 </body>
 </html>`;
 }
@@ -453,7 +431,7 @@ ${HEALTH_RECORD_CSS}
 export function buildHealthRecordAllHtml(rows: Record<string, unknown>[], meta: PrintMeta): string {
 	const groups = groupRowsByPerson(rows);
 	const pages = groups
-		.map((group, idx) => renderHealthRecordPage(group, meta, `${idx + 1}/${groups.length} 페이지`))
+		.map((group) => renderHealthRecordPage(group, meta))
 		.join('');
 
 	return `<!DOCTYPE html>
@@ -466,7 +444,7 @@ ${HEALTH_RECORD_CSS}
 </style>
 </head>
 <body>
-  ${pages || renderHealthRecordPage([], meta, '1/1 페이지')}
+  ${pages || renderHealthRecordPage([], meta)}
 </body>
 </html>`;
 }
