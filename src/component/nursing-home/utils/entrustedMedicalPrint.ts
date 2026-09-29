@@ -69,6 +69,7 @@ export function openPrintWindow(html: string) {
 	}
 	w.document.write(html);
 	w.document.close();
+	w.document.title = '';
 	w.onload = () => {
 		w.focus();
 		w.print();
@@ -118,10 +119,12 @@ export function buildFeeStatementHtml(
 	const sumPay = rows.reduce((a, r) => a + (Number(r.HP_PAY_AMT) || 0), 0);
 
 	return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>촉탁의 진료비 내역서</title>
+<html><head><meta charset="UTF-8"><title></title>
 <style>
-@page { size: A4 landscape; margin: 8mm; }
-body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 9pt; margin: 0; padding: 8mm; }
+@page { size: A4 landscape; margin: 0 8mm 8mm 8mm; }
+* { box-sizing: border-box; }
+body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 9pt; margin: 0; padding: 12mm 8mm 8mm; }
+.cover-top { position: fixed; left: -8mm; right: -8mm; top: 0; height: 10mm; background: #fff; z-index: 99999; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .title { text-align: center; font-size: 18pt; font-weight: bold; text-decoration: underline; margin: 0 0 8px; letter-spacing: 2px; }
 .top { position: relative; min-height: 48px; margin-bottom: 6px; }
 .sig { position: absolute; top: 0; right: 0; border-collapse: collapse; width: 140px; font-size: 8pt; }
@@ -132,9 +135,9 @@ table.main { width: 100%; border-collapse: collapse; border-top: 2px solid #000;
 table.main th, table.main td { border: 1px solid #000; padding: 3px 2px; text-align: center; vertical-align: middle; }
 table.main th { background: #f5f5f5; }
 td.num { text-align: right; padding-right: 4px; }
-.footer { margin-top: 10px; display: flex; justify-content: space-between; font-size: 9pt; }
 .sum-label { text-align: left; padding-left: 6px; font-weight: bold; }
 </style></head><body>
+  <div class="cover-top"></div>
   <div class="title">촉탁의 진료비 내역서</div>
   <div class="top">
     <table class="sig"><tr><th>담당</th><th>검토</th><th>결제</th></tr><tr><td></td><td></td><td></td></tr></table>
@@ -165,7 +168,6 @@ td.num { text-align: right; padding-right: 4px; }
       </tr>
     </tbody>
   </table>
-  <div class="footer"><span>R11070C</span><span>페이지: 1</span></div>
 </body></html>`;
 }
 
@@ -217,10 +219,12 @@ export function buildMedicalRecordHtml(meta: RecordPrintMeta, progress: RecordPr
 			: '/images/body-diagram.png';
 
 	return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>진료기록지</title>
+<html><head><meta charset="UTF-8"><title></title>
 <style>
-@page { size: A4 portrait; margin: 10mm; }
-body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 9pt; margin: 0; padding: 8mm; }
+@page { size: A4 portrait; margin: 0 10mm 10mm 10mm; }
+* { box-sizing: border-box; }
+body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 9pt; margin: 0; padding: 12mm 8mm 8mm; }
+.cover-top { position: fixed; left: -10mm; right: -10mm; top: 0; height: 10mm; background: #fff; z-index: 99999; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .title { text-align: center; font-size: 18pt; font-weight: bold; margin: 0 0 10px; letter-spacing: 4px; }
 .top { position: relative; margin-bottom: 8px; }
 .sig { position: absolute; top: 0; right: 0; border-collapse: collapse; width: 140px; font-size: 8pt; }
@@ -240,8 +244,8 @@ body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 9pt; 
 .progress .date { width: 14%; text-align: center; }
 .progress .note { width: 66%; min-height: 28px; white-space: pre-wrap; }
 .progress .sign { width: 20%; text-align: center; }
-.footer { margin-top: 10px; display: flex; justify-content: space-between; }
 </style></head><body>
+  <div class="cover-top"></div>
   <div class="title">진료기록지</div>
   <div class="top">
     <table class="sig"><tr><th>담당</th><th>검토</th><th>결제</th></tr><tr><td></td><td></td><td></td></tr></table>
@@ -276,7 +280,6 @@ body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 9pt; 
     <thead><tr><th>방문날짜</th><th>Progress Note</th><th>의사서명</th></tr></thead>
     <tbody>${rows}${empties}</tbody>
   </table>
-  <div class="footer"><span>R11070A</span><span>페이지: 1</span></div>
 </body></html>`;
 }
 

@@ -72,10 +72,12 @@ export function buildUnpaidStatementHtml(
 	const totalUnpaid = rows.reduce((a, r) => a + (Number(r.미수금) || 0), 0);
 
 	return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>외래진료비(미수금내역서)</title>
+<html><head><meta charset="UTF-8"><title></title>
 <style>
-@page { size: A4 landscape; margin: 10mm; }
-body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 10pt; margin: 0; padding: 8mm; color: #000; }
+@page { size: A4 landscape; margin: 0 10mm 10mm 10mm; }
+* { box-sizing: border-box; }
+body { font-family: 'Malgun Gothic','맑은 고딕',sans-serif; font-size: 10pt; margin: 0; padding: 12mm 8mm 8mm; color: #000; }
+.cover-top { position: fixed; left: -10mm; right: -10mm; top: 0; height: 10mm; background: #fff; z-index: 99999; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .title { text-align: center; font-size: 20pt; font-weight: bold; text-decoration: underline; margin: 0 0 10px; letter-spacing: 2px; }
 .top { position: relative; min-height: 48px; margin-bottom: 4px; }
 .sig { position: absolute; top: 0; right: 0; border-collapse: collapse; width: 150px; font-size: 9pt; }
@@ -89,8 +91,8 @@ table.main td { border: none; padding: 7px 6px; text-align: center; vertical-ali
 table.main td.num { text-align: right; padding-right: 10px; white-space: nowrap; }
 table.main tr.sum td { border-top: 1px solid #000; padding-top: 10px; padding-bottom: 10px; font-weight: bold; }
 .sum-label { text-align: center !important; }
-.footer { margin-top: 14px; padding-top: 6px; border-top: 1px solid #000; display: flex; justify-content: space-between; font-size: 10pt; }
 </style></head><body>
+  <div class="cover-top"></div>
   <div class="title">외래진료비(미수금내역서)</div>
   <div class="top">
     <table class="sig">
@@ -121,6 +123,5 @@ table.main tr.sum td { border-top: 1px solid #000; padding-top: 10px; padding-bo
       </tr>
     </tbody>
   </table>
-  <div class="footer"><span>R11010B</span><span>페이지: 1</span></div>
 </body></html>`;
 }
