@@ -11,7 +11,7 @@ import { formatDateYmd } from './excretionObservationFields';
 
 const SLOT_SET_COUNT = 13;
 
-const POSITION_LEGEND = '※ 자세 : 1.좌측위  2.양와위  3.우측위  4.목위  5.침대에 앉기  6.휠체어';
+const POSITION_LEGEND = '※ 자세 : 1.좌측위  2.양와위  3.우측위  4.복위  5.침대에 앉기  6.휠체어';
 
 function esc(v: unknown): string {
 	return String(v ?? '')

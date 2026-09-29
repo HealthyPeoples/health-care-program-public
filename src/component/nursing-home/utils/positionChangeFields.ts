@@ -13,7 +13,7 @@ export const CHNG_POSI_OPTIONS = [
 	{ code: '1', label: '좌측위' },
 	{ code: '2', label: '양와위' },
 	{ code: '3', label: '우측위' },
-	{ code: '4', label: '목위' },
+	{ code: '4', label: '복위' },
 	{ code: '5', label: '침대에 앉기' },
 	{ code: '6', label: '휠체어' },
 ] as const;
