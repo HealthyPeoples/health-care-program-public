@@ -714,7 +714,6 @@ function buildSingleProgramDailyLogSheetHtml(
 	<table class="sign-table" aria-label="담당 검토 결재">
 		<tr><th>담당</th><th>검토</th><th>결재</th></tr>
 		<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
-		<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 	</table>
 </div>
 <table class="log-main">
