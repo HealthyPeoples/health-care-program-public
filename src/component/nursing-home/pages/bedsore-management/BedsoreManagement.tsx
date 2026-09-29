@@ -178,6 +178,7 @@ function openPrintWindow(html: string) {
 	}
 	w.document.write(html);
 	w.document.close();
+	w.document.title = '';
 	setTimeout(() => w.print(), 250);
 }
 
@@ -226,6 +227,7 @@ export default function BedsoreManagement() {
 	const [empSuggestions, setEmpSuggestions] = useState<EmpSuggest[]>([]);
 	const [showEmpDropdown, setShowEmpDropdown] = useState(false);
 	const [photoUploading, setPhotoUploading] = useState(false);
+	const [photoPreviewIndex, setPhotoPreviewIndex] = useState<number | null>(null);
 	const photoInputRef = useRef<HTMLInputElement | null>(null);
 
 	const [memberList, setMemberList] = useState<MemberData[]>([]);
@@ -721,6 +723,25 @@ export default function BedsoreManagement() {
 
 	const attachedPhotos = useMemo(() => parsePhotos(formData.photo), [formData.photo]);
 
+	useEffect(() => {
+		if (photoPreviewIndex == null) return;
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				setPhotoPreviewIndex(null);
+				return;
+			}
+			if (attachedPhotos.length < 2) return;
+			if (event.key === 'ArrowLeft') {
+				setPhotoPreviewIndex((i) => (i == null ? i : (i - 1 + attachedPhotos.length) % attachedPhotos.length));
+			}
+			if (event.key === 'ArrowRight') {
+				setPhotoPreviewIndex((i) => (i == null ? i : (i + 1) % attachedPhotos.length));
+			}
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	}, [photoPreviewIndex, attachedPhotos.length]);
+
 	const handleUploadPhotos = async (files: FileList | null) => {
 		if (fieldsLocked) {
 			alert('「수정」또는 「추가」후 사진을 첨부할 수 있습니다.');
@@ -944,8 +965,8 @@ export default function BedsoreManagement() {
 						</div>
 					</div>
 
-					<div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white border border-blue-300 rounded-lg">
-						<div className="min-h-[220px] max-h-[min(540px,55vh)] flex-1 overflow-y-auto">
+					<div className="flex flex-col overflow-hidden bg-white border border-blue-300 rounded-lg">
+						<div className="overflow-y-auto">
 							<table className="w-full text-xs">
 								<thead className="sticky top-0 border-b border-blue-200 bg-blue-50">
 									<tr>
@@ -1020,7 +1041,7 @@ export default function BedsoreManagement() {
 							</table>
 						</div>
 						{totalPages > 1 && (
-							<div className="p-2 bg-white border-t border-blue-200">
+							<div className="px-2 py-1 bg-white border-t border-blue-200">
 								<div className="flex items-center justify-center gap-1">
 									<button
 										type="button"
@@ -1400,17 +1421,24 @@ export default function BedsoreManagement() {
 								<div className="text-sm text-blue-900/55 py-2">첨부된 사진이 없습니다.</div>
 							) : (
 								<div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-									{attachedPhotos.map((p) => (
+									{attachedPhotos.map((p, index) => (
 										<div
 											key={p.blobName}
 											className="relative rounded border border-blue-200 bg-white overflow-hidden aspect-[4/3]"
 										>
-											{/* eslint-disable-next-line @next/next/no-img-element */}
-											<img
-												src={photoViewUrl(p.blobName)}
-												alt={p.fileName || '첨부사진'}
-												className="h-full w-full object-contain bg-white"
-											/>
+											<button
+												type="button"
+												onClick={() => setPhotoPreviewIndex(index)}
+												className="h-full w-full cursor-zoom-in"
+												title="클릭하면 확대"
+											>
+												{/* eslint-disable-next-line @next/next/no-img-element */}
+												<img
+													src={photoViewUrl(p.blobName)}
+													alt={p.fileName || '첨부사진'}
+													className="h-full w-full object-contain bg-white"
+												/>
+											</button>
 											{!fieldsLocked ? (
 												<button
 													type="button"
@@ -1469,6 +1497,60 @@ export default function BedsoreManagement() {
 					</div>
 				</div>
 			</div>
+			{photoPreviewIndex != null && attachedPhotos[photoPreviewIndex] ? (
+				<div
+					className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4"
+					onClick={() => setPhotoPreviewIndex(null)}
+					role="dialog"
+					aria-modal="true"
+					aria-label="사진 확대"
+				>
+					<button
+						type="button"
+						onClick={() => setPhotoPreviewIndex(null)}
+						className="absolute top-4 right-4 rounded bg-white/90 px-3 py-1.5 text-sm font-medium text-black hover:bg-white"
+					>
+						닫기
+					</button>
+					{attachedPhotos.length > 1 ? (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								setPhotoPreviewIndex((i) => (i == null ? i : (i - 1 + attachedPhotos.length) % attachedPhotos.length));
+							}}
+							className="absolute left-3 top-1/2 -translate-y-1/2 rounded bg-white/90 px-3 py-2 text-sm font-medium text-black hover:bg-white"
+							aria-label="이전 사진"
+						>
+							◀
+						</button>
+					) : null}
+					{/* eslint-disable-next-line @next/next/no-img-element */}
+					<img
+						src={photoViewUrl(attachedPhotos[photoPreviewIndex].blobName)}
+						alt={attachedPhotos[photoPreviewIndex].fileName || '첨부사진'}
+						className="max-h-[88vh] max-w-[92vw] object-contain"
+						onClick={(e) => e.stopPropagation()}
+					/>
+					{attachedPhotos.length > 1 ? (
+						<button
+							type="button"
+							onClick={(e) => {
+								e.stopPropagation();
+								setPhotoPreviewIndex((i) => (i == null ? i : (i + 1) % attachedPhotos.length));
+							}}
+							className="absolute right-3 top-1/2 -translate-y-1/2 rounded bg-white/90 px-3 py-2 text-sm font-medium text-black hover:bg-white"
+							aria-label="다음 사진"
+						>
+							▶
+						</button>
+					) : null}
+					<div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded bg-black/60 px-3 py-1 text-sm text-white">
+						{photoPreviewIndex + 1} / {attachedPhotos.length}
+						{attachedPhotos[photoPreviewIndex].fileName ? ` · ${attachedPhotos[photoPreviewIndex].fileName}` : ''}
+					</div>
+				</div>
+			) : null}
 		</div>
 	);
 }

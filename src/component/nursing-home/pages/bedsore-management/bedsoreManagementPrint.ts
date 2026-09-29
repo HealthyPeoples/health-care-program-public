@@ -174,22 +174,27 @@ function siteMarkCells(row: BedsorePrintRow): string {
 }
 
 const PRINT_STYLES = `
-@page { size: A4 portrait; margin: 10mm; }
+@page { size: A4 portrait; margin: 0 10mm 10mm 10mm; }
 * { box-sizing: border-box; }
 body { font-family: 'Malgun Gothic', 'Gulim', sans-serif; font-size: 11px; color: #111; margin: 0; }
+.cover-top {
+  position: fixed; left: -10mm; right: -10mm; top: 0; height: 10mm;
+  background: #fff; z-index: 99999;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
 .wrap { width: 100%; }
 .top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 8px; }
 h1 { flex: 1; text-align: center; font-size: 20px; letter-spacing: 2px; margin: 6px 0 0; }
-.stamp { width: 72px; border: 1px solid #111; border-collapse: collapse; }
-.stamp th, .stamp td { border: 1px solid #111; text-align: center; }
+.stamp { width: 72px; margin-right: 1px; border-collapse: separate; border-spacing: 0; border-right: 1px solid #111; border-bottom: 1px solid #111; }
+.stamp th, .stamp td { border-top: 1px solid #111; border-left: 1px solid #111; border-right: 0; border-bottom: 0; text-align: center; }
 .stamp th { font-size: 12px; padding: 3px 0; }
 .stamp td { height: 48px; }
-.meta { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
-.meta th, .meta td { border: 1px solid #111; padding: 5px 8px; }
+.meta { width: calc(100% - 1px); border-collapse: separate; border-spacing: 0; border-right: 1px solid #111; border-bottom: 1px solid #111; margin-bottom: 8px; }
+.meta th, .meta td { border-top: 1px solid #111; border-left: 1px solid #111; border-right: 0; border-bottom: 0; padding: 5px 8px; }
 .meta th { width: 14%; background: #f3f3f3; font-weight: 600; text-align: center; }
 .meta td { width: 36%; }
-.day { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 8px; page-break-inside: avoid; }
-.day th, .day td { border: 1px solid #111; }
+.day { width: calc(100% - 1px); border-collapse: separate; border-spacing: 0; table-layout: fixed; border-right: 1px solid #111; border-bottom: 1px solid #111; margin-bottom: 8px; page-break-inside: avoid; }
+.day th, .day td { border-top: 1px solid #111; border-left: 1px solid #111; border-right: 0; border-bottom: 0; }
 .day .date { width: 32px; text-align: center; font-weight: 700; vertical-align: middle; font-size: 12px; }
 .day .fld { width: 52px; text-align: center; font-weight: 700; background: #f3f3f3; vertical-align: middle; font-size: 11px; }
 .day .site-name { font-size: 9px; font-weight: 600; text-align: center; padding: 2px 1px; line-height: 1.2; background: #fff; }
@@ -201,8 +206,8 @@ h1 { flex: 1; text-align: center; font-size: 20px; letter-spacing: 2px; margin: 
 .day .photos img { height: 72px; width: auto; max-width: 120px; object-fit: contain; margin-right: 6px; border: 1px solid #ccc; }
 .day .val { padding: 5px 8px; vertical-align: middle; }
 .day .sign { color: #555; font-size: 10px; margin-left: 8px; }
-.empty { text-align: center; padding: 24px; border: 1px solid #111; }
-.page { page-break-after: always; }
+.empty { text-align: center; padding: 24px; border: 1px solid #111; width: calc(100% - 1px); box-sizing: border-box; }
+.page { page-break-after: always; padding-top: 12mm; }
 .page:last-child { page-break-after: auto; }
 `;
 
@@ -217,10 +222,11 @@ export function buildBedsoreDailyPrintHtml(opts: {
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>욕창 발생 일일관찰기록지</title>
+  <title></title>
   <style>${PRINT_STYLES}</style>
 </head>
 <body>
+  <div class="cover-top"></div>
   <div class="page">${printBodyHtml(opts)}</div>
 </body>
 </html>`;
@@ -340,10 +346,11 @@ export function buildBedsoreDailyBatchPrintHtml(
 <html>
 <head>
   <meta charset="UTF-8"/>
-  <title>욕창 발생 일일관찰기록지</title>
+  <title></title>
   <style>${PRINT_STYLES}</style>
 </head>
 <body>
+  <div class="cover-top"></div>
   ${pages}
 </body>
 </html>`;
